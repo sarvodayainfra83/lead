@@ -1,0 +1,22 @@
+// Department Functions
+export const getDepartments = () => {
+  const depts = getFromStorage(STORAGE_KEYS.DEPARTMENTS) || [];
+  if (depts.length < 1) {
+    const defaultDepts = ["Production", "Quality Assurance", "Human Resources", "Logistics", "Finance"];
+    const dummyDepts = defaultDepts.map((name, i) => ({
+      id: `DP-${Date.now()}-${i}`,
+      timestamp: new Date().toISOString(),
+      dpNo: `DP-${String(i + 1).padStart(3, '0')}`,
+      name: name
+    }));
+    saveToStorage(STORAGE_KEYS.DEPARTMENTS, dummyDepts);
+    return dummyDepts;
+  }
+  return depts;
+};
+export const saveDepartments = (data) => saveToStorage(STORAGE_KEYS.DEPARTMENTS, data);
+export const saveDepartment = (item) => {
+  const data = getDepartments();
+  data.push(item);
+  saveDepartments(data);
+};
