@@ -64,8 +64,14 @@ export default function HistoryLead() {
   };
 
   // timestamp is stored as "DD/MM/YYYY HH:MM:SS" — just the date part for this column
-  const leadDate = (item) => (item.timestamp || '').split(' ')[0] || '-';
+  const leadDate = (item) => {
+    if (!item.timestamp) return '-';
 
+    const date = item.timestamp.split('T')[0];
+    const [year, month, day] = date.split('-');
+
+    return `${day}/${month}/${year}`;
+  };
   const tableHeaders = [
     "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Lead Receiver Name", "Lead Source",
     "Person Name", "Number", "Email", "DOB", "Occupation", "Requirement",
@@ -174,8 +180,8 @@ export default function HistoryLead() {
             />
           </div>
           <button
-             onClick={() => setShowMobileFilters(!showMobileFilters)}
-             className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+            className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
           >
             <Filter size={14} />
           </button>

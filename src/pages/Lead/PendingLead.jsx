@@ -179,7 +179,14 @@ export default function PendingLead({ setHeaderAction }) {
   };
 
   // timestamp is stored as "DD/MM/YYYY HH:MM:SS" — just the date part for this column
-  const leadDate = (item) => (item.timestamp || '').split(' ')[0] || '-';
+  const leadDate = (item) => {
+    if (!item.timestamp) return '-';
+
+    const date = item.timestamp.split('T')[0];
+    const [year, month, day] = date.split('-');
+
+    return `${day}/${month}/${year}`;
+  };
 
   const tableHeaders = [
     <input key="select-all" type="checkbox" checked={allChecked} onChange={toggleAll} className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer" />,
