@@ -67,20 +67,8 @@ export default function Customermaster() {
 
   const tableHeaders = [
     "Lead No", "Lead Type", "Lead Source", "Person Name", "Number", "Email", "DOB",
-    "Occupation", "Investment Range", "Address", "When to Buy Plan", "Assign Caller", "Process Type"
+    "Occupation", "Requirement", "Investment Range", "Address", "When to Buy Plan", "Assign Caller"
   ];
-
-  const processTypeBadge = (item) => {
-    const type = item.processType || 'Lead';
-    const isDirect = type === 'Direct';
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${
-        isDirect ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-      }`}>
-        {type}
-      </span>
-    );
-  };
 
   const renderRow = (item) => (
     <tr key={item.leadNo} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
@@ -92,11 +80,11 @@ export default function Customermaster() {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.location || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.callerAssigned}</td>
-      <td className="px-4 py-3 text-center whitespace-nowrap">{processTypeBadge(item)}</td>
     </tr>
   );
 
@@ -107,7 +95,6 @@ export default function Customermaster() {
           <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{item.leadNo} · {item.leadType}</span>
           <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
         </div>
-        {processTypeBadge(item)}
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-[10px]">

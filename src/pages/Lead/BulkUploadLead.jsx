@@ -142,7 +142,6 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
           const leadObj = {
             leadNo,
             timestamp,
-            processType: 'Import',
             leadType,
             leadReceiver,
             leadSource,

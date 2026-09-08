@@ -2,7 +2,7 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getUsers as getLocalUsers, saveUser as saveLocalUser, deleteUser as deleteLocalUser } from '../utils/storageManager';
 
 export const authApi = {
-  // Login user by User ID Code and Password
+  // Login user by Username and Password
   async loginUser(userIdCode, password) {
     if (!isSupabaseConfigured) {
       const users = getLocalUsers();
@@ -14,7 +14,7 @@ export const authApi = {
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('user_id_code', userIdCode)
+      .eq('username', userIdCode)
       .eq('password', password)
       .single();
 
@@ -23,9 +23,8 @@ export const authApi = {
     }
 
     return {
-      id: data.user_id_code,
+      id: data.username,
       dbId: data.id,
-      serialNo: data.serial_no,
       name: data.name,
       number: data.number,
       gmail: data.gmail,
@@ -52,7 +51,7 @@ export const authApi = {
     }
 
     return data.map((u, index) => ({
-      id: u.user_id_code,
+      id: u.username,
       dbId: u.id,
       serialNo: index + 1,
       name: u.name,
@@ -71,7 +70,7 @@ export const authApi = {
     }
 
     const payload = {
-      user_id_code: userData.id,
+      username: userData.id,
       name: userData.name,
       number: userData.number || '',
       gmail: userData.gmail || '',
@@ -82,7 +81,7 @@ export const authApi = {
 
     const { data, error } = await supabase
       .from('users')
-      .upsert(payload, { onConflict: 'user_id_code' })
+      .upsert(payload, { onConflict: 'username' })
       .select();
 
     if (error) {
@@ -104,7 +103,7 @@ export const authApi = {
     const { error } = await supabase
       .from('users')
       .delete()
-      .eq('user_id_code', userIdCode);
+      .eq('username', userIdCode);
 
     if (error) {
       console.error('Error deleting user from Supabase:', error);

@@ -126,7 +126,6 @@ export default function Direct({ isOpen, onClose, onSaved }) {
     const createdLead = await leadApi.saveLead({
       leadNo,
       timestamp,
-      processType: 'Direct',
       leadType: formData.leadType,
       leadReceiver: formData.leadReceiver,
       leadSource: formData.leadSource,

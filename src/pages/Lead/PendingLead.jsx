@@ -181,23 +181,11 @@ export default function PendingLead({ setHeaderAction }) {
   // timestamp is stored as "DD/MM/YYYY HH:MM:SS" — just the date part for this column
   const leadDate = (item) => (item.timestamp || '').split(' ')[0] || '-';
 
-  const processTypeBadge = (item) => {
-    const type = item.processType || 'Lead';
-    const isDirect = type === 'Direct';
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${
-        isDirect ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-      }`}>
-        {type}
-      </span>
-    );
-  };
-
   const tableHeaders = [
     <input key="select-all" type="checkbox" checked={allChecked} onChange={toggleAll} className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer" />,
     "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Lead Receiver Name", "Lead Source",
     "Person Name", "Number", "Email", "DOB", "Occupation", "Requirement",
-    "Investment Range", "Address", "When to Buy Plan", "Remarks", "Process Type", "Action"
+    "Investment Range", "Address", "When to Buy Plan", "Remarks", "Action"
   ];
 
   const renderRow = (item) => (
@@ -243,7 +231,6 @@ export default function PendingLead({ setHeaderAction }) {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.remarks}>
         {item.remarks || '-'}
       </td>
-      <td className="px-4 py-3 text-center whitespace-nowrap">{processTypeBadge(item)}</td>
       <td
         className="px-3 py-2 text-center whitespace-nowrap bg-white group-hover:bg-indigo-50 transition-colors"
         style={{ position: 'sticky', right: 0, zIndex: 10, boxShadow: '-2px 0 4px rgba(0,0,0,0.08)' }}
@@ -275,7 +262,6 @@ export default function PendingLead({ setHeaderAction }) {
             <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
           </div>
         </div>
-        {processTypeBadge(item)}
       </div>
 
       {selectedIds.has(item.id) && (
@@ -363,8 +349,8 @@ export default function PendingLead({ setHeaderAction }) {
             />
           </div>
           <button
-             onClick={() => setShowMobileFilters(!showMobileFilters)}
-             className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+            className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
           >
             <Filter size={14} />
           </button>

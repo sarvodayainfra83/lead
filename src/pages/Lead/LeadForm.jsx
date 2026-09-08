@@ -100,7 +100,6 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
     const newLead = {
       leadNo,
       timestamp,
-      processType: 'Lead',
       ...formData
     };
 

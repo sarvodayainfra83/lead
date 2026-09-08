@@ -66,22 +66,10 @@ export default function HistoryLead() {
   // timestamp is stored as "DD/MM/YYYY HH:MM:SS" — just the date part for this column
   const leadDate = (item) => (item.timestamp || '').split(' ')[0] || '-';
 
-  const processTypeBadge = (item) => {
-    const type = item.processType || 'Lead';
-    const isDirect = type === 'Direct';
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${
-        isDirect ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-      }`}>
-        {type}
-      </span>
-    );
-  };
-
   const tableHeaders = [
     "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Lead Receiver Name", "Lead Source",
     "Person Name", "Number", "Email", "DOB", "Occupation", "Requirement",
-    "Investment Range", "Address", "When to Buy Plan", "Remarks", "Process Type"
+    "Investment Range", "Address", "When to Buy Plan", "Remarks"
   ];
 
   const renderRow = (item) => (
@@ -104,7 +92,6 @@ export default function HistoryLead() {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.remarks}>
         {item.remarks || '-'}
       </td>
-      <td className="px-4 py-3 text-center whitespace-nowrap">{processTypeBadge(item)}</td>
     </tr>
   );
 
@@ -115,7 +102,6 @@ export default function HistoryLead() {
           <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{item.leadNo} · {item.leadType} · {leadDate(item)}</span>
           <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
         </div>
-        {processTypeBadge(item)}
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-[10px]">

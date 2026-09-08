@@ -99,21 +99,9 @@ export default function PendingTracker({ tabBar }) {
 
   const tableHeaders = [
     "Action", "Lead No", "Lead Type", "Follow Up No", "Status", "What did Customer Show", "Next Call Date",
-    "Person Name", "Number", "Email", "DOB", "Occupation",
-    "Investment Range", "Address", "When to Buy Plan", "Assign Caller", "Remarks", "Process Type"
+    "Person Name", "Number", "Email", "DOB", "Occupation", "Requirement",
+    "Investment Range", "Address", "When to Buy Plan", "Assign Caller", "Remarks"
   ];
-
-  const processTypeBadge = (item) => {
-    const type = item.processType || 'Lead';
-    const isDirect = type === 'Direct';
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${
-        isDirect ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-      }`}>
-        {type}
-      </span>
-    );
-  };
 
   const renderRow = (item) => (
     <tr key={item.leadNo} className="group hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
@@ -151,6 +139,7 @@ export default function PendingTracker({ tabBar }) {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.location || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
@@ -158,7 +147,6 @@ export default function PendingTracker({ tabBar }) {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.remarks}>
         {item.remarks || '-'}
       </td>
-      <td className="px-4 py-3 text-center whitespace-nowrap">{processTypeBadge(item)}</td>
     </tr>
   );
 
@@ -224,10 +212,6 @@ export default function PendingTracker({ tabBar }) {
         <div className="col-span-2">
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Remarks</p>
           <p className="text-gray-700 leading-tight">{item.remarks || '-'}</p>
-        </div>
-        <div className="col-span-2 flex justify-between items-center mt-1">
-          <span className="text-gray-400 uppercase tracking-tighter text-[8px]">Process Type</span>
-          {processTypeBadge(item)}
         </div>
       </div>
 

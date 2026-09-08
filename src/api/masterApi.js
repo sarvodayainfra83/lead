@@ -70,16 +70,39 @@ export const masterApi = {
   // --- LEAD RECEIVERS ---
   async getLeadReceivers() {
     if (!isSupabaseConfigured) return getLocalReceivers();
-    const { data, error } = await supabase.from('master_lead_receivers').select('*').order('created_at', { ascending: true });
+    const { data, error } = await supabase
+      .from('master_lead_receivers')
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
+      .order('created_at', { ascending: true });
     if (error) { console.error('Error fetching lead receivers:', error); return getLocalReceivers(); }
-    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, leadType: d.lead_type, personName: d.person_name }));
+    return data.map((d, idx) => ({
+      id: d.id,
+      serialNo: idx + 1,
+      leadTypeId: d.lead_type_id,
+      leadType: d.master_lead_types?.lead_type || '',
+      personName: d.person_name
+    }));
   },
 
   async saveLeadReceiver(receiverObj) {
     if (!isSupabaseConfigured) return saveLocalReceiver(receiverObj);
-    const { data, error } = await supabase.from('master_lead_receivers').insert({ lead_type: receiverObj.leadType, person_name: receiverObj.personName }).select().single();
+    let leadTypeId = receiverObj.leadTypeId;
+    if (!leadTypeId && receiverObj.leadType) {
+      const { data: typeRow } = await supabase.from('master_lead_types').select('id').eq('lead_type', receiverObj.leadType).maybeSingle();
+      if (typeRow) leadTypeId = typeRow.id;
+    }
+    const { data, error } = await supabase
+      .from('master_lead_receivers')
+      .insert({ lead_type_id: leadTypeId, person_name: receiverObj.personName })
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
+      .single();
     if (error) { console.error('Error saving lead receiver:', error); saveLocalReceiver(receiverObj); throw error; }
-    const result = { id: data.id, leadType: data.lead_type, personName: data.person_name };
+    const result = {
+      id: data.id,
+      leadTypeId: data.lead_type_id,
+      leadType: data.master_lead_types?.lead_type || receiverObj.leadType,
+      personName: data.person_name
+    };
     saveLocalReceiver(result);
     return result;
   },
@@ -88,22 +111,45 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalReceiver(id);
     const { error } = await supabase.from('master_lead_receivers').delete().eq('id', id);
     if (error) throw error;
-    deleteLeadReceiver(id);
+    deleteLocalReceiver(id);
   },
 
   // --- CALLER NAMES ---
   async getCallerNames() {
     if (!isSupabaseConfigured) return getLocalCallers();
-    const { data, error } = await supabase.from('master_caller_names').select('*').order('created_at', { ascending: true });
+    const { data, error } = await supabase
+      .from('master_caller_names')
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
+      .order('created_at', { ascending: true });
     if (error) { console.error('Error fetching caller names:', error); return getLocalCallers(); }
-    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, leadType: d.lead_type, personName: d.person_name }));
+    return data.map((d, idx) => ({
+      id: d.id,
+      serialNo: idx + 1,
+      leadTypeId: d.lead_type_id,
+      leadType: d.master_lead_types?.lead_type || '',
+      personName: d.person_name
+    }));
   },
 
   async saveCallerName(callerObj) {
     if (!isSupabaseConfigured) return saveLocalCaller(callerObj);
-    const { data, error } = await supabase.from('master_caller_names').insert({ lead_type: callerObj.leadType, person_name: callerObj.personName }).select().single();
+    let leadTypeId = callerObj.leadTypeId;
+    if (!leadTypeId && callerObj.leadType) {
+      const { data: typeRow } = await supabase.from('master_lead_types').select('id').eq('lead_type', callerObj.leadType).maybeSingle();
+      if (typeRow) leadTypeId = typeRow.id;
+    }
+    const { data, error } = await supabase
+      .from('master_caller_names')
+      .insert({ lead_type_id: leadTypeId, person_name: callerObj.personName })
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
+      .single();
     if (error) { console.error('Error saving caller name:', error); saveLocalCaller(callerObj); throw error; }
-    const result = { id: data.id, leadType: data.lead_type, personName: data.person_name };
+    const result = {
+      id: data.id,
+      leadTypeId: data.lead_type_id,
+      leadType: data.master_lead_types?.lead_type || callerObj.leadType,
+      personName: data.person_name
+    };
     saveLocalCaller(result);
     return result;
   },
