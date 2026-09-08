@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, Share2 } from 'lucide-react';
-import { getLeadSourcesMaster, createLeadSourceMaster, updateLeadSourceMaster, deleteLeadSourceMaster } from '../../utils/storageManager';
+import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import DataTable from '../../components/DataTable';
 
@@ -14,7 +14,10 @@ export default function Leadsource({ setHeaderAction }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
-  const load = () => setRows(getLeadSourcesMaster());
+  const load = async () => {
+    const data = await masterApi.getLeadSources();
+    setRows(data);
+  };
   useEffect(() => { load(); }, []);
 
   const openAdd = useCallback(() => { setEditRow(null); setLeadSource(''); setShowForm(true); }, []);
@@ -35,25 +38,20 @@ export default function Leadsource({ setHeaderAction }) {
     return () => setHeaderAction && setHeaderAction(null);
   }, [setHeaderAction, openAdd]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!leadSource.trim()) { toast.error('Lead Source is required'); return; }
 
-    if (editRow) {
-      updateLeadSourceMaster({ ...editRow, leadSource: leadSource.trim() });
-      toast.success('Lead Source updated');
-    } else {
-      createLeadSourceMaster({ leadSource: leadSource.trim() });
-      toast.success('Lead Source added');
-    }
-    load();
+    await masterApi.saveLeadSource({ id: editRow?.id, leadSource: leadSource.trim() });
+    toast.success(editRow ? 'Lead Source updated' : 'Lead Source added');
+    await load();
     closeForm();
   };
 
-  const handleDelete = (row) => {
+  const handleDelete = async (row) => {
     if (!window.confirm(`Delete lead source "${row.leadSource}"?`)) return;
-    deleteLeadSourceMaster(row.id);
-    load();
+    await masterApi.deleteLeadSource(row.id);
+    await load();
     toast.success('Lead Source deleted');
   };
 

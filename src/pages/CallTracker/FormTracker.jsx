@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Calendar, MessageSquare } from 'lucide-react';
-import { saveCallTracker } from '../../utils/storageManager';
+import { callTrackerApi } from '../../api/callTrackerApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { ENQUIRY_STATUSES, TERMINAL_STATUSES } from './callTrackerConstants';
@@ -51,7 +51,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     onClose();
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const showCustomerSaid = formData.status !== 'Call Not Received';
@@ -66,7 +66,6 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
     const entry = {
-      id: `${lead.id}-${now.getTime()}`,
       leadId: lead.id,
       leadNo: lead.leadNo,
       status: formData.status,
@@ -76,7 +75,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       timestampMs: now.getTime()
     };
 
-    saveCallTracker(entry);
+    await callTrackerApi.saveCallTracker(entry);
 
     const isTerminal = TERMINAL_STATUSES.includes(formData.status);
     toast.success(

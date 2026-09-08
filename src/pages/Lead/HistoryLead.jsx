@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Info, Search, Filter, RotateCcw } from 'lucide-react';
-import { getLeads } from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES, LEAD_SOURCES } from './leadConstants';
@@ -22,7 +22,9 @@ export default function HistoryLead() {
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
   useEffect(() => {
-    setLeads(getLeads().filter(l => !!l.callerAssigned));
+    leadApi.getLeads().then(allLeads => {
+      setLeads(allLeads.filter(l => !!l.callerAssigned));
+    });
   }, []);
 
   const handleClearFilters = () => {

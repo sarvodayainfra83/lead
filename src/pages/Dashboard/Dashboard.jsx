@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer, LabelList
@@ -6,9 +6,7 @@ import {
 import {
   Users, Clock, CheckCircle2, XCircle, TrendingUp, PhoneCall, CalendarClock, ArrowRight
 } from 'lucide-react';
-import { getLeads, getCallTrackers, getUsers } from '../../utils/storageManager';
-import { LEAD_TYPES, LEAD_SOURCES } from '../Lead/leadConstants';
-import { getLeadStatus, isLeadPending } from '../CallTracker/callTrackerConstants';
+import { dashboardApi } from '../../api/dashboardApi';
 
 // Fixed status palette — reserved meanings, never reused for categorical series.
 const STATUS_COLORS = {
@@ -20,20 +18,7 @@ const STATUS_COLORS = {
   'Never Contacted': { text: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200', hex: '#6b7280' }
 };
 
-// Fixed categorical order — assigned by each label's position in its source array, never by rank.
-const CATEGORICAL = ['#7c3aed', '#0891b2', '#c026d3', '#65a30d', '#ea580c', '#db2777', '#0d9488', '#6b7280'];
 const BRAND_NAVY = '#083459';
-
-// Lead.timestamp is stored as "DD/MM/YYYY HH:MM:SS"
-const parseLeadTimestamp = (ts) => {
-  if (!ts) return null;
-  const [datePart] = ts.split(' ');
-  const [day, month, year] = datePart.split('/').map(Number);
-  if (!day || !month || !year) return null;
-  return new Date(year, month - 1, day);
-};
-
-const dateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const formatDate = (val) => {
   if (!val) return '-';
@@ -74,88 +59,33 @@ const CustomTooltip = ({ active, payload, label }) => {
 export default function Dashboard() {
   const navigate = useNavigate();
 
+  const [metrics, setMetrics] = useState({
+    totalLeads: 0,
+    neverContactedCount: 0,
+    expectedCount: 0,
+    receivedCount: 0,
+    notInterestedCount: 0,
+    pendingCount: 0,
+    conversionRate: 0,
+    leadTypeData: [],
+    leadSourceData: [],
+    trendData: [],
+    callerStats: [],
+    upcomingFollowUps: [],
+    recentLeads: []
+  });
+
+  useEffect(() => {
+    dashboardApi.getDashboardMetrics().then(setMetrics);
+  }, []);
+
   const {
     totalLeads, neverContactedCount, expectedCount, receivedCount, notInterestedCount,
     pendingCount, conversionRate, leadTypeData, leadSourceData, trendData,
     callerStats, upcomingFollowUps, recentLeads
-  } = useMemo(() => {
-    const leads = getLeads();
-    const trackers = getCallTrackers();
-    const users = getUsers();
+  } = metrics;
 
-    const leadsWithStatus = leads.map(l => ({ ...l, _status: getLeadStatus(trackers, l.id) }));
 
-    const totalLeads = leads.length;
-    const neverContactedCount = leadsWithStatus.filter(l => l._status === null).length;
-    const expectedCount = leadsWithStatus.filter(l => l._status === 'Expected').length;
-    const receivedCount = leadsWithStatus.filter(l => l._status === 'Received').length;
-    const notInterestedCount = leadsWithStatus.filter(l => l._status === 'Not Interested').length;
-    const pendingCount = leads.filter(l => isLeadPending(trackers, l)).length;
-    const conversionRate = totalLeads > 0 ? Math.round((receivedCount / totalLeads) * 100) : 0;
-
-    const leadTypeData = LEAD_TYPES.map((type, i) => ({
-      name: type,
-      value: leads.filter(l => l.leadType === type).length,
-      color: CATEGORICAL[i % CATEGORICAL.length]
-    }));
-
-    const leadSourceData = LEAD_SOURCES.map((src, i) => ({
-      name: src,
-      value: leads.filter(l => l.leadSource === src).length,
-      color: CATEGORICAL[i % CATEGORICAL.length]
-    })).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
-
-    // Leads created per day, last 14 days
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const dayBuckets = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      dayBuckets.push({ key: dateKey(d), label: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`, value: 0 });
-    }
-    const bucketByKey = Object.fromEntries(dayBuckets.map(b => [b.key, b]));
-    leads.forEach(l => {
-      const d = parseLeadTimestamp(l.timestamp);
-      if (!d) return;
-      const key = dateKey(d);
-      if (bucketByKey[key]) bucketByKey[key].value += 1;
-    });
-    const trendData = dayBuckets;
-
-    // Caller performance
-    const callerStats = users.map(u => {
-      const assigned = leadsWithStatus.filter(l => l.callerAssigned === u.name);
-      const total = assigned.length;
-      const received = assigned.filter(l => l._status === 'Received').length;
-      const pending = assigned.filter(l => l._status === null || l._status === 'Expected').length;
-      const notInterested = assigned.filter(l => l._status === 'Not Interested').length;
-      const rate = total > 0 ? Math.round((received / total) * 100) : 0;
-      return { name: u.name, total, received, pending, notInterested, rate };
-    }).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
-
-    // Upcoming follow-ups: leads currently in "Expected" state, soonest next call date first
-    const upcomingFollowUps = leadsWithStatus
-      .filter(l => l._status === 'Expected')
-      .map(l => {
-        const forLead = trackers.filter(t => t.leadId === l.id).sort((a, b) => a.timestampMs - b.timestampMs);
-        const latest = forLead[forLead.length - 1];
-        return { ...l, nextCallDate: latest?.nextDate || '' };
-      })
-      .sort((a, b) => (a.nextCallDate || '9999').localeCompare(b.nextCallDate || '9999'))
-      .slice(0, 6);
-
-    // Recent leads
-    const recentLeads = [...leads].reverse().slice(0, 6);
-
-    return {
-      totalLeads, neverContactedCount, expectedCount, receivedCount, notInterestedCount,
-      pendingCount, conversionRate, leadTypeData, leadSourceData, trendData,
-      callerStats, upcomingFollowUps, recentLeads
-    };
-  }, []);
-
-  const todayKey = dateKey(new Date());
 
   return (
     <div className="h-full min-h-0 overflow-y-auto">
@@ -217,11 +147,11 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={trendData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
               <CartesianGrid vertical={false} stroke="#e1e0d9" />
-              <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#898781' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} interval={1} />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#898781' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} interval={1} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#898781' }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-              <Bar dataKey="value" radius={[3, 3, 0, 0]} maxBarSize={22}>
-                {trendData.map((entry, i) => <Cell key={i} fill={entry.key === todayKey ? BRAND_NAVY : '#a2d0f6'} />)}
+              <Bar dataKey="count" radius={[3, 3, 0, 0]} maxBarSize={22}>
+                {trendData.map((entry, i) => <Cell key={i} fill={i === trendData.length - 1 ? BRAND_NAVY : '#a2d0f6'} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -306,7 +236,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {recentLeads.map(l => {
-                    const status = getLeadStatus(getCallTrackers(), l.id) || 'Never Contacted';
+                    const status = l.status || 'Never Contacted';
                     const tone = STATUS_COLORS[status] || STATUS_COLORS['Never Contacted'];
                     return (
                       <tr key={l.leadNo} className="border-b border-gray-50 last:border-0">

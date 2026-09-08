@@ -1,18 +1,13 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { Download } from 'lucide-react';
-import { getLeads, saveLead, getLeadTypesMaster, getLeadSourcesMaster, getLeadReceiversMaster } from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
+import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo } from './leadConstants';
 
-/**
- * BulkUploadLead
- * Pop-up for importing many leads at once from an Excel file. Lead Type, Lead
- * Receiver Name and Lead Source are picked once here and applied to every row —
- * the file itself only carries the per-lead details.
- */
 const TEMPLATE_HEADERS = [
   'Created Date', 'Requirement', 'Investment Range', 'When to Buy Plan',
   'Person Name', 'Person Number', 'Address', 'Remarks'
@@ -34,8 +29,6 @@ const pad2 = (n) => String(n).padStart(2, '0');
 const toTimestamp = (date) =>
   `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 
-// Accepts an Excel date object, an Excel serial number, a "DD/MM/YYYY" string, or
-// any other parseable date string — falls back to now when the cell is empty/unreadable.
 const parseCreatedDate = (value) => {
   if (value instanceof Date && !isNaN(value.getTime())) return value;
   if (typeof value === 'number') {
@@ -64,9 +57,27 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const leadTypeOptions = getLeadTypesMaster().map(t => ({ value: t.leadType, label: t.leadType }));
-  const leadSourceOptions = getLeadSourcesMaster().map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = getLeadReceiversMaster()
+  const [leadTypesMaster, setLeadTypesMaster] = useState([]);
+  const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
+  const [leadReceiversMaster, setLeadReceiversMaster] = useState([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      Promise.all([
+        masterApi.getLeadTypes(),
+        masterApi.getLeadSources(),
+        masterApi.getLeadReceivers()
+      ]).then(([types, sources, receivers]) => {
+        setLeadTypesMaster(types);
+        setLeadSourcesMaster(sources);
+        setLeadReceiversMaster(receivers);
+      });
+    }
+  }, [isOpen]);
+
+  const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
+  const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
+  const receiverOptions = leadReceiversMaster
     .filter(r => !leadType || r.leadType === leadType)
     .map(r => ({ value: r.personName, label: r.personName }));
 
@@ -90,7 +101,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
     XLSX.writeFile(workbook, 'Lead_Bulk_Upload_Template.xlsx');
   };
 
-  const handleImport = (e) => {
+  const handleImport = async (e) => {
     e.preventDefault();
 
     if (!leadType) { toast.error('Lead Type is required'); return; }
@@ -100,15 +111,17 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
     setLoading(true);
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
 
-        let imported = 0;
         let skipped = 0;
+        const newLeadsToInsert = [];
+        const existingLeads = await leadApi.getLeads();
+        let runningLeads = [...existingLeads];
 
         rows.forEach((row) => {
           const mapped = {};
@@ -123,12 +136,10 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
             return;
           }
 
-          const existingLeads = getLeads();
-          const leadNo = generateLeadNo(leadType, existingLeads);
+          const leadNo = generateLeadNo(leadType, runningLeads);
           const timestamp = toTimestamp(parseCreatedDate(mapped.timestamp));
 
-          saveLead({
-            id: leadNo,
+          const leadObj = {
             leadNo,
             timestamp,
             processType: 'Import',
@@ -140,18 +151,23 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
             email: '',
             dob: '',
             occupation: '',
-            requirement: String(mapped.requirement ?? '').trim(),
             investmentBudget: String(mapped.investmentBudget ?? '').trim(),
             location: String(mapped.location ?? '').trim(),
             whenToBuyPlan: String(mapped.whenToBuyPlan ?? '').trim(),
+            callerAssigned: '',
+            requirement: String(mapped.requirement ?? '').trim(),
             remarks: String(mapped.remarks ?? '').trim()
-          });
-          imported += 1;
+          };
+
+          newLeadsToInsert.push(leadObj);
+          runningLeads.push(leadObj);
         });
 
+        const imported = newLeadsToInsert.length;
         if (imported === 0) {
           toast.error('No valid rows found — every row needs a 10-digit Person Number.');
         } else {
+          await leadApi.bulkSaveLeads(newLeadsToInsert);
           toast.success(
             `${imported} lead${imported > 1 ? 's' : ''} imported` +
             (skipped > 0 ? `, ${skipped} row${skipped > 1 ? 's' : ''} skipped (missing/invalid Person Number).` : '.')

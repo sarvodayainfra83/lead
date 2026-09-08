@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   User, Phone, Mail, Calendar,
   Briefcase, Wallet, MapPin, Clock, MessageSquare, ClipboardList
 } from 'lucide-react';
-import {
-  getLeads, saveLead,
-  getLeadTypesMaster, getLeadSourcesMaster, getLeadReceiversMaster
-} from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
+import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo } from './leadConstants';
@@ -43,9 +41,27 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ ...initialFormData });
 
-  const leadTypeOptions = getLeadTypesMaster().map(t => ({ value: t.leadType, label: t.leadType }));
-  const leadSourceOptions = getLeadSourcesMaster().map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = getLeadReceiversMaster()
+  const [leadTypesMaster, setLeadTypesMaster] = useState([]);
+  const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
+  const [leadReceiversMaster, setLeadReceiversMaster] = useState([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      Promise.all([
+        masterApi.getLeadTypes(),
+        masterApi.getLeadSources(),
+        masterApi.getLeadReceivers()
+      ]).then(([types, sources, receivers]) => {
+        setLeadTypesMaster(types);
+        setLeadSourcesMaster(sources);
+        setLeadReceiversMaster(receivers);
+      });
+    }
+  }, [isOpen]);
+
+  const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
+  const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
+  const receiverOptions = leadReceiversMaster
     .filter(r => !formData.leadType || r.leadType === formData.leadType)
     .map(r => ({ value: r.personName, label: r.personName }));
 
@@ -65,30 +81,30 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
     onClose();
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!formData.leadType) { toast.error('Lead Type is required'); return; }
     if (!formData.leadSource) { toast.error('Lead Source is required'); return; }
+    if (!formData.personName.trim()) { toast.error('Person Name is required'); return; }
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
     if (formData.number.length !== 10) { toast.error('Number must be exactly 10 digits'); return; }
 
     setLoading(true);
 
-    const existingLeads = getLeads();
+    const existingLeads = await leadApi.getLeads();
     const leadNo = generateLeadNo(formData.leadType, existingLeads);
     const now = new Date();
     const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
     const newLead = {
-      id: leadNo,
       leadNo,
       timestamp,
       processType: 'Lead',
       ...formData
     };
 
-    saveLead(newLead);
+    await leadApi.saveLead(newLead);
 
     toast.success(`Lead ${leadNo} has been successfully created.`);
     setFormData({ ...initialFormData });

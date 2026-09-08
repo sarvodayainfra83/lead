@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, User, Phone, Mail, IdCard, Lock, Info, ShieldCheck, Search } from 'lucide-react';
-import { getUsers, createUser, updateUser, deleteUser } from '../../utils/storageManager';
+import { settingApi } from '../../api/settingApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import DataTable from '../../components/DataTable';
@@ -47,7 +47,10 @@ export default function Setting() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
-  const load = () => setRows(getUsers());
+  const load = async () => {
+    const users = await settingApi.getUsers();
+    setRows(users);
+  };
   useEffect(() => { load(); }, []);
 
   const handleChange = (field, value) => {
@@ -58,7 +61,12 @@ export default function Setting() {
     setFormData(prev => ({ ...prev, accessPages: { ...prev.accessPages, [pageKey]: level } }));
   };
 
-  const openAdd = () => { setEditRow(null); setFormData({ ...initialFormData, accessPages: emptyAccessPages() }); setShowForm(true); };
+  const openAdd = () => {
+    setEditRow(null);
+    setFormData({ ...initialFormData });
+    setShowForm(true);
+  };
+
   const openEdit = (row) => {
     setEditRow(row);
     setFormData({
@@ -72,16 +80,21 @@ export default function Setting() {
     });
     setShowForm(true);
   };
-  const closeForm = () => { setShowForm(false); setEditRow(null); setFormData({ ...initialFormData }); };
 
-  const handleSubmit = (e) => {
+  const closeForm = () => {
+    setShowForm(false);
+    setEditRow(null);
+    setFormData({ ...initialFormData });
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) { toast.error('Name is required'); return; }
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
     if (!formData.id.trim()) { toast.error('ID is required'); return; }
     if (!formData.password.trim()) { toast.error('Password is required'); return; }
 
-    const existing = getUsers();
+    const existing = await settingApi.getUsers();
     const idTaken = existing.some(u => u.id === formData.id && (!editRow || u.id !== editRow.id));
     if (idTaken) { toast.error('This ID is already in use'); return; }
 
@@ -95,22 +108,17 @@ export default function Setting() {
       accessPages: formData.role === 'ADMIN' ? {} : formData.accessPages
     };
 
-    if (editRow) {
-      updateUser({ ...editRow, ...payload });
-      toast.success('User updated');
-    } else {
-      createUser(payload);
-      toast.success('User added');
-    }
-    load();
+    await settingApi.saveUser(payload);
+    toast.success(editRow ? 'User updated' : 'User added');
+    await load();
     closeForm();
   };
 
-  const handleDelete = (row) => {
+  const handleDelete = async (row) => {
     if (row.id === 'admin') { toast.error("The default admin account can't be deleted"); return; }
     if (!window.confirm(`Delete user "${row.name}"?`)) return;
-    deleteUser(row.id);
-    load();
+    await settingApi.deleteUser(row.id);
+    await load();
     toast.success('User deleted');
   };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, User } from 'lucide-react';
-import { getLeadTypesMaster, getCallerNamesMaster, createCallerNameMaster, updateCallerNameMaster, deleteCallerNameMaster } from '../../utils/storageManager';
+import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import DataTable from '../../components/DataTable';
@@ -17,9 +17,13 @@ export default function CallerName({ setHeaderAction }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
-  const load = () => {
-    setRows(getCallerNamesMaster());
-    setLeadTypes(getLeadTypesMaster());
+  const load = async () => {
+    const [callersData, typesData] = await Promise.all([
+      masterApi.getCallerNames(),
+      masterApi.getLeadTypes()
+    ]);
+    setRows(callersData);
+    setLeadTypes(typesData);
   };
   useEffect(() => { load(); }, []);
 
@@ -41,26 +45,21 @@ export default function CallerName({ setHeaderAction }) {
     return () => setHeaderAction && setHeaderAction(null);
   }, [setHeaderAction, openAdd]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!leadType) { toast.error('Lead Type is required'); return; }
     if (!personName.trim()) { toast.error('Person Name is required'); return; }
 
-    if (editRow) {
-      updateCallerNameMaster({ ...editRow, leadType, personName: personName.trim() });
-      toast.success('Caller Name updated');
-    } else {
-      createCallerNameMaster({ leadType, personName: personName.trim() });
-      toast.success('Caller Name added');
-    }
-    load();
+    await masterApi.saveCallerName({ id: editRow?.id, leadType, personName: personName.trim() });
+    toast.success(editRow ? 'Caller Name updated' : 'Caller Name added');
+    await load();
     closeForm();
   };
 
-  const handleDelete = (row) => {
-    if (!window.confirm(`Delete caller "${row.personName}"?`)) return;
-    deleteCallerNameMaster(row.id);
-    load();
+  const handleDelete = async (row) => {
+    if (!window.confirm(`Delete caller name "${row.personName}"?`)) return;
+    await masterApi.deleteCallerName(row.id);
+    await load();
     toast.success('Caller Name deleted');
   };
 

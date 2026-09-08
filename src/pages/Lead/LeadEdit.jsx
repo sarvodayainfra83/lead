@@ -4,10 +4,8 @@ import {
   User, Phone, Mail, Calendar,
   Briefcase, Wallet, MapPin, Clock, MessageSquare, ClipboardList
 } from 'lucide-react';
-import {
-  updateLead,
-  getLeadTypesMaster, getLeadSourcesMaster, getLeadReceiversMaster, getCallerNamesMaster
-} from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
+import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 
@@ -40,12 +38,33 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
     remarks: ''
   });
 
-  const leadTypeOptions = getLeadTypesMaster().map(t => ({ value: t.leadType, label: t.leadType }));
-  const leadSourceOptions = getLeadSourcesMaster().map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = getLeadReceiversMaster()
+  const [leadTypesMaster, setLeadTypesMaster] = useState([]);
+  const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
+  const [leadReceiversMaster, setLeadReceiversMaster] = useState([]);
+  const [callerNamesMaster, setCallerNamesMaster] = useState([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      Promise.all([
+        masterApi.getLeadTypes(),
+        masterApi.getLeadSources(),
+        masterApi.getLeadReceivers(),
+        masterApi.getCallerNames()
+      ]).then(([types, sources, receivers, callers]) => {
+        setLeadTypesMaster(types);
+        setLeadSourcesMaster(sources);
+        setLeadReceiversMaster(receivers);
+        setCallerNamesMaster(callers);
+      });
+    }
+  }, [isOpen]);
+
+  const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
+  const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
+  const receiverOptions = leadReceiversMaster
     .filter(r => !formData.leadType || r.leadType === formData.leadType)
     .map(r => ({ value: r.personName, label: r.personName }));
-  const callerOptions = getCallerNamesMaster()
+  const callerOptions = callerNamesMaster
     .filter(c => !formData.leadType || c.leadType === formData.leadType)
     .map(c => ({ value: c.personName, label: c.personName }));
 
@@ -83,7 +102,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!formData.leadType) { toast.error('Lead Type is required'); return; }
@@ -96,13 +115,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
 
     setLoading(true);
 
-    const updated = {
-      ...lead,
-      ...formData,
-      updatedAt: new Date().toISOString()
-    };
-
-    updateLead(updated);
+    await leadApi.updateLead(lead.id, formData);
     toast.success(`Lead ${lead.leadNo} updated successfully`);
     setLoading(false);
     onUpdated?.();

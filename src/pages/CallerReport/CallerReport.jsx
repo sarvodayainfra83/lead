@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { FileSpreadsheet } from 'lucide-react';
-import { getLeads, getCallTrackers, getCallerNamesMaster } from '../../utils/storageManager';
+import { callerReportApi } from '../../api/callerReportApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES } from '../Lead/leadConstants';
@@ -13,80 +13,43 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-// "DD/MM/YYYY ..." → "YYYY-MM", used both to group into month options and to filter by month
-const monthKeyOf = (timestamp) => {
-  const parts = (timestamp || '').split(' ')[0].split('/');
-  return parts.length === 3 ? `${parts[2]}-${parts[1]}` : '';
-};
-
 export default function CallerReport() {
   const [activeLeadType, setActiveLeadType] = useState('All');
   const [activeCaller, setActiveCaller] = useState('Complete');
   const [activeMonth, setActiveMonth] = useState('All');
 
-  const callerOptions = useMemo(() => {
-    const names = Array.from(new Set(getCallerNamesMaster().map(c => c.personName))).filter(Boolean).sort();
-    return [{ value: 'Complete', label: 'Complete (All Callers)' }, ...names.map(n => ({ value: n, label: n }))];
+  const [callerOptions, setCallerOptions] = useState([{ value: 'Complete', label: 'Complete (All Callers)' }]);
+  const [monthOptions, setMonthOptions] = useState([{ value: 'All', label: 'All Months' }]);
+  const [reportRows, setReportRows] = useState([]);
+  const [totals, setTotals] = useState({
+    callingTarget: 0, connected: 0, interested: 0, notInterested: 0, meeting: 0, callNotReceived: 0
+  });
+
+  useEffect(() => {
+    callerReportApi.getReportFilters().then(({ callers, monthKeys }) => {
+      setCallerOptions([
+        { value: 'Complete', label: 'Complete (All Callers)' },
+        ...callers.map(n => ({ value: n, label: n }))
+      ]);
+      setMonthOptions([
+        { value: 'All', label: 'All Months' },
+        ...monthKeys.map(key => {
+          const [y, m] = key.split('-');
+          return { value: key, label: `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y}` };
+        })
+      ]);
+    });
   }, []);
 
-  const monthOptions = useMemo(() => {
-    const keys = new Set(getCallTrackers().map(t => monthKeyOf(t.timestamp)).filter(Boolean));
-    const sorted = Array.from(keys).sort().reverse();
-    return [
-      { value: 'All', label: 'All Months' },
-      ...sorted.map(key => {
-        const [y, m] = key.split('-');
-        return { value: key, label: `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y}` };
-      })
-    ];
-  }, []);
-
-  const reportRows = useMemo(() => {
-    const leads = getLeads();
-    const trackers = getCallTrackers();
-    const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
-
-    const filteredTrackers = trackers.filter(t => {
-      const lead = leadsById[t.leadId];
-      if (!lead) return false;
-      if (activeLeadType !== 'All' && lead.leadType !== activeLeadType) return false;
-      if (activeCaller !== 'Complete' && lead.callerAssigned !== activeCaller) return false;
-      if (activeMonth !== 'All' && monthKeyOf(t.timestamp) !== activeMonth) return false;
-      return true;
-    });
-
-    const byDate = {};
-    filteredTrackers.forEach(t => {
-      const dateKey = (t.timestamp || '').split(' ')[0]; // "DD/MM/YYYY"
-      if (!dateKey) return;
-      if (!byDate[dateKey]) {
-        byDate[dateKey] = {
-          date: dateKey, dateSort: dateKey.split('/').reverse().join('-'),
-          callingTarget: 0, connected: 0, interested: 0, notInterested: 0, meeting: 0, callNotReceived: 0
-        };
-      }
-      const row = byDate[dateKey];
-      row.callingTarget += 1;
-      if (t.status !== 'Call Not Received') row.connected += 1;
-      if (t.status === 'Received') row.interested += 1;
-      if (t.status === 'Not Interested') row.notInterested += 1;
-      if (t.status === 'Need Meeting') row.meeting += 1;
-      if (t.status === 'Call Not Received') row.callNotReceived += 1;
-    });
-
-    return Object.values(byDate)
-      .sort((a, b) => b.dateSort.localeCompare(a.dateSort))
-      .map((row, i) => ({ ...row, srNo: i + 1 }));
+  useEffect(() => {
+    callerReportApi.getCallerReport({ activeLeadType, activeCaller, activeMonth })
+      .then(({ rows, totals }) => {
+        setReportRows(rows);
+        setTotals(totals);
+      });
   }, [activeLeadType, activeCaller, activeMonth]);
 
-  const totals = reportRows.reduce((acc, r) => ({
-    callingTarget: acc.callingTarget + r.callingTarget,
-    connected: acc.connected + r.connected,
-    interested: acc.interested + r.interested,
-    notInterested: acc.notInterested + r.notInterested,
-    meeting: acc.meeting + r.meeting,
-    callNotReceived: acc.callNotReceived + r.callNotReceived
-  }), { callingTarget: 0, connected: 0, interested: 0, notInterested: 0, meeting: 0, callNotReceived: 0 });
+
 
   const handleExportExcel = () => {
     const exportRows = reportRows.map(r => ({

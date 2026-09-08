@@ -320,6 +320,17 @@ export const deleteUser = (id) => {
   saveUsers(users.filter(u => u.id !== id));
 };
 
+export const saveUser = (user) => {
+  const users = getUsers();
+  const index = users.findIndex(u => u.id === user.id);
+  if (index !== -1) {
+    users[index] = user;
+    saveUsers(users);
+    return user;
+  }
+  return createUser(user);
+};
+
 // Credits operations
 export const getCredits = () => {
   const credits = getFromStorage(STORAGE_KEYS.CREDITS) || [];
@@ -2540,6 +2551,11 @@ export const saveCallTracker = (tracker) => {
   trackers.push(tracker);
   saveCallTrackers(trackers);
   return tracker;
+};
+
+export const deleteCallTracker = (id) => {
+  const trackers = getCallTrackers();
+  saveCallTrackers(trackers.filter(t => t.id !== id));
 };
 
 // --- Master Data Operations ---

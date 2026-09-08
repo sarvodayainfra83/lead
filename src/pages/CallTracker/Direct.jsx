@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
   User, Phone, Mail, Calendar,
   Briefcase, Wallet, MapPin, Clock, MessageSquare, ClipboardList
 } from 'lucide-react';
-import {
-  getLeads, saveLead, saveCallTracker,
-  getLeadTypesMaster, getLeadSourcesMaster, getLeadReceiversMaster, getCallerNamesMaster
-} from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
+import { callTrackerApi } from '../../api/callTrackerApi';
+import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo } from '../Lead/leadConstants';
@@ -53,12 +52,33 @@ export default function Direct({ isOpen, onClose, onSaved }) {
     callerAssigned: user?.name || ''
   });
 
-  const leadTypeOptions = getLeadTypesMaster().map(t => ({ value: t.leadType, label: t.leadType }));
-  const leadSourceOptions = getLeadSourcesMaster().map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = getLeadReceiversMaster()
+  const [leadTypesMaster, setLeadTypesMaster] = useState([]);
+  const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
+  const [leadReceiversMaster, setLeadReceiversMaster] = useState([]);
+  const [callerNamesMaster, setCallerNamesMaster] = useState([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      Promise.all([
+        masterApi.getLeadTypes(),
+        masterApi.getLeadSources(),
+        masterApi.getLeadReceivers(),
+        masterApi.getCallerNames()
+      ]).then(([types, sources, receivers, callers]) => {
+        setLeadTypesMaster(types);
+        setLeadSourcesMaster(sources);
+        setLeadReceiversMaster(receivers);
+        setCallerNamesMaster(callers);
+      });
+    }
+  }, [isOpen]);
+
+  const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
+  const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
+  const receiverOptions = leadReceiversMaster
     .filter(r => !formData.leadType || r.leadType === formData.leadType)
     .map(r => ({ value: r.personName, label: r.personName }));
-  const callerOptions = getCallerNamesMaster()
+  const callerOptions = callerNamesMaster
     .filter(c => !formData.leadType || c.leadType === formData.leadType)
     .map(c => ({ value: c.personName, label: c.personName }));
 
@@ -79,14 +99,16 @@ export default function Direct({ isOpen, onClose, onSaved }) {
     onClose();
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!formData.leadType) { toast.error('Lead Type is required'); return; }
     if (!formData.leadSource) { toast.error('Lead Source is required'); return; }
+    if (!formData.personName.trim()) { toast.error('Person Name is required'); return; }
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
     if (formData.number.length !== 10) { toast.error('Number must be exactly 10 digits'); return; }
     if (!formData.callerAssigned) { toast.error('Caller Assigned to is required'); return; }
+    
     const isTerminal = TERMINAL_STATUSES.includes(formData.status);
     const showCustomerSaid = formData.status !== 'Call Not Received';
 
@@ -96,13 +118,12 @@ export default function Direct({ isOpen, onClose, onSaved }) {
 
     setLoading(true);
 
-    const existingLeads = getLeads();
+    const existingLeads = await leadApi.getLeads();
     const leadNo = generateLeadNo(formData.leadType, existingLeads);
     const now = new Date();
     const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-    const newLead = {
-      id: leadNo,
+    const createdLead = await leadApi.saveLead({
       leadNo,
       timestamp,
       processType: 'Direct',
@@ -120,13 +141,11 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       callerAssigned: formData.callerAssigned,
       requirement: formData.requirement,
       remarks: ''
-    };
-    saveLead(newLead);
+    });
 
-    saveCallTracker({
-      id: `${leadNo}-${now.getTime()}`,
-      leadId: leadNo,
-      leadNo,
+    await callTrackerApi.saveCallTracker({
+      leadId: createdLead.id,
+      leadNo: createdLead.leadNo,
       status: formData.status,
       customerSaid: showCustomerSaid ? formData.customerSaid : '',
       nextDate: !isTerminal ? formData.nextCallDate : '',

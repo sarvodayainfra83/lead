@@ -11,7 +11,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const login = useAuthStore((state) => state.login);
+  const loginWithApi = useAuthStore((state) => state.loginWithApi);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -19,23 +19,12 @@ const Login = () => {
     setSubmitting(true);
 
     try {
-      const users = getUsers();
-      const matchedUser = users.find(
-        (u) => u.id === id && u.password === password
-      );
-
-      if (!matchedUser) {
-        toast.error('Invalid credentials');
-        setSubmitting(false);
-        return;
-      }
-
+      await loginWithApi(id, password);
       toast.success('Login successful!');
-      login(matchedUser);
       navigate("/", { replace: true });
     } catch (err) {
       console.error(err);
-      toast.error('Login error');
+      toast.error('Invalid credentials or connection error');
     } finally {
       setSubmitting(false);
     }

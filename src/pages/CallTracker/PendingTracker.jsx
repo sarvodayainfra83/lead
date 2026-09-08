@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Phone, Search, Info, Filter, RotateCcw } from 'lucide-react';
-import { getLeads, getCallTrackers } from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
+import { callTrackerApi } from '../../api/callTrackerApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import FormTracker from './FormTracker';
@@ -32,9 +33,12 @@ export default function PendingTracker({ tabBar }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
-  const loadPending = () => {
-    const leads = getLeads();
-    const trackers = getCallTrackers();
+  const loadPending = async () => {
+    const [leads, trackers] = await Promise.all([
+      leadApi.getLeads(),
+      callTrackerApi.getCallTrackers()
+    ]);
+
     const rows = leads
       .filter(lead => isLeadPending(trackers, lead))
       .map(lead => {

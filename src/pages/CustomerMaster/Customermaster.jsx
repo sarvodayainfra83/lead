@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Search, Filter, RotateCcw } from 'lucide-react';
-import { getLeads, getCallTrackers } from '../../utils/storageManager';
+import { customerMasterApi } from '../../api/customerMasterApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES, LEAD_SOURCES } from '../Lead/leadConstants';
-import { getLeadStatus } from '../CallTracker/callTrackerConstants';
 
 // Customer Master only lists leads whose most recent call tracker entry is "Received" —
 // i.e. converted leads that have become customers.
@@ -25,9 +24,7 @@ export default function Customermaster() {
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
   useEffect(() => {
-    const leads = getLeads();
-    const trackers = getCallTrackers();
-    setCustomers(leads.filter(lead => getLeadStatus(trackers, lead.id) === 'Received'));
+    customerMasterApi.getConvertedCustomers().then(setCustomers);
   }, []);
 
   const handleClearFilters = () => {

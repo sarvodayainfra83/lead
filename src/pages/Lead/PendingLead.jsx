@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Save, Info, Pencil, Trash2, Search, Filter, RotateCcw, Upload } from 'lucide-react';
-import { getLeads, updateLead, deleteLead, getCallerNamesMaster } from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
+import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import LeadForm from './LeadForm';
@@ -19,6 +20,7 @@ export default function PendingLead({ setHeaderAction }) {
   const [showFormModal, setShowFormModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [leads, setLeads] = useState([]);
+  const [callersMaster, setCallersMaster] = useState([]);
   const [editLead, setEditLead] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [assignments, setAssignments] = useState({});
@@ -30,7 +32,14 @@ export default function PendingLead({ setHeaderAction }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
-  const load = () => setLeads(getLeads().filter(l => !l.callerAssigned));
+  const load = async () => {
+    const [allLeads, callers] = await Promise.all([
+      leadApi.getLeads(),
+      masterApi.getCallerNames()
+    ]);
+    setLeads(allLeads.filter(l => !l.callerAssigned));
+    setCallersMaster(callers);
+  };
   useEffect(() => { load(); }, []);
 
   const handleClearFilters = () => {
@@ -60,7 +69,7 @@ export default function PendingLead({ setHeaderAction }) {
   const totalPages = Math.ceil(sortedLeads.length / itemsPerPage);
   const paginatedLeads = sortedLeads.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const callerOptionsFor = (leadType) => getCallerNamesMaster()
+  const callerOptionsFor = (leadType) => callersMaster
     .filter(c => !leadType || c.leadType === leadType)
     .map(c => ({ value: c.personName, label: c.personName }));
 
@@ -94,34 +103,29 @@ export default function PendingLead({ setHeaderAction }) {
     });
   };
 
-  const handleSaveAssignments = useCallback(() => {
+  const handleSaveAssignments = useCallback(async () => {
     const idsToSave = Array.from(selectedIds).filter(id => assignments[id]);
     if (idsToSave.length === 0) {
       toast.error('Select at least one row and choose a caller to assign');
       return;
     }
-    const currentLeads = getLeads();
-    idsToSave.forEach(id => {
-      const lead = currentLeads.find(l => l.id === id);
-      if (lead) updateLead({ ...lead, callerAssigned: assignments[id] });
-    });
+    const assignmentsMap = {};
+    idsToSave.forEach(id => { assignmentsMap[id] = assignments[id]; });
+    await leadApi.assignCallerToLeads(assignmentsMap);
     toast.success(`Caller assigned to ${idsToSave.length} lead${idsToSave.length > 1 ? 's' : ''}`);
     setSelectedIds(new Set());
     setAssignments({});
-    load();
+    await load();
   }, [selectedIds, assignments]);
 
   const handleAssignCaller = (id, val) => {
     setAssignments(prev => {
       const next = { ...prev };
-      // If this is the very first dropdown change and this row is checked,
-      // apply the selected value to all checked rows.
       if (Object.keys(prev).length === 0 && selectedIds.has(id)) {
         selectedIds.forEach(selectedId => {
           next[selectedId] = val;
         });
       } else {
-        // Otherwise, just change the single row (for individual adjustments)
         next[id] = val;
       }
       return next;
@@ -159,10 +163,10 @@ export default function PendingLead({ setHeaderAction }) {
     return () => setHeaderAction && setHeaderAction(null);
   }, [setHeaderAction, handleSaveAssignments, openAdd, openBulkUpload]);
 
-  const handleDelete = (item) => {
+  const handleDelete = async (item) => {
     if (!window.confirm(`Delete lead ${item.leadNo} "${item.personName}"? This cannot be undone.`)) return;
-    deleteLead(item.id);
-    load();
+    await leadApi.deleteLead(item.id);
+    await load();
     toast.success(`Lead ${item.leadNo} deleted`);
   };
 

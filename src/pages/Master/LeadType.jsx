@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { Plus, Pencil, Trash2, Tag } from 'lucide-react';
-import { getLeadTypesMaster, createLeadTypeMaster, updateLeadTypeMaster, deleteLeadTypeMaster } from '../../utils/storageManager';
+import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import DataTable from '../../components/DataTable';
 
@@ -14,7 +14,10 @@ export default function LeadType({ setHeaderAction }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
-  const load = () => setRows(getLeadTypesMaster());
+  const load = async () => {
+    const data = await masterApi.getLeadTypes();
+    setRows(data);
+  };
   useEffect(() => { load(); }, []);
 
   const openAdd = useCallback(() => { setEditRow(null); setLeadType(''); setShowForm(true); }, []);
@@ -35,25 +38,20 @@ export default function LeadType({ setHeaderAction }) {
     return () => setHeaderAction && setHeaderAction(null);
   }, [setHeaderAction, openAdd]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!leadType.trim()) { toast.error('Lead Type is required'); return; }
 
-    if (editRow) {
-      updateLeadTypeMaster({ ...editRow, leadType: leadType.trim() });
-      toast.success('Lead Type updated');
-    } else {
-      createLeadTypeMaster({ leadType: leadType.trim() });
-      toast.success('Lead Type added');
-    }
-    load();
+    await masterApi.saveLeadType({ id: editRow?.id, leadType: leadType.trim() });
+    toast.success(editRow ? 'Lead Type updated' : 'Lead Type added');
+    await load();
     closeForm();
   };
 
-  const handleDelete = (row) => {
+  const handleDelete = async (row) => {
     if (!window.confirm(`Delete lead type "${row.leadType}"?`)) return;
-    deleteLeadTypeMaster(row.id);
-    load();
+    await masterApi.deleteLeadType(row.id);
+    await load();
     toast.success('Lead Type deleted');
   };
 

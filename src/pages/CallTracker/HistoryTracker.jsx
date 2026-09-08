@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Search, Info, Filter, RotateCcw } from 'lucide-react';
-import { getLeads, getCallTrackers } from '../../utils/storageManager';
+import { leadApi } from '../../api/leadApi';
+import { callTrackerApi } from '../../api/callTrackerApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES } from '../Lead/leadConstants';
@@ -31,14 +32,17 @@ export default function HistoryTracker({ tabBar }) {
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
   useEffect(() => {
-    const leads = getLeads();
-    const trackers = getCallTrackers();
-    const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
-    const rows = annotateFollowUpNumbers(trackers).map(t => ({
-      ...(leadsById[t.leadId] || {}),
-      ...t
-    }));
-    setHistoryRows(rows);
+    Promise.all([
+      leadApi.getLeads(),
+      callTrackerApi.getCallTrackers()
+    ]).then(([leads, trackers]) => {
+      const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
+      const rows = annotateFollowUpNumbers(trackers).map(t => ({
+        ...(leadsById[t.leadId] || {}),
+        ...t
+      }));
+      setHistoryRows(rows);
+    });
   }, []);
 
   const handleClearFilters = () => {
