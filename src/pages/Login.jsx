@@ -49,7 +49,7 @@ const Login = () => {
       {/* Center Content */}
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 space-y-6">
-          
+
           {/* Logo Section */}
           <div className="flex flex-col items-center space-y-6">
             <img
@@ -124,9 +124,8 @@ const Login = () => {
             <button
               type="submit"
               disabled={submitting}
-              className={`w-full py-3 px-4 text-base font-bold bg-sky-600 text-white rounded-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-600 transition-all ${
-                submitting ? 'opacity-70 cursor-not-allowed' : ''
-              }`}
+              className={`w-full py-3 px-4 text-base font-bold bg-sky-600 text-white rounded-lg hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-600 transition-all ${submitting ? 'opacity-70 cursor-not-allowed' : ''
+                }`}
             >
               {submitting ? (
                 <div className="flex items-center justify-center gap-2">
@@ -138,39 +137,6 @@ const Login = () => {
               )}
             </button>
           </form>
-
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-200"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500 font-semibold">Demo Credentials</span>
-            </div>
-          </div>
-
-          {/* Demo Credentials */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-xs font-semibold text-gray-500 text-center mb-3 uppercase tracking-wider">Quick Login Options</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => handleDemoCredential('admin')}
-                className="flex flex-col items-center justify-center p-3 bg-white border border-gray-200 hover:border-sky-500 hover:shadow-md hover:bg-sky-50 rounded-lg transition-all group"
-              >
-                <span className="font-bold text-gray-800 text-sm group-hover:text-sky-700">Admin</span>
-                <span className="text-[10px] text-gray-500 font-mono mt-1">ID: admin</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoCredential('user')}
-                className="flex flex-col items-center justify-center p-3 bg-white border border-gray-200 hover:border-sky-500 hover:shadow-md hover:bg-sky-50 rounded-lg transition-all group"
-              >
-                <span className="font-bold text-gray-800 text-sm group-hover:text-sky-700">User</span>
-                <span className="text-[10px] text-gray-500 font-mono mt-1">ID: user</span>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 

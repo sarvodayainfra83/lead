@@ -61,39 +61,45 @@ export default function LeadType({ setHeaderAction }) {
 
   const tableHeaders = ["Serial No", "Lead Type", "Action"];
 
-  const renderRow = (row) => (
-    <tr key={row.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{row.serialNo}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{row.leadType}</td>
-      <td className="px-4 py-3 text-center whitespace-nowrap">
-        <div className="flex items-center justify-center gap-1.5">
-          <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+  const renderRow = (row, idx) => {
+    const srNo = (currentPage - 1) * itemsPerPage + idx + 1;
+    return (
+      <tr key={row.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
+        <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{srNo}</td>
+        <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{row.leadType}</td>
+        <td className="px-4 py-3 text-center whitespace-nowrap">
+          <div className="flex items-center justify-center gap-1.5">
+            <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+              <Pencil size={13} />
+            </button>
+            <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
+  const renderCard = (row, idx) => {
+    const srNo = (currentPage - 1) * itemsPerPage + idx + 1;
+    return (
+      <div key={row.id} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 flex items-center justify-between">
+        <div>
+          <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">Serial No {srNo}</span>
+          <h4 className="text-sm text-gray-900 font-medium">{row.leadType}</h4>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => openEdit(row)} className="p-1.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
             <Pencil size={13} />
           </button>
-          <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
+          <button onClick={() => handleDelete(row)} className="p-1.5 rounded bg-red-50 text-red-600 border border-red-200">
             <Trash2 size={13} />
           </button>
         </div>
-      </td>
-    </tr>
-  );
-
-  const renderCard = (row) => (
-    <div key={row.id} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 flex items-center justify-between">
-      <div>
-        <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">Serial No {row.serialNo}</span>
-        <h4 className="text-sm text-gray-900 font-medium">{row.leadType}</h4>
       </div>
-      <div className="flex items-center gap-1.5">
-        <button onClick={() => openEdit(row)} className="p-1.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
-          <Pencil size={13} />
-        </button>
-        <button onClick={() => handleDelete(row)} className="p-1.5 rounded bg-red-50 text-red-600 border border-red-200">
-          <Trash2 size={13} />
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="p-2 sm:p-4 md:p-6 space-y-3 flex flex-col h-full min-h-0">      <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">

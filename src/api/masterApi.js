@@ -2,15 +2,19 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 import {
   getLeadTypesMaster as getLocalTypes,
   createLeadTypeMaster as saveLocalType,
+  updateLeadTypeMaster as updateLocalType,
   deleteLeadTypeMaster as deleteLocalType,
   getLeadSourcesMaster as getLocalSources,
   createLeadSourceMaster as saveLocalSource,
+  updateLeadSourceMaster as updateLocalSource,
   deleteLeadSourceMaster as deleteLocalSource,
   getLeadReceiversMaster as getLocalReceivers,
   createLeadReceiverMaster as saveLocalReceiver,
+  updateLeadReceiverMaster as updateLocalReceiver,
   deleteLeadReceiverMaster as deleteLocalReceiver,
   getCallerNamesMaster as getLocalCallers,
   createCallerNameMaster as saveLocalCaller,
+  updateCallerNameMaster as updateLocalCaller,
   deleteCallerNameMaster as deleteLocalCaller
 } from '../utils/storageManager';
 
@@ -24,12 +28,43 @@ export const masterApi = {
   },
 
   async saveLeadType(leadTypeObj) {
-    if (!isSupabaseConfigured) return saveLocalType(leadTypeObj);
-    const { data, error } = await supabase.from('master_lead_types').insert({ lead_type: leadTypeObj.leadType }).select().single();
-    if (error) { console.error('Error saving lead type:', error); saveLocalType(leadTypeObj); throw error; }
-    const result = { id: data.id, leadType: data.lead_type };
-    saveLocalType(result);
-    return result;
+    if (!isSupabaseConfigured) {
+      if (leadTypeObj.id) {
+        return updateLocalType(leadTypeObj.id, leadTypeObj);
+      }
+      return saveLocalType(leadTypeObj);
+    }
+
+    if (leadTypeObj.id) {
+      const { data, error } = await supabase
+        .from('master_lead_types')
+        .update({ lead_type: leadTypeObj.leadType })
+        .eq('id', leadTypeObj.id)
+        .select()
+        .single();
+      if (error) {
+        console.error('Error updating lead type:', error);
+        updateLocalType(leadTypeObj.id, leadTypeObj);
+        throw error;
+      }
+      const result = { id: data.id, leadType: data.lead_type };
+      updateLocalType(leadTypeObj.id, result);
+      return result;
+    } else {
+      const { data, error } = await supabase
+        .from('master_lead_types')
+        .insert({ lead_type: leadTypeObj.leadType })
+        .select()
+        .single();
+      if (error) {
+        console.error('Error saving lead type:', error);
+        saveLocalType(leadTypeObj);
+        throw error;
+      }
+      const result = { id: data.id, leadType: data.lead_type };
+      saveLocalType(result);
+      return result;
+    }
   },
 
   async deleteLeadType(idOrName) {
@@ -50,12 +85,43 @@ export const masterApi = {
   },
 
   async saveLeadSource(leadSourceObj) {
-    if (!isSupabaseConfigured) return saveLocalSource(leadSourceObj);
-    const { data, error } = await supabase.from('master_lead_sources').insert({ lead_source: leadSourceObj.leadSource }).select().single();
-    if (error) { console.error('Error saving lead source:', error); saveLocalSource(leadSourceObj); throw error; }
-    const result = { id: data.id, leadSource: data.lead_source };
-    saveLocalSource(result);
-    return result;
+    if (!isSupabaseConfigured) {
+      if (leadSourceObj.id) {
+        return updateLocalSource(leadSourceObj.id, leadSourceObj);
+      }
+      return saveLocalSource(leadSourceObj);
+    }
+
+    if (leadSourceObj.id) {
+      const { data, error } = await supabase
+        .from('master_lead_sources')
+        .update({ lead_source: leadSourceObj.leadSource })
+        .eq('id', leadSourceObj.id)
+        .select()
+        .single();
+      if (error) {
+        console.error('Error updating lead source:', error);
+        updateLocalSource(leadSourceObj.id, leadSourceObj);
+        throw error;
+      }
+      const result = { id: data.id, leadSource: data.lead_source };
+      updateLocalSource(leadSourceObj.id, result);
+      return result;
+    } else {
+      const { data, error } = await supabase
+        .from('master_lead_sources')
+        .insert({ lead_source: leadSourceObj.leadSource })
+        .select()
+        .single();
+      if (error) {
+        console.error('Error saving lead source:', error);
+        saveLocalSource(leadSourceObj);
+        throw error;
+      }
+      const result = { id: data.id, leadSource: data.lead_source };
+      saveLocalSource(result);
+      return result;
+    }
   },
 
   async deleteLeadSource(idOrName) {
@@ -85,26 +151,59 @@ export const masterApi = {
   },
 
   async saveLeadReceiver(receiverObj) {
-    if (!isSupabaseConfigured) return saveLocalReceiver(receiverObj);
     let leadTypeId = receiverObj.leadTypeId;
-    if (!leadTypeId && receiverObj.leadType) {
+    if (!leadTypeId && receiverObj.leadType && isSupabaseConfigured) {
       const { data: typeRow } = await supabase.from('master_lead_types').select('id').eq('lead_type', receiverObj.leadType).maybeSingle();
       if (typeRow) leadTypeId = typeRow.id;
     }
-    const { data, error } = await supabase
-      .from('master_lead_receivers')
-      .insert({ lead_type_id: leadTypeId, person_name: receiverObj.personName })
-      .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .single();
-    if (error) { console.error('Error saving lead receiver:', error); saveLocalReceiver(receiverObj); throw error; }
-    const result = {
-      id: data.id,
-      leadTypeId: data.lead_type_id,
-      leadType: data.master_lead_types?.lead_type || receiverObj.leadType,
-      personName: data.person_name
-    };
-    saveLocalReceiver(result);
-    return result;
+
+    if (!isSupabaseConfigured) {
+      if (receiverObj.id) {
+        return updateLocalReceiver(receiverObj.id, receiverObj);
+      }
+      return saveLocalReceiver(receiverObj);
+    }
+
+    if (receiverObj.id) {
+      const { data, error } = await supabase
+        .from('master_lead_receivers')
+        .update({ lead_type_id: leadTypeId, person_name: receiverObj.personName })
+        .eq('id', receiverObj.id)
+        .select('*, master_lead_types!lead_type_id(id, lead_type)')
+        .single();
+      if (error) {
+        console.error('Error updating lead receiver:', error);
+        updateLocalReceiver(receiverObj.id, receiverObj);
+        throw error;
+      }
+      const result = {
+        id: data.id,
+        leadTypeId: data.lead_type_id,
+        leadType: data.master_lead_types?.lead_type || receiverObj.leadType,
+        personName: data.person_name
+      };
+      updateLocalReceiver(receiverObj.id, result);
+      return result;
+    } else {
+      const { data, error } = await supabase
+        .from('master_lead_receivers')
+        .insert({ lead_type_id: leadTypeId, person_name: receiverObj.personName })
+        .select('*, master_lead_types!lead_type_id(id, lead_type)')
+        .single();
+      if (error) {
+        console.error('Error saving lead receiver:', error);
+        saveLocalReceiver(receiverObj);
+        throw error;
+      }
+      const result = {
+        id: data.id,
+        leadTypeId: data.lead_type_id,
+        leadType: data.master_lead_types?.lead_type || receiverObj.leadType,
+        personName: data.person_name
+      };
+      saveLocalReceiver(result);
+      return result;
+    }
   },
 
   async deleteLeadReceiver(id) {
@@ -132,26 +231,59 @@ export const masterApi = {
   },
 
   async saveCallerName(callerObj) {
-    if (!isSupabaseConfigured) return saveLocalCaller(callerObj);
     let leadTypeId = callerObj.leadTypeId;
-    if (!leadTypeId && callerObj.leadType) {
+    if (!leadTypeId && callerObj.leadType && isSupabaseConfigured) {
       const { data: typeRow } = await supabase.from('master_lead_types').select('id').eq('lead_type', callerObj.leadType).maybeSingle();
       if (typeRow) leadTypeId = typeRow.id;
     }
-    const { data, error } = await supabase
-      .from('master_caller_names')
-      .insert({ lead_type_id: leadTypeId, person_name: callerObj.personName })
-      .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .single();
-    if (error) { console.error('Error saving caller name:', error); saveLocalCaller(callerObj); throw error; }
-    const result = {
-      id: data.id,
-      leadTypeId: data.lead_type_id,
-      leadType: data.master_lead_types?.lead_type || callerObj.leadType,
-      personName: data.person_name
-    };
-    saveLocalCaller(result);
-    return result;
+
+    if (!isSupabaseConfigured) {
+      if (callerObj.id) {
+        return updateLocalCaller(callerObj.id, callerObj);
+      }
+      return saveLocalCaller(callerObj);
+    }
+
+    if (callerObj.id) {
+      const { data, error } = await supabase
+        .from('master_caller_names')
+        .update({ lead_type_id: leadTypeId, person_name: callerObj.personName })
+        .eq('id', callerObj.id)
+        .select('*, master_lead_types!lead_type_id(id, lead_type)')
+        .single();
+      if (error) {
+        console.error('Error updating caller name:', error);
+        updateLocalCaller(callerObj.id, callerObj);
+        throw error;
+      }
+      const result = {
+        id: data.id,
+        leadTypeId: data.lead_type_id,
+        leadType: data.master_lead_types?.lead_type || callerObj.leadType,
+        personName: data.person_name
+      };
+      updateLocalCaller(callerObj.id, result);
+      return result;
+    } else {
+      const { data, error } = await supabase
+        .from('master_caller_names')
+        .insert({ lead_type_id: leadTypeId, person_name: callerObj.personName })
+        .select('*, master_lead_types!lead_type_id(id, lead_type)')
+        .single();
+      if (error) {
+        console.error('Error saving caller name:', error);
+        saveLocalCaller(callerObj);
+        throw error;
+      }
+      const result = {
+        id: data.id,
+        leadTypeId: data.lead_type_id,
+        leadType: data.master_lead_types?.lead_type || callerObj.leadType,
+        personName: data.person_name
+      };
+      saveLocalCaller(result);
+      return result;
+    }
   },
 
   async deleteCallerName(id) {

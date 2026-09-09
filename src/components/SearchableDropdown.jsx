@@ -121,9 +121,9 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
       {/* Options List */}
       <div className="max-h-52 overflow-y-auto py-1 scrollbar-hide">
         {filteredOptions.length > 0 ? (
-          filteredOptions.map((opt) => (
+          filteredOptions.map((opt, idx) => (
             <div
-              key={opt.value}
+              key={`${opt.value ?? ''}-${idx}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onChange(opt.value);

@@ -5,10 +5,13 @@ import { customerMasterApi } from '../../api/customerMasterApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES, LEAD_SOURCES } from '../Lead/leadConstants';
+import { useAuthStore } from '../../store/authStore';
+import { matchesUserAssignment } from '../../utils/authUtils';
 
 // Customer Master only lists leads whose most recent call tracker entry is "Received" —
 // i.e. converted leads that have become customers.
 export default function Customermaster() {
+  const user = useAuthStore(state => state.user);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [customers, setCustomers] = useState([]);
 
@@ -24,8 +27,11 @@ export default function Customermaster() {
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
   useEffect(() => {
-    customerMasterApi.getConvertedCustomers().then(setCustomers);
-  }, []);
+    customerMasterApi.getConvertedCustomers().then(data => {
+      const userCustomers = (data || []).filter(c => matchesUserAssignment(c, user));
+      setCustomers(userCustomers);
+    });
+  }, [user]);
 
   const handleClearFilters = () => {
     setFilters({ ...initialFilters });

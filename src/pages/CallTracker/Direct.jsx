@@ -12,6 +12,7 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo } from '../Lead/leadConstants';
 import { ENQUIRY_STATUSES, TERMINAL_STATUSES } from './callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
+import { isUserAdmin } from '../../utils/authUtils';
 
 /**
  * Direct
@@ -46,6 +47,7 @@ const initialFormData = {
 
 export default function Direct({ isOpen, onClose, onSaved }) {
   const user = useAuthStore(state => state.user);
+  const isAdmin = isUserAdmin(user);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ 
     ...initialFormData,
@@ -59,6 +61,9 @@ export default function Direct({ isOpen, onClose, onSaved }) {
 
   useEffect(() => {
     if (isOpen) {
+      if (!isAdmin) {
+        setFormData(prev => ({ ...prev, callerAssigned: user?.name || user?.id || '' }));
+      }
       Promise.all([
         masterApi.getLeadTypes(),
         masterApi.getLeadSources(),
@@ -71,16 +76,29 @@ export default function Direct({ isOpen, onClose, onSaved }) {
         setCallerNamesMaster(callers);
       });
     }
-  }, [isOpen]);
+  }, [isOpen, isAdmin, user]);
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = leadReceiversMaster
-    .filter(r => !formData.leadType || r.leadType === formData.leadType)
-    .map(r => ({ value: r.personName, label: r.personName }));
-  const callerOptions = callerNamesMaster
-    .filter(c => !formData.leadType || c.leadType === formData.leadType)
-    .map(c => ({ value: c.personName, label: c.personName }));
+  const receiverOptions = Array.from(
+    new Set(
+      leadReceiversMaster
+        .filter(r => !formData.leadType || r.leadType === formData.leadType)
+        .map(r => r.personName)
+        .filter(Boolean)
+    )
+  ).map(name => ({ value: name, label: name }));
+
+  const callerOptions = isAdmin
+    ? Array.from(
+        new Set(
+          callerNamesMaster
+            .filter(c => !formData.leadType || c.leadType === formData.leadType)
+            .map(c => c.personName)
+            .filter(Boolean)
+        )
+      ).map(name => ({ value: name, label: name }))
+    : [{ value: user?.name || user?.id || 'Assigned', label: user?.name || user?.id || 'Assigned' }];
 
   const handleChange = (field, value) => {
     setFormData(prev => {

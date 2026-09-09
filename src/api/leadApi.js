@@ -5,6 +5,7 @@ import {
   updateLead as updateLocalLead,
   deleteLead as deleteLocalLead
 } from '../utils/storageManager';
+import { refreshBadgeCounts } from '../store/badgeCountStore';
 
 const LEAD_SELECT_QUERY = `
   *,
@@ -146,7 +147,9 @@ export const leadApi = {
   // Save single new lead
   async saveLead(leadData) {
     if (!isSupabaseConfigured) {
-      return saveLocalLead(leadData);
+      const res = saveLocalLead(leadData);
+      refreshBadgeCounts();
+      return res;
     }
 
     const fkIds = await this.resolveLeadFkIds(leadData);
@@ -160,18 +163,22 @@ export const leadApi = {
     if (error) {
       console.error('Error saving lead to Supabase:', error);
       saveLocalLead(leadData);
+      refreshBadgeCounts();
       throw error;
     }
 
     const created = this.mapFromDb(data);
     saveLocalLead(created);
+    refreshBadgeCounts();
     return created;
   },
 
   // Update existing lead by ID or Lead No
   async updateLead(idOrLeadNo, updatedFields) {
     if (!isSupabaseConfigured) {
-      return updateLocalLead(idOrLeadNo, updatedFields);
+      const res = updateLocalLead(idOrLeadNo, updatedFields);
+      refreshBadgeCounts();
+      return res;
     }
 
     const resolvedFks = await this.resolveLeadFkIds(updatedFields);
@@ -211,17 +218,21 @@ export const leadApi = {
     if (error) {
       console.error('Error updating lead in Supabase:', error);
       updateLocalLead(idOrLeadNo, updatedFields);
+      refreshBadgeCounts();
       throw error;
     }
 
     updateLocalLead(idOrLeadNo, updatedFields);
+    refreshBadgeCounts();
     return data && data[0] ? this.mapFromDb(data[0]) : null;
   },
 
   // Delete lead
   async deleteLead(idOrLeadNo) {
     if (!isSupabaseConfigured) {
-      return deleteLocalLead(idOrLeadNo);
+      const res = deleteLocalLead(idOrLeadNo);
+      refreshBadgeCounts();
+      return res;
     }
 
     const isUuid = idOrLeadNo.includes('-');
@@ -236,12 +247,14 @@ export const leadApi = {
     }
 
     deleteLocalLead(idOrLeadNo);
+    refreshBadgeCounts();
   },
 
   // Bulk add leads
   async bulkSaveLeads(leadsArray) {
     if (!isSupabaseConfigured) {
       leadsArray.forEach(l => saveLocalLead(l));
+      refreshBadgeCounts();
       return;
     }
 
@@ -282,10 +295,12 @@ export const leadApi = {
     if (error) {
       console.error('Error bulk inserting leads into Supabase:', error);
       leadsArray.forEach(l => saveLocalLead(l));
+      refreshBadgeCounts();
       throw error;
     }
 
     leadsArray.forEach(l => saveLocalLead(l));
+    refreshBadgeCounts();
     return data.map(row => this.mapFromDb(row));
   },
 
@@ -303,6 +318,8 @@ export const leadApi = {
       });
     });
 
-    return Promise.all(promises);
+    const results = await Promise.all(promises);
+    refreshBadgeCounts();
+    return results;
   }
 };

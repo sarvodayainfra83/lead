@@ -3,6 +3,7 @@ import { callTrackerApi } from './callTrackerApi';
 import { authApi } from './authApi';
 import { getLeadStatus, isLeadPending } from '../pages/CallTracker/callTrackerConstants';
 import { LEAD_TYPES, LEAD_SOURCES } from '../pages/Lead/leadConstants';
+import { isUserAdmin, matchesUserAssignment } from '../utils/authUtils';
 
 const CATEGORICAL = ['#7c3aed', '#0891b2', '#c026d3', '#65a30d', '#ea580c', '#db2777', '#0d9488', '#6b7280'];
 
@@ -17,12 +18,16 @@ const parseLeadTimestamp = (ts) => {
 const dateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export const dashboardApi = {
-  async getDashboardMetrics() {
-    const [leads, trackers, users] = await Promise.all([
+  async getDashboardMetrics(user = null) {
+    const [allLeads, allTrackers, allUsers] = await Promise.all([
       leadApi.getLeads(),
       callTrackerApi.getCallTrackers(),
       authApi.getUsers()
     ]);
+
+    const isAdmin = isUserAdmin(user);
+    const leads = isAdmin ? allLeads : allLeads.filter(l => matchesUserAssignment(l, user));
+    const trackers = isAdmin ? allTrackers : allTrackers.filter(t => matchesUserAssignment(t, user));
 
     const leadsWithStatus = leads.map(l => ({ ...l, _status: getLeadStatus(trackers, l.id) }));
 
@@ -33,6 +38,28 @@ export const dashboardApi = {
     const notInterestedCount = leadsWithStatus.filter(l => l._status === 'Not Interested').length;
     const pendingCount = leads.filter(l => isLeadPending(trackers, l)).length;
     const conversionRate = totalLeads > 0 ? Math.round((receivedCount / totalLeads) * 100) : 0;
+
+    // Meeting leads — latest tracker status is 'Need Meeting'
+    const meetingCount = leadsWithStatus.filter(l => l._status === 'Need Meeting').length;
+
+    // Build meeting leads list with next date & caller
+    const meetingLeads = leads
+      .filter(l => getLeadStatus(trackers, l.id) === 'Need Meeting')
+      .map(l => {
+        const list = (trackers.filter(t => t.leadId === l.id))
+          .sort((a, b) => a.timestampMs - b.timestampMs);
+        const latest = list[list.length - 1];
+        return {
+          id: l.id,
+          leadNo: l.leadNo,
+          personName: l.personName,
+          number: l.number,
+          callerAssigned: l.callerAssigned || 'Unassigned',
+          nextDate: latest?.nextDate || null,
+          customerSaid: latest?.customerSaid || ''
+        };
+      })
+      .sort((a, b) => (a.nextDate || '').localeCompare(b.nextDate || ''));
 
     const leadTypeData = LEAD_TYPES.map((type, i) => ({
       name: type,
@@ -66,7 +93,11 @@ export const dashboardApi = {
     });
 
     // Caller Performance Leaderboard
-    const callerStats = users
+    const relevantUsers = isAdmin
+      ? allUsers
+      : allUsers.filter(u => matchesUserAssignment(u.name, user) || matchesUserAssignment(u.id, user));
+
+    const callerStats = relevantUsers
       .filter(u => u.name)
       .map(u => {
         const assignedLeads = leadsWithStatus.filter(l => l.callerAssigned === u.name);
@@ -121,6 +152,8 @@ export const dashboardApi = {
       notInterestedCount,
       pendingCount,
       conversionRate,
+      meetingCount,
+      meetingLeads,
       leadTypeData,
       leadSourceData,
       trendData,

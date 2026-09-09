@@ -21,7 +21,6 @@ const APP_PAGES = [
 const ACCESS_LEVELS = [
   { value: 'none', label: 'No Access' },
   { value: 'view', label: 'View' },
-  { value: 'edit', label: 'Edit' },
   { value: 'full', label: 'Full Access' }
 ];
 
@@ -177,12 +176,11 @@ export default function Setting() {
         ) : (
           <div className="flex flex-wrap gap-1 justify-center">
             {accessSummary(row).map((item, idx) => (
-              <span key={idx} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium border ${
-                item.val === 'full' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                item.val === 'edit' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                item.val === 'view' ? 'bg-sky-50 text-sky-700 border-sky-200' :
-                'bg-gray-50 text-gray-500 border-gray-200'
-              }`}>
+              <span key={idx} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium border ${item.val === 'full' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                  item.val === 'edit' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                    item.val === 'view' ? 'bg-sky-50 text-sky-700 border-sky-200' :
+                      'bg-gray-50 text-gray-500 border-gray-200'
+                }`}>
                 {item.page}: {item.level}
               </span>
             ))}

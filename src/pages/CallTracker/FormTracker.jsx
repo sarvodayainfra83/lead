@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Calendar, MessageSquare } from 'lucide-react';
+import { Calendar, MessageSquare, Briefcase } from 'lucide-react';
 import { callTrackerApi } from '../../api/callTrackerApi';
+import { leadApi } from '../../api/leadApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { ENQUIRY_STATUSES, TERMINAL_STATUSES } from './callTrackerConstants';
@@ -17,7 +18,7 @@ import { ENQUIRY_STATUSES, TERMINAL_STATUSES } from './callTrackerConstants';
  *   lead    – the lead being called
  *   onSaved – fn() called after a successful save so the parent can refresh
  */
-const initialFormState = { status: '', customerSaid: '', nextDate: '' };
+const initialFormState = { status: '', customerSaid: '', nextDate: '', requirement: '' };
 
 // Read-only reference fields shown at the top of the form
 const infoFields = [
@@ -38,7 +39,12 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
   // Reset the outcome fields whenever a new lead is opened for calling
   useEffect(() => {
     if (lead) {
-      setFormData({ ...initialFormState });
+      setFormData({
+        status: '',
+        customerSaid: '',
+        nextDate: '',
+        requirement: lead.requirement || ''
+      });
     }
   }, [lead]);
 
@@ -62,32 +68,44 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
 
     setLoading(true);
 
-    const now = new Date();
-    const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    try {
+      // 1. If requirement has been modified or provided, persist it to the lead
+      if (formData.requirement !== undefined && formData.requirement !== lead.requirement) {
+        await leadApi.updateLead(lead.id || lead.leadNo, { requirement: formData.requirement });
+      }
 
-    const entry = {
-      leadId: lead.id,
-      leadNo: lead.leadNo,
-      status: formData.status,
-      customerSaid: showCustomerSaid ? formData.customerSaid : '',
-      nextDate: formData.nextDate,
-      timestamp,
-      timestampMs: now.getTime()
-    };
+      // 2. Save the call tracker entry
+      const now = new Date();
+      const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-    await callTrackerApi.saveCallTracker(entry);
+      const entry = {
+        leadId: lead.id,
+        leadNo: lead.leadNo,
+        status: formData.status,
+        customerSaid: showCustomerSaid ? formData.customerSaid : '',
+        nextDate: formData.nextDate,
+        timestamp,
+        timestampMs: now.getTime()
+      };
 
-    const isTerminal = TERMINAL_STATUSES.includes(formData.status);
-    toast.success(
-      isTerminal
-        ? `Lead ${lead.leadNo} marked as ${formData.status} and removed from pending.`
-        : `Lead ${lead.leadNo} updated (${formData.status}). It stays in pending.`
-    );
+      await callTrackerApi.saveCallTracker(entry);
 
-    setFormData({ ...initialFormState });
-    setLoading(false);
-    onSaved?.();
-    onClose();
+      const isTerminal = TERMINAL_STATUSES.includes(formData.status);
+      toast.success(
+        isTerminal
+          ? `Lead ${lead.leadNo} marked as ${formData.status} and removed from pending.`
+          : `Lead ${lead.leadNo} updated (${formData.status}). It stays in pending.`
+      );
+
+      setFormData({ ...initialFormState });
+      setLoading(false);
+      onSaved?.();
+      onClose();
+    } catch (err) {
+      console.error('Error saving call tracker / lead:', err);
+      toast.error('Failed to save call tracker details');
+      setLoading(false);
+    }
   };
 
   if (!isOpen || !lead) return null;
@@ -112,6 +130,23 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:gap-4">
+
+        {/* Editable Requirement Field */}
+        <div className="space-y-1 col-span-2">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
+            Requirement
+          </label>
+          <div className="relative">
+            <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+            <input
+              type="text"
+              value={formData.requirement}
+              onChange={(e) => handleChange('requirement', e.target.value)}
+              placeholder="Enter or update requirement (e.g. 2BHK, 3BHK, Commercial...)"
+              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
+          </div>
+        </div>
 
         {/* Enquiry Received Status */}
         <div className="space-y-1 col-span-2">

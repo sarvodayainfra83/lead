@@ -61,9 +61,14 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = leadReceiversMaster
-    .filter(r => !formData.leadType || r.leadType === formData.leadType)
-    .map(r => ({ value: r.personName, label: r.personName }));
+  const receiverOptions = Array.from(
+    new Set(
+      leadReceiversMaster
+        .filter(r => !formData.leadType || r.leadType === formData.leadType)
+        .map(r => r.personName)
+        .filter(Boolean)
+    )
+  ).map(name => ({ value: name, label: name }));
 
   const handleChange = (field, value) => {
     setFormData(prev => {

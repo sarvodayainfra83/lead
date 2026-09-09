@@ -5,6 +5,9 @@ import { leadApi } from '../../api/leadApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES, LEAD_SOURCES } from './leadConstants';
+import { formatLeadDate } from './PendingLead';
+import { useAuthStore } from '../../store/authStore';
+import { matchesUserAssignment } from '../../utils/authUtils';
 
 /**
  * HistoryLead
@@ -12,6 +15,7 @@ import { LEAD_TYPES, LEAD_SOURCES } from './leadConstants';
  * from PendingLead, a lead moves here (and simultaneously into Call Tracker's Pending).
  */
 export default function HistoryLead() {
+  const user = useAuthStore(state => state.user);
   const [leads, setLeads] = useState([]);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -23,9 +27,9 @@ export default function HistoryLead() {
 
   useEffect(() => {
     leadApi.getLeads().then(allLeads => {
-      setLeads(allLeads.filter(l => !!l.callerAssigned));
+      setLeads(allLeads.filter(l => !!l.callerAssigned && matchesUserAssignment(l, user)));
     });
-  }, []);
+  }, [user]);
 
   const handleClearFilters = () => {
     setFilters({ ...initialFilters });
@@ -63,14 +67,9 @@ export default function HistoryLead() {
     return val;
   };
 
-  // timestamp is stored as "DD/MM/YYYY HH:MM:SS" — just the date part for this column
+  // Display formatted DD/MM/YYYY date (only date, not time)
   const leadDate = (item) => {
-    if (!item.timestamp) return '-';
-
-    const date = item.timestamp.split('T')[0];
-    const [year, month, day] = date.split('-');
-
-    return `${day}/${month}/${year}`;
+    return formatLeadDate(item.timestamp || item.date || item.created_at);
   };
   const tableHeaders = [
     "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Lead Receiver Name", "Lead Source",

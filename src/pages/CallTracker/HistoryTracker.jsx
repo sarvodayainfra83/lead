@@ -7,6 +7,8 @@ import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES } from '../Lead/leadConstants';
 import { ENQUIRY_STATUSES, annotateFollowUpNumbers } from './callTrackerConstants';
+import { useAuthStore } from '../../store/authStore';
+import { matchesUserAssignment } from '../../utils/authUtils';
 
 const STATUS_STYLES = {
   Received: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -17,6 +19,7 @@ const STATUS_STYLES = {
 };
 
 export default function HistoryTracker({ tabBar }) {
+  const user = useAuthStore(state => state.user);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [historyRows, setHistoryRows] = useState([]);
 
@@ -32,18 +35,12 @@ export default function HistoryTracker({ tabBar }) {
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
   useEffect(() => {
-    Promise.all([
-      leadApi.getLeads(),
-      callTrackerApi.getCallTrackers()
-    ]).then(([leads, trackers]) => {
-      const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
-      const rows = annotateFollowUpNumbers(trackers).map(t => ({
-        ...(leadsById[t.leadId] || {}),
-        ...t
-      }));
+    callTrackerApi.getCallTrackersWithLeads().then((trackers) => {
+      const userTrackers = trackers.filter(t => matchesUserAssignment(t, user));
+      const rows = annotateFollowUpNumbers(userTrackers);
       setHistoryRows(rows);
     });
-  }, []);
+  }, [user]);
 
   const handleClearFilters = () => {
     setFilters({ ...initialFilters });
@@ -197,8 +194,8 @@ export default function HistoryTracker({ tabBar }) {
             />
           </div>
           <button
-             onClick={() => setShowMobileFilters(!showMobileFilters)}
-             className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+            className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
           >
             <Filter size={14} />
           </button>

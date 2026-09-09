@@ -8,6 +8,9 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import FormTracker from './FormTracker';
 import { LEAD_TYPES } from '../Lead/leadConstants';
 import { isLeadPending, getTrackersForLead } from './callTrackerConstants';
+import { parseLeadDate } from '../Lead/PendingLead';
+import { useAuthStore } from '../../store/authStore';
+import { matchesUserAssignment } from '../../utils/authUtils';
 
 const STATUS_STYLES = {
   Received: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -17,7 +20,54 @@ const STATUS_STYLES = {
   'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200'
 };
 
+const DATE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'today', label: "Today's Lead" },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'custom', label: 'Custom Date' },
+];
+
+const getTodayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Returns a midnight Date object for the pending tracker row.
+ * Uses nextCallDate if set, or falls back to the lead creation date.
+ */
+export const parseTrackerDate = (lead) => {
+  const nextDate = lead?.nextCallDate;
+  if (nextDate) {
+    const str = String(nextDate).trim();
+    if (str.includes('-')) {
+      const parts = str.split('T')[0].split(' ')[0].split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        } else {
+          return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        }
+      }
+    } else if (str.includes('/')) {
+      const parts = str.split(' ')[0].split('/');
+      if (parts.length === 3) {
+        const [d, m, y] = parts;
+        const fullYear = y.length === 2 ? Number(`20${y}`) : Number(y);
+        return new Date(fullYear, Number(m) - 1, Number(d));
+      }
+    }
+  }
+  return parseLeadDate(lead);
+};
+
 export default function PendingTracker({ tabBar }) {
+  const user = useAuthStore(state => state.user);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [pendingRows, setPendingRows] = useState([]);
   const [callLead, setCallLead] = useState(null); // lead currently being called
@@ -26,7 +76,8 @@ export default function PendingTracker({ tabBar }) {
     searchQuery: '',
     leadType: '',
     callerAssigned: '',
-    date: ''
+    dateFilter: '',
+    customDate: ''
   };
   const [filters, setFilters] = useState({ ...initialFilters });
 
@@ -40,7 +91,7 @@ export default function PendingTracker({ tabBar }) {
     ]);
 
     const rows = leads
-      .filter(lead => isLeadPending(trackers, lead))
+      .filter(lead => isLeadPending(trackers, lead) && matchesUserAssignment(lead, user))
       .map(lead => {
         const trackersForLead = getTrackersForLead(trackers, lead.id);
         const latest = trackersForLead[trackersForLead.length - 1] || null;
@@ -57,7 +108,7 @@ export default function PendingTracker({ tabBar }) {
 
   useEffect(() => {
     loadPending();
-  }, []);
+  }, [user]);
 
   const handleClearFilters = () => {
     setFilters({ ...initialFilters });
@@ -65,10 +116,35 @@ export default function PendingTracker({ tabBar }) {
     toast.success('Filters cleared');
   };
 
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
   const filteredRows = pendingRows.filter(l => {
     if (filters.leadType && l.leadType !== filters.leadType) return false;
     if (filters.callerAssigned && l.callerAssigned !== filters.callerAssigned) return false;
-    if (filters.date && l.nextCallDate !== filters.date) return false;
+
+    if (filters.dateFilter && filters.dateFilter !== 'all') {
+      const d = parseTrackerDate(l);
+      if (!d) return false;
+      if (filters.dateFilter === 'today') {
+        if (d.getTime() !== today.getTime()) return false;
+      } else if (filters.dateFilter === 'yesterday') {
+        if (d.getTime() !== yesterday.getTime()) return false;
+      } else if (filters.dateFilter === 'overdue') {
+        if (d.getTime() >= yesterday.getTime()) return false;
+      } else if (filters.dateFilter === 'upcoming') {
+        if (d.getTime() <= today.getTime()) return false;
+      } else if (filters.dateFilter === 'custom') {
+        if (!filters.customDate) return true;
+        const [cy, cm, cd] = filters.customDate.split('-').map(Number);
+        if (cy && cm && cd) {
+          const targetDate = new Date(cy, cm - 1, cd);
+          if (d.getTime() !== targetDate.getTime()) return false;
+        }
+      }
+    }
 
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
@@ -89,12 +165,29 @@ export default function PendingTracker({ tabBar }) {
     currentPage * itemsPerPage
   );
 
-  // Format YYYY-MM-DD → DD/MM/YYYY for display
+  // Format YYYY-MM-DD or DD/MM/YYYY to strictly DD/MM/YYYY (date only, no time)
   const formatDate = (val) => {
     if (!val) return '-';
-    const parts = val.split('-');
-    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    return val;
+    const str = String(val).trim().split('T')[0].split(' ')[0];
+    if (str.includes('-')) {
+      const parts = str.split('-');
+      if (parts.length === 3) {
+        if (parts[0].length === 4) {
+          return `${String(parts[2]).padStart(2, '0')}/${String(parts[1]).padStart(2, '0')}/${parts[0]}`;
+        } else {
+          return `${String(parts[0]).padStart(2, '0')}/${String(parts[1]).padStart(2, '0')}/${parts[2]}`;
+        }
+      }
+    }
+    if (str.includes('/')) {
+      const parts = str.split('/');
+      if (parts.length === 3) {
+        const [d, m, y] = parts;
+        const fullYear = y.length === 2 ? `20${y}` : y;
+        return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${fullYear}`;
+      }
+    }
+    return str || '-';
   };
 
   const tableHeaders = [
@@ -257,7 +350,32 @@ export default function PendingTracker({ tabBar }) {
         </div>
 
         {/* Mobile Collapsible Filters */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:hidden grid-cols-2 gap-2 w-full`}>
+        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full`}>
+          <SearchableDropdown
+            options={DATE_FILTER_OPTIONS}
+            value={filters.dateFilter}
+            onChange={(val) => {
+              const next = { ...filters, dateFilter: val };
+              if (val === 'custom' && !filters.customDate) {
+                next.customDate = getTodayStr();
+              }
+              setFilters(next);
+              setCurrentPage(1);
+            }}
+            placeholder="All Lead Dates"
+            height="h-[32px]"
+          />
+          {filters.dateFilter === 'custom' && (
+            <div className="col-span-1 sm:col-span-3">
+              <input
+                type="date"
+                value={filters.customDate || ''}
+                onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
+                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 text-xs h-[32px] text-gray-700 shadow-sm"
+                title="Select custom date"
+              />
+            </div>
+          )}
           <SearchableDropdown
             options={LEAD_TYPES.map(v => ({ value: v, label: v }))}
             value={filters.leadType}
@@ -272,14 +390,6 @@ export default function PendingTracker({ tabBar }) {
             placeholder="All Assigned Caller"
             height="h-[32px]"
           />
-          <div className="col-span-2 sm:col-span-1">
-            <input
-              type="date"
-              value={filters.date}
-              onChange={(e) => { setFilters({ ...filters, date: e.target.value }); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-[13px] h-[32px] text-gray-600"
-            />
-          </div>
         </div>
 
         {/* Desktop Row */}
@@ -296,6 +406,33 @@ export default function PendingTracker({ tabBar }) {
           </div>
           <div className="flex-1 min-w-0">
             <SearchableDropdown
+              options={DATE_FILTER_OPTIONS}
+              value={filters.dateFilter}
+              onChange={(val) => {
+                const next = { ...filters, dateFilter: val };
+                if (val === 'custom' && !filters.customDate) {
+                  next.customDate = getTodayStr();
+                }
+                setFilters(next);
+                setCurrentPage(1);
+              }}
+              placeholder="All Lead Dates"
+              height="h-[38px]"
+            />
+          </div>
+          {filters.dateFilter === 'custom' && (
+            <div className="min-w-[140px] max-w-[160px] animate-in fade-in duration-150">
+              <input
+                type="date"
+                value={filters.customDate || ''}
+                onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
+                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm h-[38px] text-gray-700 shadow-sm font-medium"
+                title="Select custom date"
+              />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <SearchableDropdown
               options={LEAD_TYPES.map(v => ({ value: v, label: v }))}
               value={filters.leadType}
               onChange={(val) => { setFilters({ ...filters, leadType: val }); setCurrentPage(1); }}
@@ -310,14 +447,6 @@ export default function PendingTracker({ tabBar }) {
               onChange={(val) => { setFilters({ ...filters, callerAssigned: val }); setCurrentPage(1); }}
               placeholder="All Assigned Caller"
               height="h-[38px]"
-            />
-          </div>
-          <div className="flex-1 min-w-0 max-w-[150px]">
-            <input
-              type="date"
-              value={filters.date}
-              onChange={(e) => { setFilters({ ...filters, date: e.target.value }); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-indigo-500 text-sm h-[38px] text-gray-600"
             />
           </div>
           <button

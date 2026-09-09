@@ -9,6 +9,84 @@ import LeadForm from './LeadForm';
 import LeadEdit from './LeadEdit';
 import BulkUploadLead from './BulkUploadLead';
 import { LEAD_TYPES, LEAD_SOURCES } from './leadConstants';
+import { useAuthStore } from '../../store/authStore';
+import { isUserAdmin, matchesUserReceiver } from '../../utils/authUtils';
+
+/**
+ * Formats a lead's timestamp into DD/MM/YYYY (date only, no time).
+ * Correctly handles DB values like "2026-08-09 16:37:10+00" (where 08 = Day, 09 = Month) -> "08/09/2026"
+ * As well as standard formats like "DD/MM/YYYY HH:MM:SS" -> "DD/MM/YYYY"
+ */
+export const formatLeadDate = (val) => {
+  if (!val) return '-';
+  const str = String(val).trim();
+
+  // If already in DD/MM/YYYY or DD/MM/YYYY HH:mm:ss format
+  if (str.includes('/')) {
+    const datePart = str.split(' ')[0];
+    const parts = datePart.split('/');
+    if (parts.length === 3) {
+      const [d, m, y] = parts;
+      const fullYear = y.length === 2 ? `20${y}` : y;
+      return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${fullYear}`;
+    }
+  }
+
+  // If in DB format e.g. "2026-08-09 16:37:10+00" or "2026-08-09T..."
+  // Database format is YYYY-DD-MM (e.g. 2026-08-09 -> 8th September 2026)
+  if (str.includes('-')) {
+    const datePart = str.split('T')[0].split(' ')[0];
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        const year = parts[0];
+        const day = String(parts[1]).padStart(2, '0');
+        const month = String(parts[2]).padStart(2, '0');
+        return `${day}/${month}/${year}`;
+      } else {
+        const day = String(parts[0]).padStart(2, '0');
+        const month = String(parts[1]).padStart(2, '0');
+        const year = parts[2];
+        return `${day}/${month}/${year}`;
+      }
+    }
+  }
+
+  return str.split(' ')[0] || '-';
+};
+
+/**
+ * Returns a Date object set to midnight for the lead based on its DD/MM/YYYY date.
+ */
+export const parseLeadDate = (item) => {
+  const val = item?.timestamp || item?.date || item?.created_at;
+  if (!val) return null;
+  const formatted = formatLeadDate(val);
+  if (!formatted || formatted === '-') return null;
+  const parts = formatted.split('/').map(Number);
+  if (parts.length === 3) {
+    const [d, m, y] = parts;
+    if (d && m && y) return new Date(y, m - 1, d);
+  }
+  return null;
+};
+
+export const DATE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'today', label: "Today's Lead" },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'custom', label: 'Custom Date' },
+];
+
+const getTodayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 /**
  * PendingLead
@@ -26,9 +104,10 @@ export default function PendingLead({ setHeaderAction }) {
   const [assignments, setAssignments] = useState({});
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  const initialFilters = { searchQuery: '', leadType: '', leadSource: '' };
+  const initialFilters = { searchQuery: '', leadType: '', leadSource: '', dateFilter: '', customDate: '' };
   const [filters, setFilters] = useState({ ...initialFilters });
 
+  const user = useAuthStore(state => state.user);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
@@ -37,10 +116,11 @@ export default function PendingLead({ setHeaderAction }) {
       leadApi.getLeads(),
       masterApi.getCallerNames()
     ]);
-    setLeads(allLeads.filter(l => !l.callerAssigned));
+    const unassigned = allLeads.filter(l => !l.callerAssigned);
+    setLeads(isUserAdmin(user) ? unassigned : unassigned.filter(l => matchesUserReceiver(l, user)));
     setCallersMaster(callers);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [user]);
 
   const handleClearFilters = () => {
     setFilters({ ...initialFilters });
@@ -48,9 +128,35 @@ export default function PendingLead({ setHeaderAction }) {
     toast.success('Filters cleared');
   };
 
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
   const filteredLeads = leads.filter(l => {
     if (filters.leadType && l.leadType !== filters.leadType) return false;
     if (filters.leadSource && l.leadSource !== filters.leadSource) return false;
+
+    if (filters.dateFilter && filters.dateFilter !== 'all') {
+      const d = parseLeadDate(l);
+      if (!d) return false;
+      if (filters.dateFilter === 'today') {
+        if (d.getTime() !== today.getTime()) return false;
+      } else if (filters.dateFilter === 'yesterday') {
+        if (d.getTime() !== yesterday.getTime()) return false;
+      } else if (filters.dateFilter === 'overdue') {
+        if (d.getTime() >= yesterday.getTime()) return false;
+      } else if (filters.dateFilter === 'upcoming') {
+        if (d.getTime() <= today.getTime()) return false;
+      } else if (filters.dateFilter === 'custom') {
+        if (!filters.customDate) return true;
+        const [cy, cm, cd] = filters.customDate.split('-').map(Number);
+        if (cy && cm && cd) {
+          const targetDate = new Date(cy, cm - 1, cd);
+          if (d.getTime() !== targetDate.getTime()) return false;
+        }
+      }
+    }
 
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
@@ -69,9 +175,18 @@ export default function PendingLead({ setHeaderAction }) {
   const totalPages = Math.ceil(sortedLeads.length / itemsPerPage);
   const paginatedLeads = sortedLeads.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const callerOptionsFor = (leadType) => callersMaster
-    .filter(c => !leadType || c.leadType === leadType)
-    .map(c => ({ value: c.personName, label: c.personName }));
+  const callerOptionsFor = (leadType) => {
+    const filtered = callersMaster.filter(c => !leadType || c.leadType === leadType);
+    const seen = new Set();
+    const unique = [];
+    for (const c of filtered) {
+      if (c.personName && !seen.has(c.personName)) {
+        seen.add(c.personName);
+        unique.push({ value: c.personName, label: c.personName });
+      }
+    }
+    return unique;
+  };
 
   const toggleRow = (id) => {
     setSelectedIds(prev => {
@@ -178,14 +293,9 @@ export default function PendingLead({ setHeaderAction }) {
     return val;
   };
 
-  // timestamp is stored as "DD/MM/YYYY HH:MM:SS" — just the date part for this column
+  // Display formatted DD/MM/YYYY date (only date, not time)
   const leadDate = (item) => {
-    if (!item.timestamp) return '-';
-
-    const date = item.timestamp.split('T')[0];
-    const [year, month, day] = date.split('-');
-
-    return `${day}/${month}/${year}`;
+    return formatLeadDate(item.timestamp || item.date || item.created_at);
   };
 
   const tableHeaders = [
@@ -371,7 +481,32 @@ export default function PendingLead({ setHeaderAction }) {
         </div>
 
         {/* Mobile Collapsible Filters */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:hidden grid-cols-2 gap-2 w-full`}>
+        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full`}>
+          <SearchableDropdown
+            options={DATE_FILTER_OPTIONS}
+            value={filters.dateFilter}
+            onChange={(val) => {
+              const next = { ...filters, dateFilter: val };
+              if (val === 'custom' && !filters.customDate) {
+                next.customDate = getTodayStr();
+              }
+              setFilters(next);
+              setCurrentPage(1);
+            }}
+            placeholder="All Lead Dates"
+            height="h-[32px]"
+          />
+          {filters.dateFilter === 'custom' && (
+            <div className="col-span-1 sm:col-span-3">
+              <input
+                type="date"
+                value={filters.customDate || ''}
+                onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
+                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 text-xs h-[32px] text-gray-700 shadow-sm"
+                title="Select custom date"
+              />
+            </div>
+          )}
           <SearchableDropdown
             options={LEAD_TYPES.map(v => ({ value: v, label: v }))}
             value={filters.leadType}
@@ -400,6 +535,33 @@ export default function PendingLead({ setHeaderAction }) {
               className="w-full bg-white border border-gray-300 rounded pl-8 pr-2 py-1.5 focus:outline-none focus:border-sky-500 text-sm h-[38px]"
             />
           </div>
+          <div className="flex-1 min-w-0">
+            <SearchableDropdown
+              options={DATE_FILTER_OPTIONS}
+              value={filters.dateFilter}
+              onChange={(val) => {
+                const next = { ...filters, dateFilter: val };
+                if (val === 'custom' && !filters.customDate) {
+                  next.customDate = getTodayStr();
+                }
+                setFilters(next);
+                setCurrentPage(1);
+              }}
+              placeholder="All Lead Dates"
+              height="h-[38px]"
+            />
+          </div>
+          {filters.dateFilter === 'custom' && (
+            <div className="min-w-[140px] max-w-[160px] animate-in fade-in duration-150">
+              <input
+                type="date"
+                value={filters.customDate || ''}
+                onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
+                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm h-[38px] text-gray-700 shadow-sm font-medium"
+                title="Select custom date"
+              />
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <SearchableDropdown
               options={LEAD_TYPES.map(v => ({ value: v, label: v }))}

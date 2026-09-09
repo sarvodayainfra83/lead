@@ -4,9 +4,10 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer, LabelList
 } from 'recharts';
 import {
-  Users, Clock, CheckCircle2, XCircle, TrendingUp, PhoneCall, CalendarClock, ArrowRight
+  Users, Clock, CheckCircle2, XCircle, TrendingUp, PhoneCall, CalendarClock, ArrowRight, Handshake
 } from 'lucide-react';
 import { dashboardApi } from '../../api/dashboardApi';
+import { useAuthStore } from '../../store/authStore';
 
 // Fixed status palette — reserved meanings, never reused for categorical series.
 const STATUS_COLORS = {
@@ -58,6 +59,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const user = useAuthStore(state => state.user);
 
   const [metrics, setMetrics] = useState({
     totalLeads: 0,
@@ -67,6 +69,8 @@ export default function Dashboard() {
     notInterestedCount: 0,
     pendingCount: 0,
     conversionRate: 0,
+    meetingCount: 0,
+    meetingLeads: [],
     leadTypeData: [],
     leadSourceData: [],
     trendData: [],
@@ -76,12 +80,13 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
-    dashboardApi.getDashboardMetrics().then(setMetrics);
-  }, []);
+    dashboardApi.getDashboardMetrics(user).then(setMetrics);
+  }, [user]);
 
   const {
     totalLeads, neverContactedCount, expectedCount, receivedCount, notInterestedCount,
-    pendingCount, conversionRate, leadTypeData, leadSourceData, trendData,
+    pendingCount, conversionRate, meetingCount, meetingLeads,
+    leadTypeData, leadSourceData, trendData,
     callerStats, upcomingFollowUps, recentLeads
   } = metrics;
 
@@ -93,27 +98,89 @@ export default function Dashboard() {
 
 
         {/* KPI Stat Tiles */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <StatTile icon={Users} label="Total Leads" value={totalLeads} tone={{ text: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200' }} />
           <StatTile icon={Clock} label="Pending Follow-ups" value={pendingCount} tone={{ text: STATUS_COLORS.Expected.text, bg: STATUS_COLORS.Expected.bg, border: STATUS_COLORS.Expected.border }} />
           <StatTile icon={CheckCircle2} label="Converted (Received)" value={receivedCount} tone={{ text: STATUS_COLORS.Received.text, bg: STATUS_COLORS.Received.bg, border: STATUS_COLORS.Received.border }} />
           <StatTile icon={XCircle} label="Not Interested" value={notInterestedCount} tone={{ text: STATUS_COLORS['Not Interested'].text, bg: STATUS_COLORS['Not Interested'].bg, border: STATUS_COLORS['Not Interested'].border }} />
+          <StatTile icon={Handshake} label="Need Meeting" value={meetingCount ?? 0} tone={{ text: STATUS_COLORS['Need Meeting'].text, bg: STATUS_COLORS['Need Meeting'].bg, border: STATUS_COLORS['Need Meeting'].border }} />
           <StatTile icon={TrendingUp} label="Conversion Rate" value={`${conversionRate}%`} tone={{ text: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200' }} />
+        </div>
+
+        {/* Meeting Calls Card */}
+        <div className="bg-white rounded-xl border border-cyan-200 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-cyan-50 border border-cyan-200 flex items-center justify-center">
+                <Handshake size={15} className="text-cyan-700" />
+              </div>
+              <h3 className="text-xs md:text-sm font-bold text-gray-800 uppercase tracking-wide">Meeting Calls</h3>
+              {meetingCount > 0 && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-700 border border-cyan-200">
+                  {meetingCount}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => navigate('/call-tracker')}
+              className="text-[11px] text-cyan-600 hover:text-cyan-700 font-semibold flex items-center gap-1"
+            >
+              View all <ArrowRight size={12} />
+            </button>
+          </div>
+          {meetingLeads && meetingLeads.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-gray-400 uppercase text-[10px] tracking-wide border-b border-gray-100">
+                    <th className="py-2 pr-3">Lead No</th>
+                    <th className="py-2 pr-3">Person Name</th>
+                    <th className="py-2 pr-3">Number</th>
+                    <th className="py-2 pr-3">Caller</th>
+                    <th className="py-2 pr-3">Meeting Date</th>
+                    <th className="py-2">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {meetingLeads.map(l => (
+                    <tr key={l.id} className="border-b border-gray-50 last:border-0 hover:bg-cyan-50/40 transition-colors">
+                      <td className="py-2 pr-3 font-bold text-indigo-600 whitespace-nowrap">{l.leadNo}</td>
+                      <td className="py-2 pr-3 font-semibold text-gray-800 whitespace-nowrap">{l.personName}</td>
+                      <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.number || '—'}</td>
+                      <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.callerAssigned}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">
+                        {l.nextDate ? (
+                          <span className="inline-flex items-center gap-1 text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                            <CalendarClock size={10} /> {formatDate(l.nextDate)}
+                          </span>
+                        ) : '—'}
+                      </td>
+                      <td className="py-2 text-gray-500 max-w-[180px] truncate">{l.customerSaid || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 italic py-4 text-center flex items-center justify-center gap-2">
+              <Handshake size={14} /> No leads scheduled for a meeting.
+            </p>
+          )}
         </div>
 
         {/* Lead Type / Lead Source breakdown */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <ChartCard title="Leads by Type">
             {leadTypeData.some(d => d.value > 0) ? (
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={leadTypeData} layout="vertical" margin={{ top: 0, right: 24, left: 0, bottom: 0 }}>
-                  <CartesianGrid horizontal={false} stroke="#e1e0d9" />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#898781' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11, fill: '#52514e' }} axisLine={false} tickLine={false} />
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={leadTypeData} margin={{ top: 20, right: 16, left: -20, bottom: 40 }}>
+                  <CartesianGrid vertical={false} stroke="#e1e0d9" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#52514e' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} interval={0} angle={-30} textAnchor="end" />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#898781' }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={32}>
                     {leadTypeData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#52514e', fontWeight: 600 }} />
+                    <LabelList dataKey="value" position="top" style={{ fontSize: 11, fill: '#52514e', fontWeight: 600 }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -124,15 +191,15 @@ export default function Dashboard() {
 
           <ChartCard title="Leads by Source">
             {leadSourceData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={leadSourceData} layout="vertical" margin={{ top: 0, right: 24, left: 0, bottom: 0 }}>
-                  <CartesianGrid horizontal={false} stroke="#e1e0d9" />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#898781' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} />
-                  <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 11, fill: '#52514e' }} axisLine={false} tickLine={false} />
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={leadSourceData} margin={{ top: 20, right: 16, left: -20, bottom: 40 }}>
+                  <CartesianGrid vertical={false} stroke="#e1e0d9" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#52514e' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} interval={0} angle={-30} textAnchor="end" />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#898781' }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={18}>
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={32}>
                     {leadSourceData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                    <LabelList dataKey="value" position="right" style={{ fontSize: 11, fill: '#52514e', fontWeight: 600 }} />
+                    <LabelList dataKey="value" position="top" style={{ fontSize: 11, fill: '#52514e', fontWeight: 600 }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>

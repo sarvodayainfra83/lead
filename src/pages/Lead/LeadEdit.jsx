@@ -61,12 +61,23 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = leadReceiversMaster
-    .filter(r => !formData.leadType || r.leadType === formData.leadType)
-    .map(r => ({ value: r.personName, label: r.personName }));
-  const callerOptions = callerNamesMaster
-    .filter(c => !formData.leadType || c.leadType === formData.leadType)
-    .map(c => ({ value: c.personName, label: c.personName }));
+  const receiverOptions = Array.from(
+    new Set(
+      leadReceiversMaster
+        .filter(r => !formData.leadType || r.leadType === formData.leadType)
+        .map(r => r.personName)
+        .filter(Boolean)
+    )
+  ).map(name => ({ value: name, label: name }));
+
+  const callerOptions = Array.from(
+    new Set(
+      callerNamesMaster
+        .filter(c => !formData.leadType || c.leadType === formData.leadType)
+        .map(c => c.personName)
+        .filter(Boolean)
+    )
+  ).map(name => ({ value: name, label: name }));
 
   // Populate form whenever the modal opens with a new lead
   useEffect(() => {
