@@ -31,22 +31,39 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
     if (dropdownRef.current) {
       const rect = dropdownRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      const dropdownHeight = 300; // Estimated max height
+      const dropdownHeight = 240; // Estimated max height
+      const screenWidth = window.innerWidth;
+      
+      let width = rect.width;
+      let left = rect.left;
+
+      // Ensure dropdown isn't too narrow or overflowing on mobile screens
+      if (width < 220 && screenWidth < 640) {
+        width = Math.min(screenWidth - 16, Math.max(width, 220));
+      }
+      if (left + width > screenWidth - 8) {
+        left = Math.max(8, screenWidth - width - 8);
+      }
+      if (left < 8) {
+        left = 8;
+        width = Math.min(width, screenWidth - 16);
+      }
+
       if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
         setOpenUp(true);
         setDropdownPos({
           bottom: window.innerHeight - rect.top + 4,
           top: 'auto',
-          left: rect.left,
-          width: rect.width
+          left,
+          width
         });
       } else {
         setOpenUp(false);
         setDropdownPos({
           top: rect.bottom + 4,
           bottom: 'auto',
-          left: rect.left,
-          width: rect.width
+          left,
+          width
         });
       }
     }
@@ -68,8 +85,8 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
-        dropdownRef.current && 
-        !dropdownRef.current.contains(event.target) && 
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target) &&
         !event.target.closest('.searchable-dropdown-menu')
       ) {
         setIsOpen(false);
@@ -93,7 +110,7 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
   };
 
   const menu = isOpen ? createPortal(
-    <div 
+    <div
       className="searchable-dropdown-menu fixed bg-white border border-gray-200 rounded shadow-2xl z-[9999] overflow-hidden animate-in fade-in zoom-in-95 duration-100 min-w-[180px]"
       style={{
         top: dropdownPos.top,
@@ -113,7 +130,7 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onClick={(e) => e.stopPropagation()}
-            className="w-full bg-white border border-gray-200 rounded pl-7 pr-2 py-1 text-[11px] md:text-[13px] focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 shadow-inner"
+            className="w-full bg-white border border-gray-200 rounded pl-7 pr-2 py-1 text-[12px] md:text-[13px] focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 shadow-inner"
           />
         </div>
       </div>
@@ -130,19 +147,19 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
                 setIsOpen(false);
                 setSearchTerm("");
               }}
-              className={`px-3 py-1.5 text-[11px] md:text-[13px] cursor-pointer flex justify-between items-center hover:bg-indigo-50 transition-colors group ${value === opt.value
-                  ? 'bg-indigo-50/50 text-indigo-700'
-                  : 'text-gray-700'
+              className={`px-3 py-2 sm:py-1.5 text-[12px] md:text-[13px] cursor-pointer flex justify-between items-center hover:bg-indigo-50 transition-colors group ${value === opt.value
+                ? 'bg-indigo-50/50 text-indigo-700 font-semibold'
+                : 'text-gray-700'
                 }`}
             >
               <span className="truncate">{opt.label}</span>
               {value === opt.value && (
-                <Check size={12} className="text-indigo-600 flex-shrink-0" />
+                <Check size={14} className="text-indigo-600 flex-shrink-0 ml-2" />
               )}
             </div>
           ))
         ) : (
-          <div className="px-3 py-4 text-[10px] text-center text-gray-400 italic font-medium uppercase tracking-tight">
+          <div className="px-3 py-4 text-[11px] text-center text-gray-400 italic font-medium uppercase tracking-tight">
             No matching results found
           </div>
         )}
@@ -182,8 +199,8 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
         onClick={handleToggle}
         className={`w-full bg-white border border-gray-300 rounded px-2 py-1 flex justify-between items-center cursor-pointer hover:border-indigo-500 transition-all ${height} shadow-sm group outline-none focus:ring-1 focus:ring-indigo-500/30 active:scale-[0.98]`}
       >
-        <span className={`text-[11px] md:text-[13px] truncate ${selectedOption ? 'text-gray-900' : 'text-gray-400'}`}>
-          {selectedOption ? selectedOption.label : placeholder}
+        <span className={`text-[11px] md:text-[13px] truncate ${selectedOption || value ? 'text-gray-900' : 'text-gray-400'}`}>
+          {selectedOption ? selectedOption.label : (value || placeholder)}
         </span>
         <ChevronDown
           size={14}

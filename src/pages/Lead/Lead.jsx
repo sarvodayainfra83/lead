@@ -23,14 +23,14 @@ export default function Lead() {
     <div className="flex flex-col h-full min-h-0">
       {/* Tab Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 sm:px-4 md:px-6 pt-2 md:pt-4 flex-shrink-0 gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border h-[32px] lg:h-[38px] ${activeTab === key
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-indigo-50 hover:text-indigo-600'
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border h-[30px] sm:h-[32px] lg:h-[38px] ${activeTab === key
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                : 'bg-white text-gray-600 border-gray-200 hover:bg-indigo-50 hover:text-indigo-600'
                 }`}
             >
               <Icon size={14} />
@@ -38,7 +38,7 @@ export default function Lead() {
             </button>
           ))}
         </div>
-        <div className="flex items-center self-end sm:self-auto">
+        <div className="flex items-center justify-end sm:self-auto flex-wrap gap-1.5 sm:gap-2">
           {headerAction}
         </div>
       </div>

@@ -7,40 +7,61 @@ import {
 } from '../utils/storageManager';
 import { refreshBadgeCounts } from '../store/badgeCountStore';
 
-const LEAD_SELECT_QUERY = `
-  *,
-  master_lead_types!lead_type_id(id, lead_type),
-  master_lead_receivers!lead_receiver_id(id, person_name),
-  master_lead_sources!lead_source_id(id, lead_source),
-  master_caller_names!caller_assigned_id(id, person_name)
-`;
-
 export const leadApi = {
   // Helper to map DB row -> Frontend Lead model
   mapFromDb(row) {
     return {
-      id: row.id,
-      leadNo: row.lead_no,
-      leadTypeId: row.lead_type_id,
-      leadType: row.master_lead_types?.lead_type || row.lead_type || '',
-      leadReceiverId: row.lead_receiver_id,
-      leadReceiver: row.master_lead_receivers?.person_name || row.lead_receiver || '',
-      leadSourceId: row.lead_source_id,
-      leadSource: row.master_lead_sources?.lead_source || row.lead_source || '',
-      callerAssignedId: row.caller_assigned_id,
-      callerAssigned: row.master_caller_names?.person_name || row.caller_assigned || '',
-      personName: row.person_name,
-      number: row.number,
-      email: row.email || '',
+      id: row.id || row.lead_id,
+      leadNo: row.lead_no || '',
+      leadTypeId: row.lead_type_id || null,
+      leadType: row.lead_type || row.master_lead_types?.lead_type || '',
+      detailId: row.detail_id || row.real_estate_id || row.insurance_id || row.mutual_fund_id || row.id,
+      leadReceiverId: row.lead_receiver_id || null,
+      leadReceiver: row.lead_receiver || row.master_lead_receivers?.person_name || '',
+      leadSourceId: row.lead_source_id || null,
+      leadSource: row.lead_source || row.master_lead_sources?.lead_source || '',
+      callerAssignedId: row.caller_assigned_id || null,
+      callerAssigned: row.caller_assigned || row.master_caller_names?.person_name || '',
+      referencerName: row.referencer_name || '',
+      // Customer details with aliases for backward compatibility
+      customerName: row.customer_name || row.person_name || '',
+      personName: row.customer_name || row.person_name || '',
+      customerNumber: row.customer_number || row.number || '',
+      number: row.customer_number || row.number || '',
+      customerEmail: row.customer_email || row.email || '',
+      email: row.customer_email || row.email || '',
+      customerAddress: row.customer_address || row.location || '',
+      location: row.customer_address || row.location || '',
       dob: row.dob || '',
       occupation: row.occupation || '',
       investmentBudget: row.investment_budget || '',
-      location: row.location || '',
       whenToBuyPlan: row.when_to_buy_plan || '',
-      requirement: row.requirement || '',
       remarks: row.remarks || '',
-      timestamp: row.timestamp || new Date().toISOString()
+      // Real Estate specific fields
+      siteLocation: row.site_location || '',
+      requirement: row.requirement || '',
+      // Insurance specific fields
+      insuranceType: row.insurance_type || '',
+      insuranceSubType: row.insurance_sub_type || '',
+      anyDesease: row.any_desease || '',
+      timestamp: row.timestamp || row.created_at || new Date().toISOString()
     };
+  },
+
+  // Helper to get corresponding table name for lead type
+  getTableNameForLeadType(leadType) {
+    if (!leadType) return 'real_state';
+    const normalized = leadType.toLowerCase().trim();
+    if (normalized.includes('real') || normalized.includes('estate') || normalized.includes('state')) {
+      return 'real_state';
+    }
+    if (normalized.includes('insurance')) {
+      return 'insurance';
+    }
+    if (normalized.includes('mutual') || normalized.includes('fund')) {
+      return 'mutual_fund';
+    }
+    return 'real_state';
   },
 
   // Helper to resolve string names to Master FK UUIDs reliably
@@ -60,7 +81,7 @@ export const leadApi = {
       if (data && data[0]) lead_type_id = data[0].id;
     }
 
-    // 2. Resolve lead_receiver_id (matching person_name AND lead_type_id if available)
+    // 2. Resolve lead_receiver_id
     if (!lead_receiver_id && lead.leadReceiver) {
       let query = supabase.from('master_lead_receivers').select('id').eq('person_name', lead.leadReceiver);
       if (lead_type_id) {
@@ -85,7 +106,7 @@ export const leadApi = {
       if (data && data[0]) lead_source_id = data[0].id;
     }
 
-    // 4. Resolve caller_assigned_id (matching person_name AND lead_type_id if available)
+    // 4. Resolve caller_assigned_id
     if (!caller_assigned_id && lead.callerAssigned) {
       let query = supabase.from('master_caller_names').select('id').eq('person_name', lead.callerAssigned);
       if (lead_type_id) {
@@ -103,48 +124,66 @@ export const leadApi = {
     return { lead_type_id, lead_receiver_id, lead_source_id, caller_assigned_id };
   },
 
-  // Helper to map Frontend Lead model -> DB row (Only Foreign Keys, no duplicate text!)
-  mapToDb(lead, fkIds = {}) {
-    return {
-      lead_no: lead.leadNo,
-      lead_type_id: fkIds.lead_type_id !== undefined ? fkIds.lead_type_id : (lead.leadTypeId || null),
-      lead_receiver_id: fkIds.lead_receiver_id !== undefined ? fkIds.lead_receiver_id : (lead.leadReceiverId || null),
-      lead_source_id: fkIds.lead_source_id !== undefined ? fkIds.lead_source_id : (lead.leadSourceId || null),
-      caller_assigned_id: fkIds.caller_assigned_id !== undefined ? fkIds.caller_assigned_id : (lead.callerAssignedId || null),
-      person_name: lead.personName,
-      number: lead.number,
-      email: lead.email || null,
-      dob: lead.dob || null,
-      occupation: lead.occupation || null,
-      investment_budget: lead.investmentBudget || null,
-      location: lead.location || null,
-      when_to_buy_plan: lead.whenToBuyPlan || null,
-      requirement: lead.requirement || null,
-      remarks: lead.remarks || null,
-      timestamp: lead.timestamp || new Date().toISOString()
-    };
-  },
-
-  // Fetch all leads with expanded Master join details
+  // Fetch all leads across all 3 tables with unified structure
   async getLeads() {
     if (!isSupabaseConfigured) {
       return getLocalLeads();
     }
 
-    const { data, error } = await supabase
-      .from('leads')
-      .select(LEAD_SELECT_QUERY)
+    // Try reading from unified view first
+    const { data: viewData, error: viewError } = await supabase
+      .from('all_leads_view')
+      .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching leads from Supabase:', error);
-      return getLocalLeads();
+    if (!viewError && viewData) {
+      return viewData.map(row => this.mapFromDb(row));
     }
 
-    return data.map(row => this.mapFromDb(row));
+    // Fallback: Fetch directly from central leads table and join
+    try {
+      const { data: leadsData, error: leadsError } = await supabase
+        .from('leads')
+        .select(`
+          id,
+          lead_no,
+          lead_type_id,
+          created_at,
+          updated_at,
+          real_estate_id,
+          insurance_id,
+          mutual_fund_id,
+          master_lead_types!lead_type_id (id, lead_type),
+          real_state!real_estate_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name)),
+          insurance!insurance_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name)),
+          mutual_fund!mutual_fund_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name))
+        `)
+        .order('created_at', { ascending: false });
+
+      if (!leadsError && leadsData) {
+        return leadsData.map(l => {
+          const detail = l.real_state || l.insurance || l.mutual_fund || {};
+          return this.mapFromDb({
+            ...detail,
+            id: l.id,
+            detail_id: detail.id,
+            lead_no: l.lead_no,
+            lead_type_id: l.lead_type_id,
+            lead_type: l.master_lead_types?.lead_type,
+            lead_receiver: detail.master_lead_receivers?.person_name,
+            lead_source: detail.master_lead_sources?.lead_source,
+            caller_assigned: detail.master_caller_names?.person_name
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('Fallback leads fetch error:', err);
+    }
+
+    return getLocalLeads();
   },
 
-  // Save single new lead
+  // Save single new lead: writes record to type table first, then registers in leads table via FK
   async saveLead(leadData) {
     if (!isSupabaseConfigured) {
       const res = saveLocalLead(leadData);
@@ -153,24 +192,87 @@ export const leadApi = {
     }
 
     const fkIds = await this.resolveLeadFkIds(leadData);
-    const payload = this.mapToDb(leadData, fkIds);
-    const { data, error } = await supabase
-      .from('leads')
-      .insert(payload)
-      .select(LEAD_SELECT_QUERY)
-      .single();
+    const tableName = this.getTableNameForLeadType(leadData.leadType);
 
-    if (error) {
-      console.error('Error saving lead to Supabase:', error);
-      saveLocalLead(leadData);
-      refreshBadgeCounts();
-      throw error;
+    // 1. Prepare detail payload for the specific table (NO lead_id column!)
+    const detailPayload = {
+      lead_receiver_id: fkIds.lead_receiver_id,
+      lead_source_id: fkIds.lead_source_id,
+      caller_assigned_id: fkIds.caller_assigned_id,
+      referencer_name: leadData.referencerName || null,
+      customer_name: leadData.customerName || leadData.personName || '',
+      customer_number: leadData.customerNumber || leadData.number || '',
+      customer_email: leadData.customerEmail || leadData.email || null,
+      dob: leadData.dob || null,
+      customer_address: leadData.customerAddress || leadData.location || null,
+      occupation: leadData.occupation || null,
+      investment_budget: leadData.investmentBudget || null,
+      when_to_buy_plan: leadData.whenToBuyPlan || null,
+      remarks: leadData.remarks || null,
+      timestamp: leadData.timestamp || new Date().toISOString()
+    };
+
+    if (tableName === 'real_state') {
+      detailPayload.site_location = leadData.siteLocation || null;
+      detailPayload.requirement = leadData.requirement || null;
+    } else if (tableName === 'insurance') {
+      detailPayload.insurance_type = leadData.insuranceType || 'Insurance';
+      detailPayload.insurance_sub_type = leadData.insuranceSubType || null;
+      detailPayload.any_desease = leadData.anyDesease || null;
     }
 
-    const created = this.mapFromDb(data);
-    saveLocalLead(created);
+    const { data: detailData, error: detailError } = await supabase
+      .from(tableName)
+      .insert(detailPayload)
+      .select()
+      .single();
+
+    if (detailError) {
+      console.error(`Error inserting into ${tableName}:`, detailError);
+      saveLocalLead(leadData);
+      refreshBadgeCounts();
+      throw detailError;
+    }
+
+    // 2. Register into central leads table via Foreign Key
+    const parentPayload = {
+      lead_no: leadData.leadNo,
+      lead_type_id: fkIds.lead_type_id,
+      real_estate_id: tableName === 'real_state' ? detailData.id : null,
+      insurance_id: tableName === 'insurance' ? detailData.id : null,
+      mutual_fund_id: tableName === 'mutual_fund' ? detailData.id : null
+    };
+
+    const { data: parentLead, error: parentError } = await supabase
+      .from('leads')
+      .insert(parentPayload)
+      .select()
+      .single();
+
+    if (parentError) {
+      console.error('Error inserting into central leads table:', parentError);
+      // Clean up child record
+      await supabase.from(tableName).delete().eq('id', detailData.id);
+      saveLocalLead(leadData);
+      refreshBadgeCounts();
+      throw parentError;
+    }
+
+    const createdLead = this.mapFromDb({
+      ...detailData,
+      id: parentLead.id,
+      detail_id: detailData.id,
+      lead_no: parentLead.lead_no,
+      lead_type_id: parentLead.lead_type_id,
+      lead_type: leadData.leadType,
+      lead_receiver: leadData.leadReceiver,
+      lead_source: leadData.leadSource,
+      caller_assigned: leadData.callerAssigned
+    });
+
+    saveLocalLead(createdLead);
     refreshBadgeCounts();
-    return created;
+    return createdLead;
   },
 
   // Update existing lead by ID or Lead No
@@ -181,53 +283,85 @@ export const leadApi = {
       return res;
     }
 
+    const isUuid = idOrLeadNo.includes('-');
+    // Find parent lead first to know which FK is populated
+    const parentQuery = supabase.from('leads').select('id, lead_no, lead_type_id, real_estate_id, insurance_id, mutual_fund_id, master_lead_types(lead_type)');
+    const { data: parentData } = isUuid
+      ? await parentQuery.eq('id', idOrLeadNo).limit(1)
+      : await parentQuery.eq('lead_no', idOrLeadNo).limit(1);
+
+    const parentLead = parentData && parentData[0] ? parentData[0] : null;
+    const leadId = parentLead ? parentLead.id : (isUuid ? idOrLeadNo : null);
+
+    const leadType = updatedFields.leadType || parentLead?.master_lead_types?.lead_type;
+    const tableName = this.getTableNameForLeadType(leadType);
     const resolvedFks = await this.resolveLeadFkIds(updatedFields);
 
-    const payload = {};
-    if (updatedFields.leadTypeId !== undefined || updatedFields.leadType !== undefined) {
-      payload.lead_type_id = resolvedFks.lead_type_id;
-    }
+    const detailId = parentLead
+      ? (parentLead.real_estate_id || parentLead.insurance_id || parentLead.mutual_fund_id)
+      : null;
+
+    const detailPayload = {};
     if (updatedFields.leadReceiverId !== undefined || updatedFields.leadReceiver !== undefined) {
-      payload.lead_receiver_id = resolvedFks.lead_receiver_id;
+      detailPayload.lead_receiver_id = resolvedFks.lead_receiver_id;
     }
     if (updatedFields.leadSourceId !== undefined || updatedFields.leadSource !== undefined) {
-      payload.lead_source_id = resolvedFks.lead_source_id;
+      detailPayload.lead_source_id = resolvedFks.lead_source_id;
     }
     if (updatedFields.callerAssignedId !== undefined || updatedFields.callerAssigned !== undefined) {
-      payload.caller_assigned_id = resolvedFks.caller_assigned_id;
+      detailPayload.caller_assigned_id = resolvedFks.caller_assigned_id;
+    }
+    if (updatedFields.referencerName !== undefined) detailPayload.referencer_name = updatedFields.referencerName;
+    if (updatedFields.customerName !== undefined || updatedFields.personName !== undefined) {
+      detailPayload.customer_name = updatedFields.customerName || updatedFields.personName;
+    }
+    if (updatedFields.customerNumber !== undefined || updatedFields.number !== undefined) {
+      detailPayload.customer_number = updatedFields.customerNumber || updatedFields.number;
+    }
+    if (updatedFields.customerEmail !== undefined || updatedFields.email !== undefined) {
+      detailPayload.customer_email = updatedFields.customerEmail || updatedFields.email;
+    }
+    if (updatedFields.dob !== undefined) detailPayload.dob = updatedFields.dob;
+    if (updatedFields.occupation !== undefined) detailPayload.occupation = updatedFields.occupation;
+    if (updatedFields.investmentBudget !== undefined) detailPayload.investment_budget = updatedFields.investmentBudget;
+    if (updatedFields.customerAddress !== undefined || updatedFields.location !== undefined) {
+      detailPayload.customer_address = updatedFields.customerAddress || updatedFields.location;
+    }
+    if (updatedFields.whenToBuyPlan !== undefined) detailPayload.when_to_buy_plan = updatedFields.whenToBuyPlan;
+    if (updatedFields.remarks !== undefined) detailPayload.remarks = updatedFields.remarks;
+
+    // Type-specific field updates
+    if (tableName === 'real_state') {
+      if (updatedFields.siteLocation !== undefined) detailPayload.site_location = updatedFields.siteLocation;
+      if (updatedFields.requirement !== undefined) detailPayload.requirement = updatedFields.requirement;
+    } else if (tableName === 'insurance') {
+      if (updatedFields.insuranceType !== undefined) detailPayload.insurance_type = updatedFields.insuranceType;
+      if (updatedFields.insuranceSubType !== undefined) detailPayload.insurance_sub_type = updatedFields.insuranceSubType;
+      if (updatedFields.anyDesease !== undefined) detailPayload.any_desease = updatedFields.anyDesease;
     }
 
-    if (updatedFields.personName !== undefined) payload.person_name = updatedFields.personName;
-    if (updatedFields.number !== undefined) payload.number = updatedFields.number;
-    if (updatedFields.email !== undefined) payload.email = updatedFields.email;
-    if (updatedFields.dob !== undefined) payload.dob = updatedFields.dob;
-    if (updatedFields.occupation !== undefined) payload.occupation = updatedFields.occupation;
-    if (updatedFields.investmentBudget !== undefined) payload.investment_budget = updatedFields.investmentBudget;
-    if (updatedFields.location !== undefined) payload.location = updatedFields.location;
-    if (updatedFields.whenToBuyPlan !== undefined) payload.when_to_buy_plan = updatedFields.whenToBuyPlan;
-    if (updatedFields.requirement !== undefined) payload.requirement = updatedFields.requirement;
-    if (updatedFields.remarks !== undefined) payload.remarks = updatedFields.remarks;
-    payload.updated_at = new Date().toISOString();
+    detailPayload.updated_at = new Date().toISOString();
 
-    const isUuid = idOrLeadNo.includes('-');
-    const query = supabase.from('leads').update(payload);
-    const { data, error } = isUuid
-      ? await query.eq('id', idOrLeadNo).select(LEAD_SELECT_QUERY)
-      : await query.eq('lead_no', idOrLeadNo).select(LEAD_SELECT_QUERY);
+    if (detailId) {
+      const { error } = await supabase
+        .from(tableName)
+        .update(detailPayload)
+        .eq('id', detailId);
 
-    if (error) {
-      console.error('Error updating lead in Supabase:', error);
-      updateLocalLead(idOrLeadNo, updatedFields);
-      refreshBadgeCounts();
-      throw error;
+      if (error) {
+        console.error(`Error updating lead in ${tableName}:`, error);
+        updateLocalLead(idOrLeadNo, updatedFields);
+        refreshBadgeCounts();
+        throw error;
+      }
     }
 
     updateLocalLead(idOrLeadNo, updatedFields);
     refreshBadgeCounts();
-    return data && data[0] ? this.mapFromDb(data[0]) : null;
+    return { id: leadId, ...updatedFields };
   },
 
-  // Delete lead
+  // Delete lead: Deleting from leads table cascades, or deletes corresponding child record
   async deleteLead(idOrLeadNo) {
     if (!isSupabaseConfigured) {
       const res = deleteLocalLead(idOrLeadNo);
@@ -236,14 +370,24 @@ export const leadApi = {
     }
 
     const isUuid = idOrLeadNo.includes('-');
-    const query = supabase.from('leads').delete();
-    const { error } = isUuid
-      ? await query.eq('id', idOrLeadNo)
-      : await query.eq('lead_no', idOrLeadNo);
+    const parentQuery = supabase.from('leads').select('id, lead_no, real_estate_id, insurance_id, mutual_fund_id');
+    const { data: parentData } = isUuid
+      ? await parentQuery.eq('id', idOrLeadNo).limit(1)
+      : await parentQuery.eq('lead_no', idOrLeadNo).limit(1);
 
-    if (error) {
-      console.error('Error deleting lead from Supabase:', error);
-      throw error;
+    const parentLead = parentData && parentData[0] ? parentData[0] : null;
+
+    if (parentLead) {
+      if (parentLead.real_estate_id) {
+        await supabase.from('real_state').delete().eq('id', parentLead.real_estate_id);
+      }
+      if (parentLead.insurance_id) {
+        await supabase.from('insurance').delete().eq('id', parentLead.insurance_id);
+      }
+      if (parentLead.mutual_fund_id) {
+        await supabase.from('mutual_fund').delete().eq('id', parentLead.mutual_fund_id);
+      }
+      await supabase.from('leads').delete().eq('id', parentLead.id);
     }
 
     deleteLocalLead(idOrLeadNo);
@@ -252,56 +396,13 @@ export const leadApi = {
 
   // Bulk add leads
   async bulkSaveLeads(leadsArray) {
-    if (!isSupabaseConfigured) {
-      leadsArray.forEach(l => saveLocalLead(l));
-      refreshBadgeCounts();
-      return;
+    const results = [];
+    for (const lead of leadsArray) {
+      const saved = await this.saveLead(lead);
+      results.push(saved);
     }
-
-    // Pre-fetch master tables to efficiently map string names to FK IDs
-    const [types, receivers, sources, callers] = await Promise.all([
-      supabase.from('master_lead_types').select('id, lead_type'),
-      supabase.from('master_lead_receivers').select('id, person_name, lead_type_id'),
-      supabase.from('master_lead_sources').select('id, lead_source'),
-      supabase.from('master_caller_names').select('id, person_name, lead_type_id')
-    ]);
-
-    const typeMap = new Map((types.data || []).map(t => [t.lead_type, t.id]));
-    const sourceMap = new Map((sources.data || []).map(s => [s.lead_source, s.id]));
-
-    const payloads = leadsArray.map(l => {
-      const typeId = l.leadTypeId || typeMap.get(l.leadType) || null;
-
-      const receiverRow = (receivers.data || []).find(r => r.person_name === l.leadReceiver && (!typeId || r.lead_type_id === typeId))
-        || (receivers.data || []).find(r => r.person_name === l.leadReceiver);
-
-      const callerRow = (callers.data || []).find(c => c.person_name === l.callerAssigned && (!typeId || c.lead_type_id === typeId))
-        || (callers.data || []).find(c => c.person_name === l.callerAssigned);
-
-      const fkIds = {
-        lead_type_id: typeId,
-        lead_receiver_id: l.leadReceiverId || (receiverRow ? receiverRow.id : null),
-        lead_source_id: l.leadSourceId || sourceMap.get(l.leadSource) || null,
-        caller_assigned_id: l.callerAssignedId || (callerRow ? callerRow.id : null)
-      };
-      return this.mapToDb(l, fkIds);
-    });
-
-    const { data, error } = await supabase
-      .from('leads')
-      .insert(payloads)
-      .select(LEAD_SELECT_QUERY);
-
-    if (error) {
-      console.error('Error bulk inserting leads into Supabase:', error);
-      leadsArray.forEach(l => saveLocalLead(l));
-      refreshBadgeCounts();
-      throw error;
-    }
-
-    leadsArray.forEach(l => saveLocalLead(l));
     refreshBadgeCounts();
-    return data.map(row => this.mapFromDb(row));
+    return results;
   },
 
   // Batch assign caller to multiple leads

@@ -198,7 +198,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
           the Excel file itself only needs each lead's own details.
         </p>
 
-        <div className="grid grid-cols-2 gap-2 md:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
           <div className="space-y-1 col-span-2 sm:col-span-1">
             <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Lead Type *</label>
             <SearchableDropdown

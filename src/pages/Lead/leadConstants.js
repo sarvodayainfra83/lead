@@ -1,10 +1,11 @@
 // Shared constants for the Lead module
 
-export const LEAD_TYPES = ['Real Estate', 'Mutual Fund', 'Life Insurance'];
+export const LEAD_TYPES = ['Real Estate', 'Mutual Fund', 'Insurance'];
 
 export const LEAD_TYPE_PREFIX = {
   'Real Estate': 'LR',
   'Mutual Fund': 'LM',
+  'Insurance': 'LI',
   'Life Insurance': 'LI'
 };
 
@@ -33,3 +34,36 @@ export const generateLeadNo = (leadType, existingLeads) => {
     }, 0);
   return `${prefix}-${String(maxSeq + 1).padStart(3, '0')}`;
 };
+
+export const INVESTMENT_BUDGET_OPTIONS = [
+  { value: '10k - 20k', label: '10k - 20k' },
+  { value: '20k - 50k', label: '20k - 50k' },
+  { value: '50k - 70k', label: '50k - 70k' },
+  { value: '70k - 1 Lakh', label: '70k - 1 Lakh' },
+  { value: '1 Lakh - 1.5 Lakh', label: '1 Lakh - 1.5 Lakh' },
+  { value: '1.5 Lakh - 2 Lakh', label: '1.5 Lakh - 2 Lakh' },
+  { value: '2 Lakh - 3 Lakh', label: '2 Lakh - 3 Lakh' },
+  { value: '3 Lakh - 5 Lakh', label: '3 Lakh - 5 Lakh' },
+  { value: 'Above 5 Lakh', label: 'Above 5 Lakh' }
+];
+
+export const REQUIREMENT_OPTIONS = [
+  { value: '1 BHK', label: '1 BHK' },
+  { value: '2 BHK', label: '2 BHK' },
+  { value: '3 BHK', label: '3 BHK' },
+  { value: '4 BHK', label: '4 BHK' },
+  { value: '5+ BHK', label: '5+ BHK' },
+  { value: 'Flat', label: 'Flat' },
+  { value: 'Bungalow', label: 'Bungalow' },
+  { value: 'Villa', label: 'Villa' },
+  { value: 'Penthouse', label: 'Penthouse' },
+  { value: 'Row House', label: 'Row House' },
+  { value: 'Commercial Shop', label: 'Commercial Shop' },
+  { value: 'Commercial Office', label: 'Commercial Office' },
+  { value: 'Plot / Land', label: 'Plot / Land' },
+  { value: 'Farmhouse', label: 'Farmhouse' },
+  { value: 'Industrial / Warehouse', label: 'Industrial / Warehouse' },
+  { value: 'Other', label: 'Other' }
+];
+
+

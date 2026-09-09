@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { FileSpreadsheet, Search, RotateCcw, Phone, Eye } from 'lucide-react';
+import { FileSpreadsheet, Search, RotateCcw, Phone, Eye, Filter } from 'lucide-react';
 import { callerReportApi } from '../../api/callerReportApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -59,10 +59,11 @@ export default function CallerReport() {
   const [activeCaller, setActiveCaller] = useState(isAdmin ? 'Complete' : (user?.name || user?.id || 'Complete'));
   const [activeMonth, setActiveMonth] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const [callerOptions, setCallerOptions] = useState(
-    isAdmin 
-      ? [{ value: 'Complete', label: 'Complete (All Callers)' }] 
+    isAdmin
+      ? [{ value: 'Complete', label: 'Complete (All Callers)' }]
       : [{ value: user?.name || user?.id, label: user?.name || user?.id }]
   );
   const [monthOptions, setMonthOptions] = useState([{ value: 'All', label: 'All Months' }]);
@@ -309,105 +310,134 @@ export default function CallerReport() {
 
   return (
     <div className="p-0 sm:p-2 md:p-6 space-y-2 md:space-y-4 flex flex-col h-full min-h-0">
-      
-      {/* Top Metrics Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 px-2 sm:px-0">
-        <div className="bg-white border border-indigo-100 rounded-lg p-2 text-center shadow-xs">
-          <p className="text-[9px] uppercase tracking-wider text-gray-400 font-semibold">Total Leads</p>
-          <p className="text-base font-black text-indigo-600">{totals.callingTarget}</p>
-        </div>
-        <div className="bg-white border border-gray-100 rounded-lg p-2 text-center shadow-xs">
-          <p className="text-[9px] uppercase tracking-wider text-gray-500 font-semibold">Connected</p>
-          <p className="text-base font-black text-gray-800">{totals.connected}</p>
-        </div>
-        <div className="bg-white border border-emerald-100 rounded-lg p-2 text-center shadow-xs">
-          <p className="text-[9px] uppercase tracking-wider text-emerald-600 font-semibold">Received</p>
-          <p className="text-base font-black text-emerald-700">{totals.interested}</p>
-        </div>
-        <div className="bg-white border border-amber-100 rounded-lg p-2 text-center shadow-xs">
-          <p className="text-[9px] uppercase tracking-wider text-amber-600 font-semibold">Expected</p>
-          <p className="text-base font-black text-amber-700">{totals.expected || 0}</p>
-        </div>
-        <div className="bg-white border border-red-100 rounded-lg p-2 text-center shadow-xs">
-          <p className="text-[9px] uppercase tracking-wider text-red-600 font-semibold">Not Interested</p>
-          <p className="text-base font-black text-red-700">{totals.notInterested}</p>
-        </div>
-        <div className="bg-white border border-cyan-100 rounded-lg p-2 text-center shadow-xs">
-          <p className="text-[9px] uppercase tracking-wider text-cyan-600 font-semibold">Meeting</p>
-          <p className="text-base font-black text-cyan-700">{totals.meeting}</p>
-        </div>
-        <div className="bg-white border border-orange-100 rounded-lg p-2 text-center shadow-xs col-span-2 sm:col-span-1">
-          <p className="text-[9px] uppercase tracking-wider text-orange-600 font-semibold">No Answer</p>
-          <p className="text-base font-black text-orange-700">{totals.callNotReceived}</p>
-        </div>
-      </div>
 
       {/* Filter Toolbar */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 lg:gap-3 w-full px-2 sm:px-0">
-        <div className="flex flex-wrap xl:flex-nowrap items-center gap-2 lg:gap-3 flex-1">
-          {/* Search Box */}
-          <div className="w-full sm:w-64 relative">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 lg:gap-3 w-full px-2 sm:px-0 flex-shrink-0">
+        {/* Mobile Top Bar */}
+        <div className="flex items-center gap-2 w-full xl:hidden">
+          <div className="flex-1 relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
             <input
               type="text"
               placeholder="Search leads, caller, etc..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2.5 py-1.5 focus:outline-none focus:border-indigo-500 text-xs h-[32px] lg:h-[38px] shadow-xs"
+              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2.5 py-1.5 focus:outline-none focus:border-indigo-500 text-xs h-[32px] shadow-xs"
+            />
+          </div>
+          <button
+            onClick={() => setShowMobileFilters(!showMobileFilters)}
+            className={`flex items-center justify-center rounded-lg shadow-xs h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            title="Toggle Filters"
+          >
+            <Filter size={14} />
+          </button>
+          <button
+            onClick={handleResetFilters}
+            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg h-[32px] w-[32px] flex-shrink-0 shadow-xs active:scale-95 hover:bg-gray-100"
+            title="Reset Filters"
+          >
+            <RotateCcw size={14} />
+          </button>
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg h-[32px] px-2.5 text-xs font-semibold shadow-xs flex-shrink-0"
+            title="Export Excel"
+          >
+            <FileSpreadsheet size={15} />
+          </button>
+        </div>
+
+        {/* Mobile Collapsible Filters */}
+        <div className={`${showMobileFilters ? 'grid' : 'hidden'} xl:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full`}>
+          <SearchableDropdown
+            options={LEAD_TYPE_OPTIONS}
+            value={activeLeadType}
+            onChange={setActiveLeadType}
+            placeholder="All Lead Type"
+            height="h-[32px]"
+          />
+          <SearchableDropdown
+            options={callerOptions}
+            value={activeCaller}
+            onChange={setActiveCaller}
+            placeholder="Select calling person"
+            height="h-[32px]"
+          />
+          <SearchableDropdown
+            options={monthOptions}
+            value={activeMonth}
+            onChange={setActiveMonth}
+            placeholder="Select month"
+            height="h-[32px]"
+          />
+        </div>
+
+        {/* Desktop Row */}
+        <div className="hidden xl:flex items-center gap-3 flex-1">
+          {/* Search Box */}
+          <div className="w-64 relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <input
+              type="text"
+              placeholder="Search leads, caller, etc..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2.5 py-1.5 focus:outline-none focus:border-indigo-500 text-xs h-[38px] shadow-xs"
             />
           </div>
 
           {/* Lead Type Dropdown */}
-          <div className="w-full sm:w-48 flex-shrink-0">
+          <div className="w-48 flex-shrink-0">
             <SearchableDropdown
               options={LEAD_TYPE_OPTIONS}
               value={activeLeadType}
               onChange={setActiveLeadType}
               placeholder="All Lead Type"
-              height="h-[32px] lg:h-[38px]"
+              height="h-[38px]"
             />
           </div>
 
           {/* Caller Dropdown */}
-          <div className="w-full sm:w-52 flex-shrink-0">
+          <div className="w-52 flex-shrink-0">
             <SearchableDropdown
               options={callerOptions}
               value={activeCaller}
               onChange={setActiveCaller}
               placeholder="Select calling person"
-              height="h-[32px] lg:h-[38px]"
+              height="h-[38px]"
             />
           </div>
 
           {/* Month Dropdown */}
-          <div className="w-full sm:w-44 flex-shrink-0">
+          <div className="w-44 flex-shrink-0">
             <SearchableDropdown
               options={monthOptions}
               value={activeMonth}
               onChange={setActiveMonth}
               placeholder="Select month"
-              height="h-[32px] lg:h-[38px]"
+              height="h-[38px]"
             />
           </div>
 
           {/* Reset Filters */}
           <button
             onClick={handleResetFilters}
-            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[32px] lg:w-[38px] h-[32px] lg:h-[38px] hover:bg-gray-100 transition shadow-xs flex-shrink-0"
+            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[38px] h-[38px] hover:bg-gray-100 transition shadow-xs flex-shrink-0"
             title="Reset Filters"
           >
             <RotateCcw size={15} />
           </button>
-        </div>
 
-        {/* Excel Export Button */}
-        <button
-          onClick={handleExportExcel}
-          className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 h-[32px] lg:h-[38px] text-xs font-semibold shadow-xs transition xl:ml-auto flex-shrink-0"
-        >
-          <FileSpreadsheet size={15} />
-          Export Excel ({filteredRecords.length})
-        </button>
+          {/* Excel Export Button */}
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 h-[38px] text-xs font-semibold shadow-xs transition ml-auto flex-shrink-0"
+          >
+            <FileSpreadsheet size={15} />
+            Export Excel ({filteredRecords.length})
+          </button>
+        </div>
       </div>
 
       {/* Main Table */}

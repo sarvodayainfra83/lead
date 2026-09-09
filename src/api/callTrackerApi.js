@@ -29,7 +29,7 @@ export const callTrackerApi = {
       lead_no: entry.leadNo,
       status: entry.status,
       customer_said: entry.customerSaid || '',
-      next_date: entry.nextDate,
+      next_date: entry.nextDate && String(entry.nextDate).trim() ? String(entry.nextDate).trim() : null,
       timestamp: entry.timestamp,
       timestamp_ms: entry.timestampMs || Date.now()
     };
@@ -56,84 +56,24 @@ export const callTrackerApi = {
 
   // Get all call trackers joined with full lead and master details via Foreign Key
   async getCallTrackersWithLeads() {
-    if (!isSupabaseConfigured) {
-      const [leads, trackers] = await Promise.all([
-        leadApi.getLeads(),
-        getLocalCallTrackers()
-      ]);
-      const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
-      return trackers.map(t => ({
-        ...t,
-        ...(leadsById[t.leadId] || {})
-      }));
-    }
-
-    const { data, error } = await supabase
-      .from('call_trackers')
-      .select(`
-        *,
-        leads!lead_id (
-          id,
-          lead_no,
-          person_name,
-          number,
-          email,
-          dob,
-          occupation,
-          investment_budget,
-          location,
-          when_to_buy_plan,
-          requirement,
-          remarks,
-          timestamp,
-          master_lead_types!lead_type_id (id, lead_type),
-          master_lead_receivers!lead_receiver_id (id, person_name),
-          master_lead_sources!lead_source_id (id, lead_source),
-          master_caller_names!caller_assigned_id (id, person_name)
-        )
-      `)
-      .order('timestamp_ms', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching joined call trackers from Supabase:', error);
-      const [leads, trackers] = await Promise.all([
-        leadApi.getLeads(),
-        getLocalCallTrackers()
-      ]);
-      const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
-      return trackers.map(t => ({
-        ...t,
-        ...(leadsById[t.leadId] || {})
-      }));
-    }
-
-    return (data || []).map(row => {
-      const lead = row.leads || {};
+    const [leads, trackers] = await Promise.all([
+      leadApi.getLeads(),
+      this.getCallTrackers()
+    ]);
+    const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
+    return trackers.map(t => {
+      const lead = leadsById[t.leadId] || {};
       return {
-        id: row.id,
-        leadId: row.lead_id,
-        leadNo: row.lead_no || lead.lead_no || '',
-        status: row.status,
-        customerSaid: row.customer_said || '',
-        nextDate: row.next_date || '',
-        timestamp: row.timestamp || '',
-        timestampMs: Number(row.timestamp_ms) || 0,
-        // Joined Lead details via Foreign Key
-        personName: lead.person_name || '',
-        number: lead.number || '',
-        email: lead.email || '',
-        dob: lead.dob || '',
-        occupation: lead.occupation || '',
-        investmentBudget: lead.investment_budget || '',
-        location: lead.location || '',
-        whenToBuyPlan: lead.when_to_buy_plan || '',
-        requirement: lead.requirement || '',
-        remarks: lead.remarks || '',
+        ...t,
+        ...lead,
+        id: t.id,
+        leadId: t.leadId,
+        leadNo: t.leadNo || lead.leadNo || '',
         leadDate: lead.timestamp || '',
-        leadType: lead.master_lead_types?.lead_type || lead.lead_type || '',
-        leadReceiver: lead.master_lead_receivers?.person_name || lead.lead_receiver || '',
-        leadSource: lead.master_lead_sources?.lead_source || lead.lead_source || '',
-        callerAssigned: lead.master_caller_names?.person_name || lead.caller_assigned || ''
+        personName: lead.customerName || lead.personName || '',
+        number: lead.customerNumber || lead.number || '',
+        email: lead.customerEmail || lead.email || '',
+        location: lead.customerAddress || lead.location || ''
       };
     });
   },

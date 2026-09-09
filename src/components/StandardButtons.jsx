@@ -43,10 +43,10 @@ export const FormActionButtons = ({
       <button
         type="button"
         onClick={onCancel}
-        className="flex-1 px-2 md:px-4 py-2 border border-gray-200 rounded-lg text-gray-500 font-bold hover:bg-gray-50 transition-all active:scale-95 text-xs uppercase tracking-widest flex items-center justify-center gap-2"
+        className="flex-1 px-3 sm:px-4 py-2 border border-gray-200 rounded-lg text-gray-600 font-bold hover:bg-gray-50 transition-all active:scale-95 text-xs uppercase tracking-wider flex items-center justify-center gap-1.5"
       >
-        <XCircle size={18} className="block md:hidden" />
-        <span className="hidden md:block">{cancelText}</span>
+        <XCircle size={15} />
+        <span>{cancelText}</span>
       </button>
 
       {extraButton && (
@@ -60,17 +60,17 @@ export const FormActionButtons = ({
         form={formId}
         onClick={onSubmit}
         disabled={loading}
-        className="flex-[1.5] bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg transition-all active:scale-95 shadow-md text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="flex-[1.5] bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 sm:px-4 rounded-lg transition-all active:scale-95 shadow-md text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
       >
         {loading ? (
           <>
-            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            <span className="hidden md:block">Processing...</span>
+            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <span>Processing...</span>
           </>
         ) : (
           <>
-            <Save size={18} className="block md:hidden" />
-            <span className="hidden md:block">{submitText}</span>
+            <Save size={15} />
+            <span>{submitText}</span>
           </>
         )}
       </button>

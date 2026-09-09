@@ -103,20 +103,20 @@ export default function LeadType({ setHeaderAction }) {
 
   return (
     <div className="p-2 sm:p-4 md:p-6 space-y-3 flex flex-col h-full min-h-0">      <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
-        <DataTable
-          headers={tableHeaders}
-          data={paginatedRows}
-          renderRow={renderRow}
-          renderCard={renderCard}
-          minWidth="500px"
-          currentPage={currentPage}
-          totalPages={totalPages}
-          itemsPerPage={itemsPerPage}
-          onPageChange={setCurrentPage}
-          onItemsPerPageChange={(val) => { setItemsPerPage(val); setCurrentPage(1); }}
-          totalResults={sortedRows.length}
-        />
-      </div>
+      <DataTable
+        headers={tableHeaders}
+        data={paginatedRows}
+        renderRow={renderRow}
+        renderCard={renderCard}
+        minWidth="500px"
+        currentPage={currentPage}
+        totalPages={totalPages}
+        itemsPerPage={itemsPerPage}
+        onPageChange={setCurrentPage}
+        onItemsPerPageChange={(val) => { setItemsPerPage(val); setCurrentPage(1); }}
+        totalResults={sortedRows.length}
+      />
+    </div>
 
       <ModalForm
         isOpen={showForm}

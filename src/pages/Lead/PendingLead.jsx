@@ -253,24 +253,24 @@ export default function PendingLead({ setHeaderAction }) {
   useEffect(() => {
     if (setHeaderAction) {
       setHeaderAction(
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           <button
             onClick={handleSaveAssignments}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-4 h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
           >
-            <Save size={15} /> Save
+            <Save size={14} /> Save
           </button>
           <button
             onClick={openAdd}
-            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+            className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
           >
-            <Plus size={16} /> Add Lead
+            <Plus size={15} /> Add Lead
           </button>
           <button
             onClick={openBulkUpload}
-            className="flex items-center gap-1.5 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 rounded-lg px-4 h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+            className="flex items-center gap-1 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
           >
-            <Upload size={16} /> Upload
+            <Upload size={14} /> Upload
           </button>
         </div>
       );

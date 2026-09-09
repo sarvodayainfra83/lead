@@ -50,20 +50,19 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
   const trackers = lead.trackers || [];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center z-[100] p-3 md:p-4 animate-in fade-in duration-200">
-      <div 
-        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl lg:max-w-3xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200"
-        style={{ maxHeight: '82vh' }}
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center z-[100] p-2 sm:p-4 animate-in fade-in duration-200">
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl lg:max-w-3xl max-h-[92dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between bg-white flex-shrink-0">
-          <h2 className="text-xs md:text-sm font-black text-gray-800 uppercase tracking-widest">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-between bg-white flex-shrink-0">
+          <h2 className="text-xs sm:text-sm font-black text-gray-800 uppercase tracking-widest truncate">
             Tracking Status — {lead.leadNo}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-100 transition"
+            className="text-gray-400 hover:text-gray-600 p-1.5 rounded-md hover:bg-gray-100 transition"
             title="Close"
           >
             <X size={16} />
@@ -71,12 +70,15 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
+        <div
+          className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {/* Pre-filled Lead Reference Info */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 border border-gray-200 rounded-lg p-2.5">
             {leadFields.map(({ label, key }) => (
               <div key={key} className="min-w-0">
-                <p className="text-[8px] text-gray-400 uppercase tracking-tighter">{label}</p>
+                <p className="text-[8px] text-gray-400 uppercase tracking-tighter truncate">{label}</p>
                 {key === 'number' ? (
                   <p className="text-[11px] md:text-[12px] text-gray-800 font-medium truncate">
                     {lead.number ? (
@@ -86,7 +88,7 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
                     ) : '-'}
                   </p>
                 ) : key === 'latestStatus' ? (
-                  <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${STATUS_STYLES[lead.latestStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                  <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border truncate ${STATUS_STYLES[lead.latestStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                     {lead.latestStatus || '-'}
                   </span>
                 ) : (
@@ -101,18 +103,18 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
           {/* Tracking History Section */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
+              <h3 className="text-[10px] sm:text-xs font-black text-gray-600 uppercase tracking-widest">
                 Call History ({trackers.length})
               </h3>
             </div>
 
             {trackers.length === 0 ? (
-              <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+              <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-200">
                 <p className="text-xs text-gray-500 font-medium">No tracking calls recorded yet.</p>
               </div>
             ) : (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-left text-xs border-collapse">
+              <div className="border border-gray-200 rounded-lg overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse min-w-[520px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-bold uppercase text-[10px] tracking-wider">
                       <th className="px-3 py-2 text-center w-20">Follow Up</th>
@@ -152,10 +154,10 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2.5 border-t border-gray-100 bg-white flex-shrink-0">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-t border-gray-100 bg-white flex-shrink-0">
           <button
             onClick={onClose}
-            className="w-full py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50 transition font-black uppercase tracking-widest"
+            className="w-full py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition font-bold uppercase tracking-wider active:scale-95"
           >
             Close
           </button>

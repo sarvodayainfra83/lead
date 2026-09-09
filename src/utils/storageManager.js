@@ -76,7 +76,7 @@ const DEFAULT_COMPANIES = [];
 const DEFAULT_MASTER_LEAD_TYPES = [
   { id: 'mlt-1', serialNo: 1, leadType: 'Real Estate' },
   { id: 'mlt-2', serialNo: 2, leadType: 'Mutual Fund' },
-  { id: 'mlt-3', serialNo: 3, leadType: 'Life Insurance' }
+  { id: 'mlt-3', serialNo: 3, leadType: 'Insurance' }
 ];
 
 const DEFAULT_MASTER_LEAD_SOURCES = [
@@ -84,7 +84,7 @@ const DEFAULT_MASTER_LEAD_SOURCES = [
 ].map((leadSource, i) => ({ id: `mls-${i + 1}`, serialNo: i + 1, leadSource }));
 
 const DEFAULT_MASTER_LEAD_RECEIVERS = (() => {
-  const types = ['Real Estate', 'Mutual Fund', 'Life Insurance'];
+  const types = ['Real Estate', 'Mutual Fund', 'Insurance'];
   const names = ['Rajesh Sharma', 'Amit Patel', 'Priya Iyer'];
   let sn = 0;
   return types.flatMap(leadType => names.map(personName => {
@@ -94,7 +94,7 @@ const DEFAULT_MASTER_LEAD_RECEIVERS = (() => {
 })();
 
 const DEFAULT_MASTER_CALLER_NAMES = (() => {
-  const types = ['Real Estate', 'Mutual Fund', 'Life Insurance'];
+  const types = ['Real Estate', 'Mutual Fund', 'Insurance'];
   const names = ['Rajesh Sharma', 'Amit Patel', 'Priya Iyer'];
   let sn = 0;
   return types.flatMap(leadType => names.map(personName => {

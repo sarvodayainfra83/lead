@@ -275,7 +275,7 @@ export default function Setting() {
         submitText={editRow ? 'Update' : 'Save'}
         maxWidth="max-w-2xl"
       >
-        <div className="grid grid-cols-2 gap-2 md:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
 
           <div className="space-y-1 col-span-2 sm:col-span-1">
             <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Name *</label>
@@ -365,9 +365,9 @@ export default function Setting() {
               <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Page Access</label>
               <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
                 {APP_PAGES.map(page => (
-                  <div key={page.key} className="flex items-center justify-between px-3 py-2 gap-2">
+                  <div key={page.key} className="flex flex-col sm:flex-row sm:items-center justify-between px-3 py-2 gap-1.5 sm:gap-2">
                     <span className="text-[11px] md:text-[13px] text-gray-700 font-medium">{page.label}</span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
                       {ACCESS_LEVELS.map(level => (
                         <label key={level.value} className="flex items-center gap-1 text-[10px] md:text-[11px] text-gray-600 cursor-pointer">
                           <input

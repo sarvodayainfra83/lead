@@ -6,6 +6,7 @@ import { leadApi } from '../../api/leadApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { ENQUIRY_STATUSES, TERMINAL_STATUSES } from './callTrackerConstants';
+import { REQUIREMENT_OPTIONS } from '../Lead/leadConstants';
 
 /**
  * FormTracker
@@ -18,7 +19,14 @@ import { ENQUIRY_STATUSES, TERMINAL_STATUSES } from './callTrackerConstants';
  *   lead    – the lead being called
  *   onSaved – fn() called after a successful save so the parent can refresh
  */
-const initialFormState = { status: '', customerSaid: '', nextDate: '', requirement: '' };
+const initialFormState = {
+  status: '',
+  customerSaid: '',
+  nextDate: '',
+  requirement: '',
+  requirementOption: '',
+  customRequirement: ''
+};
 
 // Read-only reference fields shown at the top of the form
 const infoFields = [
@@ -39,18 +47,52 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
   // Reset the outcome fields whenever a new lead is opened for calling
   useEffect(() => {
     if (lead) {
+      const req = (lead.requirement || '').trim();
+      const isPreset = REQUIREMENT_OPTIONS.some(
+        opt => opt.value !== 'Other' && opt.value.toLowerCase() === req.toLowerCase()
+      );
       setFormData({
         status: '',
         customerSaid: '',
         nextDate: '',
-        requirement: lead.requirement || ''
+        requirement: req,
+        requirementOption: isPreset
+          ? REQUIREMENT_OPTIONS.find(opt => opt.value.toLowerCase() === req.toLowerCase())?.value
+          : (req ? 'Other' : ''),
+        customRequirement: isPreset ? '' : req
       });
     }
   }, [lead]);
 
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+      if (field === 'status' && value?.toLowerCase() === 'not interested') {
+        updated.nextDate = '';
+      }
+      return updated;
+    });
   };
+
+  const handleRequirementOptionChange = (val) => {
+    setFormData(prev => ({
+      ...prev,
+      requirementOption: val,
+      requirement: val === 'Other' ? (prev.customRequirement || '') : val
+    }));
+  };
+
+  const handleCustomRequirementChange = (text) => {
+    setFormData(prev => ({
+      ...prev,
+      customRequirement: text,
+      requirement: text
+    }));
+  };
+
+  const isRealEstate =
+    (lead?.leadType || '').trim().toLowerCase() === 'real estate' ||
+    (lead?.leadNo || '').trim().toUpperCase().startsWith('LR');
 
   const handleClose = () => {
     setFormData({ ...initialFormState });
@@ -61,16 +103,16 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     e.preventDefault();
 
     const showCustomerSaid = formData.status !== 'Call Not Received';
+    const isNotInterested = formData.status?.toLowerCase() === 'not interested';
 
     if (!formData.status) { toast.error('Enquiry Received Status is required'); return; }
     if (showCustomerSaid && !formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
-    if (!formData.nextDate) { toast.error(`${formData.status === 'Received' ? 'Date' : 'Next Date'} is required`); return; }
 
     setLoading(true);
 
     try {
-      // 1. If requirement has been modified or provided, persist it to the lead
-      if (formData.requirement !== undefined && formData.requirement !== lead.requirement) {
+      // 1. If requirement has been modified or provided for real estate leads, persist it to the lead
+      if (isRealEstate && formData.requirement !== undefined && formData.requirement !== lead.requirement) {
         await leadApi.updateLead(lead.id || lead.leadNo, { requirement: formData.requirement });
       }
 
@@ -83,7 +125,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         leadNo: lead.leadNo,
         status: formData.status,
         customerSaid: showCustomerSaid ? formData.customerSaid : '',
-        nextDate: formData.nextDate,
+        nextDate: isNotInterested ? '' : formData.nextDate,
         timestamp,
         timestampMs: now.getTime()
       };
@@ -102,8 +144,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       onSaved?.();
       onClose();
     } catch (err) {
-      console.error('Error saving call tracker / lead:', err);
-      toast.error('Failed to save call tracker details');
+      console.error('Failed to save call log:', err);
+      toast.error('Failed to save call log');
       setLoading(false);
     }
   };
@@ -114,39 +156,51 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     <ModalForm
       isOpen={isOpen}
       onClose={handleClose}
-      title={`Call Tracker — ${lead.leadNo}`}
+      title={`Call Now - ${lead.personName || lead.customerName || 'Lead'} (${lead.leadNo})`}
       onSubmit={handleSubmit}
-      submitText={loading ? 'Saving...' : 'Save'}
+      submitText={loading ? 'Saving...' : 'Save Call Log'}
       maxWidth="max-w-2xl"
     >
-      {/* Pre-filled lead reference info */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 border border-gray-200 rounded-lg p-3 mb-2">
-        {infoFields.map(({ key, label }) => (
-          <div key={key} className="min-w-0">
-            <p className="text-[8px] text-gray-400 uppercase tracking-tighter">{label}</p>
-            <p className="text-[11px] md:text-[12px] text-gray-800 font-medium truncate">{lead[key] || '-'}</p>
+      {/* Lead Details Read-Only Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 border border-gray-200 rounded p-3 text-xs mb-2">
+        {infoFields.map(f => (
+          <div key={f.key} className="space-y-0.5">
+            <span className="text-[10px] text-gray-700 uppercase tracking-tight font-medium">{f.label}</span>
+            <p className="text-gray-900 font-semibold truncate text-[11px] md:text-[12px]">
+              {lead[f.key] || '-'}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 md:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
 
-        {/* Editable Requirement Field */}
-        <div className="space-y-1 col-span-2">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
-            Requirement
-          </label>
-          <div className="relative">
-            <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-            <input
-              type="text"
-              value={formData.requirement}
-              onChange={(e) => handleChange('requirement', e.target.value)}
-              placeholder="Enter or update requirement (e.g. 2BHK, 3BHK, Commercial...)"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+        {/* Editable Requirement Field - Only shown for Real Estate leads */}
+        {isRealEstate && (
+          <div className="space-y-1 col-span-2 animate-in fade-in duration-200">
+            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
+              Requirement
+            </label>
+            <SearchableDropdown
+              options={REQUIREMENT_OPTIONS}
+              value={formData.requirementOption}
+              onChange={handleRequirementOptionChange}
+              placeholder="Select requirement"
             />
+            {formData.requirementOption === 'Other' && (
+              <div className="relative mt-1.5 animate-in fade-in duration-200">
+                <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+                <input
+                  type="text"
+                  value={formData.customRequirement}
+                  onChange={(e) => handleCustomRequirementChange(e.target.value)}
+                  placeholder="Specify other requirement (e.g. Duplex, Farmhouse)"
+                  className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                />
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* Enquiry Received Status */}
         <div className="space-y-1 col-span-2">
@@ -178,21 +232,23 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
               </div>
             )}
 
-            {/* Date / Next Date */}
-            <div className="space-y-1 col-span-2 sm:col-span-1">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
-                {formData.status === 'Received' ? 'Date' : 'Next Date'} *
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-                <input
-                  type="date"
-                  value={formData.nextDate}
-                  onChange={(e) => handleChange('nextDate', e.target.value)}
-                  className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-                />
+            {/* Date / Next Date — not applicable when Not Interested */}
+            {formData.status?.toLowerCase() !== 'not interested' && (
+              <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
+                  {formData.status === 'Received' ? 'Date' : 'Next Date'}
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+                  <input
+                    type="date"
+                    value={formData.nextDate}
+                    onChange={(e) => handleChange('nextDate', e.target.value)}
+                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
       </div>
