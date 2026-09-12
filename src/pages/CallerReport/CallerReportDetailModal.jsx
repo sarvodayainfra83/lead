@@ -117,42 +117,78 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
                 <p className="text-xs text-gray-500 font-medium">No tracking calls recorded yet.</p>
               </div>
             ) : (
-              <div className="border border-gray-200 rounded-lg overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse min-w-[520px]">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="px-3 py-2 text-center w-20">Follow Up</th>
-                      <th className="px-3 py-2 text-center w-24">Call Date</th>
-                      <th className="px-3 py-2 text-center w-28">Status</th>
-                      <th className="px-3 py-2">What Customer Said</th>
-                      <th className="px-3 py-2 text-center w-24">Next Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
-                    {trackers.map((t, idx) => (
-                      <tr key={t.id || idx} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="px-3 py-2 text-center font-bold text-indigo-600 whitespace-nowrap text-[11px]">
-                          #{t.followUpNo || idx + 1}
-                        </td>
-                        <td className="px-3 py-2 text-center text-gray-600 whitespace-nowrap text-[11px]">
-                          {formatDate(t.timestamp)}
-                        </td>
-                        <td className="px-3 py-2 text-center whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${STATUS_STYLES[t.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+              <>
+                <div className="border border-gray-200 rounded-lg overflow-x-auto hidden md:block">
+                  <table className="w-full text-left text-xs border-collapse min-w-[520px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 font-bold uppercase text-[10px] tracking-wider">
+                        <th className="px-3 py-2 text-center w-20">Follow Up</th>
+                        <th className="px-3 py-2 text-center w-24">Call Date</th>
+                        <th className="px-3 py-2 text-center w-28">Status</th>
+                        <th className="px-3 py-2">What Customer Said</th>
+                        <th className="px-3 py-2 text-center w-24">Next Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 bg-white">
+                      {trackers.map((t, idx) => (
+                        <tr key={t.id || idx} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-3 py-2 text-center font-bold text-indigo-600 whitespace-nowrap text-[11px]">
+                            #{t.followUpNo || idx + 1}
+                          </td>
+                          <td className="px-3 py-2 text-center text-gray-600 whitespace-nowrap text-[11px]">
+                            {formatDate(t.timestamp)}
+                          </td>
+                          <td className="px-3 py-2 text-center whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${STATUS_STYLES[t.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                              {t.status || '-'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-800 text-[11px] leading-relaxed break-words">
+                            {t.customerSaid || '-'}
+                          </td>
+                          <td className={`px-3 py-2 text-center whitespace-nowrap text-[11px] ${NEXT_DATE_CLASS}`}>
+                            {formatDate(t.nextDate)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Card Layout */}
+                <div className="md:hidden space-y-2">
+                  {trackers.map((t, idx) => (
+                    <div key={t.id || idx} className="bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+                      <div className="flex justify-between items-start border-b border-gray-100 pb-2">
+                        <div>
+                          <span className="text-[9px] text-indigo-500 font-bold uppercase tracking-widest block mb-0.5">
+                            Follow Up #{t.followUpNo || idx + 1}
+                          </span>
+                          <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${STATUS_STYLES[t.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                             {t.status || '-'}
                           </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-800 text-[11px] leading-relaxed break-words">
-                          {t.customerSaid || '-'}
-                        </td>
-                        <td className={`px-3 py-2 text-center whitespace-nowrap text-[11px] ${NEXT_DATE_CLASS}`}>
-                          {formatDate(t.nextDate)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[9px] text-gray-400 uppercase tracking-tighter">Call Date</p>
+                          <p className="text-[11px] text-gray-700 font-medium">{formatDate(t.timestamp)}</p>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <p className="text-[9px] text-gray-400 uppercase tracking-tighter mb-0.5">What Customer Said</p>
+                        <p className="text-[11px] text-gray-800 leading-relaxed">{t.customerSaid || '-'}</p>
+                      </div>
+
+                      {t.nextDate && (
+                        <div className="pt-2 mt-2 border-t border-gray-50">
+                          <p className="text-[9px] text-gray-400 uppercase tracking-tighter">Next Date</p>
+                          <p className={`text-[11px] font-medium ${NEXT_DATE_CLASS}`}>{formatDate(t.nextDate)}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Calendar, MessageSquare, ClipboardList, Clock } from 'lucide-react';
+import { MessageSquare, ClipboardList, Clock } from 'lucide-react';
 import { callTrackerApi } from '../../api/callTrackerApi';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
@@ -372,15 +372,12 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
                   {formData.status === 'Future Plan Date' ? 'Future Plan Date' : 'Site Visit/Meeting Date'}
                 </label>
-                <div className="relative">
-                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-                  <input
-                    type="date"
-                    value={formData.nextDate}
-                    onChange={(e) => handleChange('nextDate', e.target.value)}
-                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-                  />
-                </div>
+                <input
+                  type="date"
+                  value={formData.nextDate}
+                  onChange={(e) => handleChange('nextDate', e.target.value)}
+                  className="w-full border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
+                />
               </div>
             )}
 

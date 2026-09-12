@@ -255,11 +255,11 @@ export default function PendingLead({ setHeaderAction }) {
   useEffect(() => {
     if (setHeaderAction) {
       setHeaderAction(
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap w-full sm:w-auto">
           {canEdit && (
             <button
               onClick={handleSaveAssignments}
-              className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
             >
               <Save size={14} /> Save
             </button>
@@ -267,7 +267,7 @@ export default function PendingLead({ setHeaderAction }) {
           {canEdit && (
             <button
               onClick={openAdd}
-              className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
             >
               <Plus size={15} /> Add Lead
             </button>
@@ -275,7 +275,7 @@ export default function PendingLead({ setHeaderAction }) {
           {canEdit && (
             <button
               onClick={openBulkUpload}
-              className="flex items-center gap-1 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
             >
               <Upload size={14} /> Upload
             </button>

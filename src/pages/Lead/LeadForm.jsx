@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  User, Phone, Mail, Calendar,
+  User, Phone, Mail,
   Briefcase, Wallet, MapPin, Clock, MessageSquare, ClipboardList, Shield, Activity, UserCheck
 } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
@@ -378,18 +378,16 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* DOB */}
+        {/* DOB — no custom left icon: native date pickers paint their own opaque content over
+            the full input box, hiding an overlaid icon instead of showing it. */}
         <div className="space-y-1 col-span-2 sm:col-span-1">
           <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer DOB</label>
-          <div className="relative">
-            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-            <input
-              type="date"
-              value={formData.dob}
-              onChange={(e) => handleChange('dob', e.target.value)}
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
+          <input
+            type="date"
+            value={formData.dob}
+            onChange={(e) => handleChange('dob', e.target.value)}
+            className="w-full border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
+          />
         </div>
 
         {/* Customer Address */}

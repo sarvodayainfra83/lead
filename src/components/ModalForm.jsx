@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { FormActionButtons } from './StandardButtons';
 
 /**
@@ -9,6 +10,7 @@ import { FormActionButtons } from './StandardButtons';
  * - Reduced vertical gaps (space-y-2) for maximum density.
  * - Compacted padding in Header and Body.
  * - Maintains fixed dimensions and invisible scrollbar.
+ * - Uses Portal to escape parent stacking contexts (z-index issues).
  */
 const ModalForm = ({
   isOpen,
@@ -25,10 +27,10 @@ const ModalForm = ({
 }) => {
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className={`fixed inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center ${zIndex} p-2 sm:p-4 animate-in fade-in duration-200`}>
       <div
-        className={`bg-white rounded-xl shadow-2xl w-full ${maxWidth} max-h-[92dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200`}
+        className={`bg-white rounded-xl shadow-2xl w-full ${maxWidth} max-h-[90dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200`}
       >
         {/* Compact Header */}
         <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-gray-100 flex items-center justify-center bg-white flex-shrink-0 z-20">
@@ -71,7 +73,8 @@ const ModalForm = ({
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
