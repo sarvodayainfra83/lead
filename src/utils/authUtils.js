@@ -51,3 +51,13 @@ export const matchesUserReceiver = (lead, user) => {
     receiver && (receiver === userNameNorm || receiver === userIdNorm)
   );
 };
+
+/**
+ * Check if the user has Full Access permission for a specific page.
+ * Admins always have full access.
+ */
+export const hasFullAccess = (user, pageKey) => {
+  if (!user) return false;
+  if (isUserAdmin(user)) return true;
+  return user.accessPages?.[pageKey] === 'full';
+};

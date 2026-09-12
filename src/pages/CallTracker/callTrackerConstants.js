@@ -1,9 +1,18 @@
 // Shared constants for the Call Tracker module
 
-export const ENQUIRY_STATUSES = ['Received', 'Expected', 'Not Interested', 'Need Meeting', 'Call Not Received'];
+export const ENQUIRY_STATUSES = ['Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting'];
 
-// The only two outcomes that resolve a lead — every other status leaves it awaiting a further call.
-export const TERMINAL_STATUSES = ['Received', 'Not Interested'];
+// All three resolve a lead — it leaves the Pending call queue. Only Future Plan Date leaves
+// it open, awaiting a further call on the date given.
+export const TERMINAL_STATUSES = ['Interested', 'Not Interested', 'Site Visit/Meeting'];
+
+// Which terminal outcomes convert the lead into a Customer Master record. Not Interested is
+// terminal too, but only ever shows up in History — never Customer Master.
+export const CONVERTED_STATUSES = ['Interested', 'Site Visit/Meeting'];
+
+// Statuses that also collect a date — Future Plan Date's next-call-on date, or the scheduled
+// Site Visit/Meeting date.
+export const DATE_STATUSES = ['Future Plan Date', 'Site Visit/Meeting'];
 
 // A lead's current tracking state is derived from its call tracker entries, not stored as a
 // flag on the lead itself — this keeps History a true append-only log of every call made.
@@ -22,9 +31,9 @@ export const getLatestTrackerForLead = (trackers, leadId) => {
 
 // A lead only enters the Call Tracker's Pending queue once it has an assigned caller —
 // before that it lives in the Lead module's own Pending (awaiting assignment) list instead.
-// Once assigned, it stays pending until a call is logged as Received or Not Interested.
-// No prior entry (never called) or any non-terminal outcome (Expected, Need Meeting,
-// Call Not Received — follow-up still owed) both count as pending.
+// Once assigned, it stays pending until a call is logged as Interested, Not Interested, or
+// Site Visit/Meeting. No prior entry (never called) or Future Plan Date (follow-up still
+// owed on the date given) both count as pending.
 export const isLeadPending = (trackers, lead) => {
   if (!lead?.callerAssigned) return false;
   const latest = getLatestTrackerForLead(trackers, lead.id);

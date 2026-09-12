@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
-import { getUsers } from '../utils/storageManager';
 import companyLogo from '../Assets/Logo.jpeg';
 
 const Login = () => {
@@ -32,16 +31,6 @@ const Login = () => {
 
   const togglePasswordVisibility = () => {
     setShowPassword(!showPassword);
-  };
-
-  const handleDemoCredential = (userId) => {
-    if (userId === 'admin') {
-      setId('admin');
-      setPassword('admin123');
-    } else if (userId === 'user') {
-      setId('user');
-      setPassword('user123');
-    }
   };
 
   return (

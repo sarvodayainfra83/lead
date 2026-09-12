@@ -1,12 +1,12 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { getLeadTypeTextClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
 const STATUS_STYLES = {
-  Received: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Expected: 'bg-amber-50 text-amber-700 border-amber-200',
+  Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
-  'Need Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200'
+  'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
 
 const formatDate = (val) => {
@@ -91,6 +91,10 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
                   <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border truncate ${STATUS_STYLES[lead.latestStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                     {lead.latestStatus || '-'}
                   </span>
+                ) : key === 'leadType' ? (
+                  <p className={`text-[11px] md:text-[12px] font-bold truncate ${getLeadTypeTextClass(lead.leadType)}`}>
+                    {lead.leadType || '-'}
+                  </p>
                 ) : (
                   <p className="text-[11px] md:text-[12px] text-gray-800 font-medium truncate" title={lead[key]}>
                     {lead[key] || '-'}
@@ -131,7 +135,7 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
                           #{t.followUpNo || idx + 1}
                         </td>
                         <td className="px-3 py-2 text-center text-gray-600 whitespace-nowrap text-[11px]">
-                          {t.timestamp ? t.timestamp.split(' ')[0] : '-'}
+                          {formatDate(t.timestamp)}
                         </td>
                         <td className="px-3 py-2 text-center whitespace-nowrap">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${STATUS_STYLES[t.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
@@ -141,7 +145,7 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
                         <td className="px-3 py-2 text-gray-800 text-[11px] leading-relaxed break-words">
                           {t.customerSaid || '-'}
                         </td>
-                        <td className="px-3 py-2 text-center text-gray-600 whitespace-nowrap text-[11px] font-medium">
+                        <td className={`px-3 py-2 text-center whitespace-nowrap text-[11px] ${NEXT_DATE_CLASS}`}>
                           {formatDate(t.nextDate)}
                         </td>
                       </tr>

@@ -111,12 +111,10 @@ export const callerReportApi = {
     const totals = {
       callingTarget: leadRows.length,
       totalCalls: filteredTrackers.length,
-      connected: leadRows.filter(l => l.latestStatus !== 'Call Not Received').length,
-      interested: leadRows.filter(l => l.latestStatus === 'Received').length,
-      expected: leadRows.filter(l => l.latestStatus === 'Expected').length,
+      interested: leadRows.filter(l => l.latestStatus === 'Interested').length,
+      futurePlan: leadRows.filter(l => l.latestStatus === 'Future Plan Date').length,
       notInterested: leadRows.filter(l => l.latestStatus === 'Not Interested').length,
-      meeting: leadRows.filter(l => l.latestStatus === 'Need Meeting').length,
-      callNotReceived: leadRows.filter(l => l.latestStatus === 'Call Not Received').length
+      siteVisit: leadRows.filter(l => l.latestStatus === 'Site Visit/Meeting').length
     };
 
     return {

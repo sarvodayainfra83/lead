@@ -3,6 +3,8 @@ import { Clock, History as HistoryIcon, Plus } from 'lucide-react';
 import PendingTracker from './PendingTracker';
 import HistoryTracker from './HistoryTracker';
 import Direct from './Direct';
+import { useAuthStore } from '../../store/authStore';
+import { hasFullAccess } from '../../utils/authUtils';
 
 /**
  * FollowUp
@@ -11,6 +13,9 @@ import Direct from './Direct';
  * call straight into the Lead system (reusing LeadForm) tagged Process Type = Direct.
  */
 export default function FollowUp() {
+  const user = useAuthStore(state => state.user);
+  const canEdit = hasFullAccess(user, 'callTracker');
+
   const [activeTab, setActiveTab] = useState('pending');
   const [showDirectForm, setShowDirectForm] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -36,7 +41,7 @@ export default function FollowUp() {
           {label}
         </button>
       ))}
-      {activeTab !== 'pending' && (
+      {canEdit && (
         <button
           onClick={() => setShowDirectForm(true)}
           className="flex-1 lg:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[32px] lg:h-[38px]"

@@ -21,7 +21,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuthStore();
-  const { pendingLeadCount, pendingTrackerCount, customerCount, callerReportCount, refresh } = useBadgeCountStore();
+  const { pendingLeadCount, pendingTrackerCount, customerCount, refresh } = useBadgeCountStore();
 
   useEffect(() => {
     refresh();
@@ -47,7 +47,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     { path: '/lead', icon: UserPlus, label: 'Lead', pageKey: 'lead', badgeCount: pendingLeadCount },
     { path: '/call-tracker', icon: PhoneCall, label: 'Call Tracker', pageKey: 'callTracker', badgeCount: pendingTrackerCount },
     { path: '/customer-master', icon: Users, label: 'Customer Master', pageKey: 'customerMaster', badgeCount: customerCount },
-    { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport', badgeCount: callerReportCount },
+    { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
     { path: '/master', icon: Database, label: 'Master', pageKey: 'master' },
     { path: '/setting', icon: Settings, label: 'Setting', pageKey: 'setting' },
   ];

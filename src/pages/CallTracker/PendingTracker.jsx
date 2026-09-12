@@ -10,14 +10,14 @@ import { LEAD_TYPES } from '../Lead/leadConstants';
 import { isLeadPending, getTrackersForLead } from './callTrackerConstants';
 import { parseLeadDate } from '../Lead/PendingLead';
 import { useAuthStore } from '../../store/authStore';
-import { matchesUserAssignment } from '../../utils/authUtils';
+import { isUserAdmin, matchesUserAssignment, hasFullAccess } from '../../utils/authUtils';
+import { getLeadTypeTextClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
 const STATUS_STYLES = {
-  Received: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Expected: 'bg-amber-50 text-amber-700 border-amber-200',
+  Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
-  'Need Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200'
+  'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
 
 const DATE_FILTER_OPTIONS = [
@@ -80,6 +80,8 @@ export default function PendingTracker({ tabBar }) {
     customDate: ''
   };
   const [filters, setFilters] = useState({ ...initialFilters });
+
+  const canEdit = hasFullAccess(user, 'callTracker');
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -191,28 +193,31 @@ export default function PendingTracker({ tabBar }) {
   };
 
   const tableHeaders = [
-    "Action", "Lead No", "Lead Type", "Follow Up No", "Status", "What did Customer Show", "Next Call Date",
-    "Person Name", "Number", "Email", "DOB", "Occupation", "Requirement",
-    "Investment Range", "Address", "When to Buy Plan", "Assign Caller", "Remarks"
+    "Lead No", "Lead Type", "Follow Up No", "Status", "What did Customer Show", "Next Call Date",
+    "Customer Name", "Customer Number", "Customer Email", "DOB", "Occupation", "Requirement",
+    "Investment Budget", "Customer Address", "When to Buy Plan", "Assign Caller", "Remarks"
   ];
+  if (canEdit) tableHeaders.unshift("Action");
 
   const renderRow = (item) => (
     <tr key={item.leadNo} className="group hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
       {/* Action column (sticky first) */}
-      <td
-        className="px-3 py-2 text-center whitespace-nowrap bg-white group-hover:bg-indigo-50 transition-colors"
-        style={{ position: 'sticky', left: 0, zIndex: 10, boxShadow: '2px 0 4px rgba(0,0,0,0.08)' }}
-      >
-        <button
-          onClick={() => setCallLead(item)}
-          title="Call Now"
-          className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 px-2.5 py-1 rounded text-[10px] font-semibold uppercase tracking-wide hover:bg-indigo-100 transition-colors"
+      {canEdit && (
+        <td
+          className="px-3 py-2 text-center whitespace-nowrap bg-white group-hover:bg-indigo-50 transition-colors"
+          style={{ position: 'sticky', left: 0, zIndex: 10, boxShadow: '2px 0 4px rgba(0,0,0,0.08)' }}
         >
-          <Phone size={12} /> Call Now
-        </button>
-      </td>
+          <button
+            onClick={() => setCallLead(item)}
+            title="Call Now"
+            className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 px-2.5 py-1 rounded text-[10px] font-semibold uppercase tracking-wide hover:bg-indigo-100 transition-colors"
+          >
+            <Phone size={12} /> Call Now
+          </button>
+        </td>
+      )}
       <td className="px-4 py-3 text-center text-[14px] text-indigo-600 font-bold whitespace-nowrap">{item.leadNo}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.leadType}</td>
+      <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.followUpNo}</td>
       <td className="px-4 py-3 text-center whitespace-nowrap">
         {item.status ? (
@@ -226,7 +231,7 @@ export default function PendingTracker({ tabBar }) {
       <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[220px] truncate" title={item.customerSaid || ''}>
         {item.customerSaid || '-'}
       </td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.nextCallDate)}</td>
+      <td className={`px-4 py-3 text-center text-[13px] whitespace-nowrap ${NEXT_DATE_CLASS}`}>{formatDate(item.nextCallDate)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
@@ -247,7 +252,10 @@ export default function PendingTracker({ tabBar }) {
     <div key={item.leadNo} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
       <div className="flex justify-between items-start border-b border-gray-100 pb-2">
         <div>
-          <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{item.leadNo} · {item.leadType}</span>
+          <span className="text-[9px] uppercase tracking-widest leading-none block mb-1">
+            <span className="text-indigo-500">{item.leadNo} · </span>
+            <span className={`font-semibold ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType}</span>
+          </span>
           <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
         </div>
         <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded-full font-semibold uppercase">
@@ -257,19 +265,19 @@ export default function PendingTracker({ tabBar }) {
 
       <div className="grid grid-cols-2 gap-2 text-[10px]">
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Number</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Customer Number</p>
           <p className="text-gray-700 truncate leading-tight">{item.number}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Next Call Date</p>
-          <p className="text-gray-700 truncate leading-tight">{formatDate(item.nextCallDate)}</p>
+          <p className={`truncate leading-tight ${NEXT_DATE_CLASS}`}>{formatDate(item.nextCallDate)}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Status</p>
           <p className="text-gray-700 truncate leading-tight">{item.status || '-'}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Email</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Customer Email</p>
           <p className="text-gray-700 truncate leading-tight">{item.email || '-'}</p>
         </div>
         <div>
@@ -281,7 +289,7 @@ export default function PendingTracker({ tabBar }) {
           <p className="text-gray-700 truncate leading-tight">{item.occupation || '-'}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Range</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Budget</p>
           <p className="text-gray-700 truncate leading-tight">{item.investmentBudget || '-'}</p>
         </div>
         <div>
@@ -289,7 +297,7 @@ export default function PendingTracker({ tabBar }) {
           <p className="text-gray-700 truncate leading-tight">{item.whenToBuyPlan || '-'}</p>
         </div>
         <div className="col-span-2">
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Address</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Customer Address</p>
           <p className="text-gray-700 truncate leading-tight">{item.location || '-'}</p>
         </div>
         <div className="col-span-2">
@@ -308,12 +316,14 @@ export default function PendingTracker({ tabBar }) {
         </div>
       </div>
 
-      <button
-        onClick={() => setCallLead(item)}
-        className="w-full bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1.5"
-      >
-        <Phone size={12} /> Call Now
-      </button>
+      {canEdit && (
+        <button
+          onClick={() => setCallLead(item)}
+          className="w-full bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1.5"
+        >
+          <Phone size={12} /> Call Now
+        </button>
+      )}
     </div>
   );
 

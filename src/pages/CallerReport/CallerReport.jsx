@@ -8,6 +8,7 @@ import CallerReportDetailModal from './CallerReportDetailModal';
 import { LEAD_TYPES } from '../Lead/leadConstants';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin } from '../../utils/authUtils';
+import { getLeadTypeTextClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
 const LEAD_TYPE_OPTIONS = [
   { value: 'All', label: 'All Lead Type' },
@@ -20,11 +21,10 @@ const MONTH_NAMES = [
 ];
 
 const STATUS_STYLES = {
-  Received: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Expected: 'bg-amber-50 text-amber-700 border-amber-200',
+  Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
-  'Need Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200'
+  'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
 
 const formatDate = (val) => {
@@ -69,7 +69,7 @@ export default function CallerReport() {
   const [monthOptions, setMonthOptions] = useState([{ value: 'All', label: 'All Months' }]);
   const [allRecords, setAllRecords] = useState([]);
   const [totals, setTotals] = useState({
-    callingTarget: 0, totalCalls: 0, connected: 0, interested: 0, expected: 0, notInterested: 0, meeting: 0, callNotReceived: 0
+    callingTarget: 0, totalCalls: 0, interested: 0, futurePlan: 0, notInterested: 0, siteVisit: 0
   });
 
   // Modal tracking state for selected unique lead
@@ -152,7 +152,7 @@ export default function CallerReport() {
       'Total Calls': r.followUpCount || 0,
       'What did Customer Said': r.latestCustomerSaid || '-',
       'Next Date': formatDate(r.latestNextDate),
-      'Last Call Date': r.latestCallDate || '-',
+      'Last Call Date': formatDate(r.latestCallDate),
       'Person Name': r.personName || '-',
       'Phone Number': r.number || '-',
       'Email': r.email || '-',
@@ -197,7 +197,7 @@ export default function CallerReport() {
         </td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-500 whitespace-nowrap">{srNo}</td>
         <td className="px-4 py-3 text-center text-[13px] text-indigo-600 font-bold whitespace-nowrap">{item.leadNo}</td>
-        <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.leadType || '-'}</td>
+        <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType || '-'}</td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.callerAssigned || '-'}</td>
         <td className="px-4 py-3 text-center whitespace-nowrap">
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${STATUS_STYLES[item.latestStatus] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
@@ -212,8 +212,8 @@ export default function CallerReport() {
         <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[200px] truncate" title={item.latestCustomerSaid}>
           {item.latestCustomerSaid || '-'}
         </td>
-        <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.latestNextDate)}</td>
-        <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.latestCallDate || '-'}</td>
+        <td className={`px-4 py-3 text-center text-[13px] whitespace-nowrap ${NEXT_DATE_CLASS}`}>{formatDate(item.latestNextDate)}</td>
+        <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.latestCallDate)}</td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName || '-'}</td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">
           {item.number ? (
@@ -243,8 +243,9 @@ export default function CallerReport() {
       <div key={item.leadId || item.leadNo || idx} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
         <div className="flex justify-between items-start border-b border-gray-100 pb-2">
           <div>
-            <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">
-              #{srNo} · {item.leadNo} · {item.leadType}
+            <span className="text-[9px] uppercase tracking-widest leading-none block mb-1">
+              <span className="text-indigo-500">#{srNo} · {item.leadNo} · </span>
+              <span className={`font-semibold ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType}</span>
             </span>
             <h4 className="text-sm text-gray-900 font-bold leading-tight">{item.personName}</h4>
           </div>
@@ -265,7 +266,7 @@ export default function CallerReport() {
           </div>
           <div>
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Next Date</p>
-            <p className="text-gray-700 truncate leading-tight">{formatDate(item.latestNextDate)}</p>
+            <p className={`truncate leading-tight ${NEXT_DATE_CLASS}`}>{formatDate(item.latestNextDate)}</p>
           </div>
           <div>
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Caller</p>
@@ -273,7 +274,7 @@ export default function CallerReport() {
           </div>
           <div>
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Last Call Date</p>
-            <p className="text-gray-700 truncate leading-tight">{item.latestCallDate || '-'}</p>
+            <p className="text-gray-700 truncate leading-tight">{formatDate(item.latestCallDate)}</p>
           </div>
           <div>
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Requirement</p>

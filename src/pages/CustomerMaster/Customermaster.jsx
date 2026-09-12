@@ -7,6 +7,7 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES, LEAD_SOURCES } from '../Lead/leadConstants';
 import { useAuthStore } from '../../store/authStore';
 import { matchesUserAssignment } from '../../utils/authUtils';
+import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 
 // Customer Master only lists leads whose most recent call tracker entry is "Received" —
 // i.e. converted leads that have become customers.
@@ -71,15 +72,28 @@ export default function Customermaster() {
     return val;
   };
 
+  // Distinct text color per Lead Type so the column is easy to scan at a glance (shared across the app)
+  const leadTypeColorClass = getLeadTypeTextClass;
+
+  // Status badge — only Interested / Site Visit/Meeting ever land here (Customer Master
+  // only lists converted leads), each with its own accent color.
+  const statusBadgeClass = (status) => {
+    switch (status) {
+      case 'Interested': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'Site Visit/Meeting': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      default: return 'bg-gray-50 text-gray-600 border-gray-200';
+    }
+  };
+
   const tableHeaders = [
     "Lead No", "Lead Type", "Lead Source", "Person Name", "Number", "Email", "DOB",
-    "Occupation", "Requirement", "Investment Range", "Address", "When to Buy Plan", "Assign Caller"
+    "Occupation", "Requirement", "Investment Range", "Address", "When to Buy Plan", "Assign Caller", "Status"
   ];
 
   const renderRow = (item) => (
     <tr key={item.leadNo} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
       <td className="px-4 py-3 text-center text-[14px] text-indigo-600 font-bold whitespace-nowrap">{item.leadNo}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.leadType}</td>
+      <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${leadTypeColorClass(item.leadType)}`}>{item.leadType}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number}</td>
@@ -91,6 +105,11 @@ export default function Customermaster() {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.location || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.callerAssigned}</td>
+      <td className="px-4 py-3 text-center whitespace-nowrap">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${statusBadgeClass(item.status)}`}>
+          {item.status || '-'}
+        </span>
+      </td>
     </tr>
   );
 
@@ -98,9 +117,12 @@ export default function Customermaster() {
     <div key={item.leadNo} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
       <div className="flex justify-between items-start border-b border-gray-100 pb-2">
         <div>
-          <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{item.leadNo} · {item.leadType}</span>
+          <span className={`text-[9px] uppercase tracking-widest leading-none block mb-1 font-semibold ${leadTypeColorClass(item.leadType)}`}>{item.leadNo} · {item.leadType}</span>
           <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
         </div>
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold border whitespace-nowrap ${statusBadgeClass(item.status)}`}>
+          {item.status || '-'}
+        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-[10px]">
@@ -258,7 +280,7 @@ export default function Customermaster() {
           data={paginatedCustomers}
           renderRow={renderRow}
           renderCard={renderCard}
-          minWidth="1800px"
+          minWidth="1950px"
           currentPage={currentPage}
           totalPages={totalPages}
           itemsPerPage={itemsPerPage}

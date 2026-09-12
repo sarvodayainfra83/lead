@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { leadApi } from '../api/leadApi';
 import { callTrackerApi } from '../api/callTrackerApi';
-import { isLeadPending, getLeadStatus } from '../pages/CallTracker/callTrackerConstants';
+import { isLeadPending, getLeadStatus, CONVERTED_STATUSES } from '../pages/CallTracker/callTrackerConstants';
 import { useAuthStore } from './authStore';
 import { isUserAdmin, matchesUserAssignment, matchesUserReceiver } from '../utils/authUtils';
 
@@ -41,7 +41,7 @@ export const useBadgeCountStore = create((set) => ({
       const pendingTrackerCount = userLeads.filter(l => isLeadPending(userTrackers, l)).length;
 
       // Converted customers
-      const customerCount = userLeads.filter(l => getLeadStatus(userTrackers, l.id) === 'Received').length;
+      const customerCount = userLeads.filter(l => CONVERTED_STATUSES.includes(getLeadStatus(userTrackers, l.id))).length;
 
       // Distinct leads with call activity in caller report
       const callerReportCount = new Set(userTrackers.map(t => t.leadId || t.leadNo)).size;

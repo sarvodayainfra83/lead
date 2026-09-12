@@ -5,6 +5,8 @@ import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import DataTable from '../../components/DataTable';
+import { useAuthStore } from '../../store/authStore';
+import { hasFullAccess } from '../../utils/authUtils';
 
 export default function LeadReceiver({ setHeaderAction }) {
   const [rows, setRows] = useState([]);
@@ -13,9 +15,13 @@ export default function LeadReceiver({ setHeaderAction }) {
   const [editRow, setEditRow] = useState(null);
   const [leadType, setLeadType] = useState('');
   const [personName, setPersonName] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+
+  const user = useAuthStore(state => state.user);
+  const canEdit = hasFullAccess(user, 'master');
 
   const load = async () => {
     const [receiversData, typesData] = await Promise.all([
@@ -34,26 +40,34 @@ export default function LeadReceiver({ setHeaderAction }) {
   useEffect(() => {
     if (setHeaderAction) {
       setHeaderAction(
-        <button
-          onClick={openAdd}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 px-4 h-[32px] lg:h-[38px] text-sm font-semibold shadow-sm transition"
-        >
-          <Plus size={16} /> Add Lead Receiver
-        </button>
+        canEdit ? (
+          <button
+            onClick={openAdd}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 px-4 h-[32px] lg:h-[38px] text-sm font-semibold shadow-sm transition"
+          >
+            <Plus size={16} /> Add Lead Receiver
+          </button>
+        ) : null
       );
     }
     return () => setHeaderAction && setHeaderAction(null);
-  }, [setHeaderAction, openAdd]);
+  }, [setHeaderAction, openAdd, canEdit]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     if (!leadType) { toast.error('Lead Type is required'); return; }
     if (!personName.trim()) { toast.error('Person Name is required'); return; }
 
-    await masterApi.saveLeadReceiver({ id: editRow?.id, leadType, personName: personName.trim() });
-    toast.success(editRow ? 'Lead Receiver updated' : 'Lead Receiver added');
-    await load();
-    closeForm();
+    setLoading(true);
+    try {
+      await masterApi.saveLeadReceiver({ id: editRow?.id, leadType, personName: personName.trim() });
+      toast.success(editRow ? 'Lead Receiver updated' : 'Lead Receiver added');
+      await load();
+      closeForm();
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (row) => {
@@ -67,7 +81,8 @@ export default function LeadReceiver({ setHeaderAction }) {
   const totalPages = Math.ceil(sortedRows.length / itemsPerPage);
   const paginatedRows = sortedRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const tableHeaders = ["Serial No", "Lead Type", "Person Name", "Action"];
+  const tableHeaders = ["Serial No", "Lead Type", "Person Name"];
+  if (canEdit) tableHeaders.push("Action");
 
   const renderRow = (row, idx) => {
     const srNo = (currentPage - 1) * itemsPerPage + idx + 1;
@@ -76,16 +91,18 @@ export default function LeadReceiver({ setHeaderAction }) {
         <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{srNo}</td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{row.leadType}</td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{row.personName}</td>
-        <td className="px-4 py-3 text-center whitespace-nowrap">
-          <div className="flex items-center justify-center gap-1.5">
-            <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
-              <Pencil size={13} />
-            </button>
-            <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
-              <Trash2 size={13} />
-            </button>
-          </div>
-        </td>
+        {canEdit && (
+          <td className="px-4 py-3 text-center whitespace-nowrap">
+            <div className="flex items-center justify-center gap-1.5">
+              <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+                <Pencil size={13} />
+              </button>
+              <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </td>
+        )}
       </tr>
     );
   };
@@ -100,14 +117,16 @@ export default function LeadReceiver({ setHeaderAction }) {
             <h4 className="text-sm text-gray-900 font-medium">{row.personName}</h4>
           </div>
         </div>
-        <div className="flex gap-1.5">
-          <button onClick={() => openEdit(row)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
-            <Pencil size={11} /> Edit
-          </button>
-          <button onClick={() => handleDelete(row)} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
-            <Trash2 size={11} /> Del
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex gap-1.5 mt-2">
+            <button onClick={() => openEdit(row)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
+              <Pencil size={11} /> Edit
+            </button>
+            <button onClick={() => handleDelete(row)} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
+              <Trash2 size={11} /> Del
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -134,7 +153,8 @@ export default function LeadReceiver({ setHeaderAction }) {
         onClose={closeForm}
         title={editRow ? 'Edit Lead Receiver' : 'Add Lead Receiver'}
         onSubmit={handleSubmit}
-        submitText={editRow ? 'Update' : 'Save'}
+        submitText={loading ? 'Saving...' : (editRow ? 'Update' : 'Save')}
+        loading={loading}
         maxWidth="max-w-md"
       >
         <div className="space-y-2">

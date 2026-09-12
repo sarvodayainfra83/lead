@@ -1,7 +1,7 @@
 import { leadApi } from './leadApi';
 import { callTrackerApi } from './callTrackerApi';
 import { authApi } from './authApi';
-import { getLeadStatus, isLeadPending } from '../pages/CallTracker/callTrackerConstants';
+import { getLeadStatus, isLeadPending, CONVERTED_STATUSES } from '../pages/CallTracker/callTrackerConstants';
 import { LEAD_TYPES, LEAD_SOURCES } from '../pages/Lead/leadConstants';
 import { isUserAdmin, matchesUserAssignment } from '../utils/authUtils';
 
@@ -33,18 +33,18 @@ export const dashboardApi = {
 
     const totalLeads = leads.length;
     const neverContactedCount = leadsWithStatus.filter(l => l._status === null).length;
-    const expectedCount = leadsWithStatus.filter(l => l._status === 'Expected').length;
-    const receivedCount = leadsWithStatus.filter(l => l._status === 'Received').length;
+    const futurePlanCount = leadsWithStatus.filter(l => l._status === 'Future Plan Date').length;
+    const convertedCount = leadsWithStatus.filter(l => CONVERTED_STATUSES.includes(l._status)).length;
     const notInterestedCount = leadsWithStatus.filter(l => l._status === 'Not Interested').length;
     const pendingCount = leads.filter(l => isLeadPending(trackers, l)).length;
-    const conversionRate = totalLeads > 0 ? Math.round((receivedCount / totalLeads) * 100) : 0;
+    const conversionRate = totalLeads > 0 ? Math.round((convertedCount / totalLeads) * 100) : 0;
 
-    // Meeting leads — latest tracker status is 'Need Meeting'
-    const meetingCount = leadsWithStatus.filter(l => l._status === 'Need Meeting').length;
+    // Site Visit/Meeting leads — latest tracker status is 'Site Visit/Meeting'
+    const siteVisitCount = leadsWithStatus.filter(l => l._status === 'Site Visit/Meeting').length;
 
-    // Build meeting leads list with next date & caller
-    const meetingLeads = leads
-      .filter(l => getLeadStatus(trackers, l.id) === 'Need Meeting')
+    // Build site visit/meeting leads list with their date & caller
+    const siteVisitLeads = leads
+      .filter(l => getLeadStatus(trackers, l.id) === 'Site Visit/Meeting')
       .map(l => {
         const list = (trackers.filter(t => t.leadId === l.id))
           .sort((a, b) => a.timestampMs - b.timestampMs);
@@ -102,7 +102,7 @@ export const dashboardApi = {
       .map(u => {
         const assignedLeads = leadsWithStatus.filter(l => l.callerAssigned === u.name);
         const total = assignedLeads.length;
-        const converted = assignedLeads.filter(l => l._status === 'Received').length;
+        const converted = assignedLeads.filter(l => CONVERTED_STATUSES.includes(l._status)).length;
         const pending = assignedLeads.filter(l => isLeadPending(trackers, l)).length;
         const rate = total > 0 ? Math.round((converted / total) * 100) : 0;
         return { name: u.name, total, converted, pending, rate };
@@ -121,7 +121,7 @@ export const dashboardApi = {
     leads.forEach(l => {
       const list = trackersByLead[l.id] || [];
       const latest = list.length > 0 ? list[list.length - 1] : null;
-      if (latest && latest.nextDate && !['Received', 'Not Interested'].includes(latest.status)) {
+      if (latest && latest.nextDate && latest.status === 'Future Plan Date') {
         upcomingFollowUps.push({
           id: l.id,
           leadNo: l.leadNo,
@@ -147,13 +147,13 @@ export const dashboardApi = {
     return {
       totalLeads,
       neverContactedCount,
-      expectedCount,
-      receivedCount,
+      futurePlanCount,
+      convertedCount,
       notInterestedCount,
       pendingCount,
       conversionRate,
-      meetingCount,
-      meetingLeads,
+      siteVisitCount,
+      siteVisitLeads,
       leadTypeData,
       leadSourceData,
       trendData,

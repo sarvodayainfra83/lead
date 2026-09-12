@@ -8,14 +8,14 @@ import {
 } from 'lucide-react';
 import { dashboardApi } from '../../api/dashboardApi';
 import { useAuthStore } from '../../store/authStore';
+import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 
 // Fixed status palette — reserved meanings, never reused for categorical series.
 const STATUS_COLORS = {
-  Received: { text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', hex: '#059669' },
-  Expected: { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', hex: '#d97706' },
+  Interested: { text: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', hex: '#059669' },
+  'Future Plan Date': { text: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200', hex: '#d97706' },
   'Not Interested': { text: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', hex: '#dc2626' },
-  'Need Meeting': { text: 'text-cyan-700', bg: 'bg-cyan-50', border: 'border-cyan-200', hex: '#0891b2' },
-  'Call Not Received': { text: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200', hex: '#ea580c' },
+  'Site Visit/Meeting': { text: 'text-cyan-700', bg: 'bg-cyan-50', border: 'border-cyan-200', hex: '#0891b2' },
   'Never Contacted': { text: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-200', hex: '#6b7280' }
 };
 
@@ -64,13 +64,13 @@ export default function Dashboard() {
   const [metrics, setMetrics] = useState({
     totalLeads: 0,
     neverContactedCount: 0,
-    expectedCount: 0,
-    receivedCount: 0,
+    futurePlanCount: 0,
+    convertedCount: 0,
     notInterestedCount: 0,
     pendingCount: 0,
     conversionRate: 0,
-    meetingCount: 0,
-    meetingLeads: [],
+    siteVisitCount: 0,
+    siteVisitLeads: [],
     leadTypeData: [],
     leadSourceData: [],
     trendData: [],
@@ -84,8 +84,8 @@ export default function Dashboard() {
   }, [user]);
 
   const {
-    totalLeads, neverContactedCount, expectedCount, receivedCount, notInterestedCount,
-    pendingCount, conversionRate, meetingCount, meetingLeads,
+    totalLeads, neverContactedCount, futurePlanCount, convertedCount, notInterestedCount,
+    pendingCount, conversionRate, siteVisitCount, siteVisitLeads,
     leadTypeData, leadSourceData, trendData,
     callerStats, upcomingFollowUps, recentLeads
   } = metrics;
@@ -100,24 +100,24 @@ export default function Dashboard() {
         {/* KPI Stat Tiles */}
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <StatTile icon={Users} label="Total Leads" value={totalLeads} tone={{ text: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200' }} />
-          <StatTile icon={Clock} label="Pending Follow-ups" value={pendingCount} tone={{ text: STATUS_COLORS.Expected.text, bg: STATUS_COLORS.Expected.bg, border: STATUS_COLORS.Expected.border }} />
-          <StatTile icon={CheckCircle2} label="Converted (Received)" value={receivedCount} tone={{ text: STATUS_COLORS.Received.text, bg: STATUS_COLORS.Received.bg, border: STATUS_COLORS.Received.border }} />
+          <StatTile icon={Clock} label="Future Plan Date" value={futurePlanCount} tone={{ text: STATUS_COLORS['Future Plan Date'].text, bg: STATUS_COLORS['Future Plan Date'].bg, border: STATUS_COLORS['Future Plan Date'].border }} />
+          <StatTile icon={CheckCircle2} label="Converted (Interested)" value={convertedCount} tone={{ text: STATUS_COLORS.Interested.text, bg: STATUS_COLORS.Interested.bg, border: STATUS_COLORS.Interested.border }} />
           <StatTile icon={XCircle} label="Not Interested" value={notInterestedCount} tone={{ text: STATUS_COLORS['Not Interested'].text, bg: STATUS_COLORS['Not Interested'].bg, border: STATUS_COLORS['Not Interested'].border }} />
-          <StatTile icon={Handshake} label="Need Meeting" value={meetingCount ?? 0} tone={{ text: STATUS_COLORS['Need Meeting'].text, bg: STATUS_COLORS['Need Meeting'].bg, border: STATUS_COLORS['Need Meeting'].border }} />
+          <StatTile icon={Handshake} label="Site Visit/Meeting" value={siteVisitCount ?? 0} tone={{ text: STATUS_COLORS['Site Visit/Meeting'].text, bg: STATUS_COLORS['Site Visit/Meeting'].bg, border: STATUS_COLORS['Site Visit/Meeting'].border }} />
           <StatTile icon={TrendingUp} label="Conversion Rate" value={`${conversionRate}%`} tone={{ text: 'text-indigo-700', bg: 'bg-indigo-50', border: 'border-indigo-200' }} />
         </div>
 
-        {/* Meeting Calls Card */}
+        {/* Site Visit/Meeting Calls Card */}
         <div className="bg-white rounded-xl border border-cyan-200 shadow-sm p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-cyan-50 border border-cyan-200 flex items-center justify-center">
                 <Handshake size={15} className="text-cyan-700" />
               </div>
-              <h3 className="text-xs md:text-sm font-bold text-gray-800 uppercase tracking-wide">Meeting Calls</h3>
-              {meetingCount > 0 && (
+              <h3 className="text-xs md:text-sm font-bold text-gray-800 uppercase tracking-wide">Site Visit/Meeting Calls</h3>
+              {siteVisitCount > 0 && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-700 border border-cyan-200">
-                  {meetingCount}
+                  {siteVisitCount}
                 </span>
               )}
             </div>
@@ -128,7 +128,7 @@ export default function Dashboard() {
               View all <ArrowRight size={12} />
             </button>
           </div>
-          {meetingLeads && meetingLeads.length > 0 ? (
+          {siteVisitLeads && siteVisitLeads.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
@@ -142,7 +142,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {meetingLeads.map(l => (
+                  {siteVisitLeads.map(l => (
                     <tr key={l.id} className="border-b border-gray-50 last:border-0 hover:bg-cyan-50/40 transition-colors">
                       <td className="py-2 pr-3 font-bold text-indigo-600 whitespace-nowrap">{l.leadNo}</td>
                       <td className="py-2 pr-3 font-semibold text-gray-800 whitespace-nowrap">{l.personName}</td>
@@ -234,7 +234,7 @@ export default function Dashboard() {
                   <div key={c.name} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-gray-800">{c.name}</span>
-                      <span className="text-gray-500">{c.received}/{c.total} received · {c.rate}%</span>
+                      <span className="text-gray-500">{c.converted}/{c.total} converted · {c.rate}%</span>
                     </div>
                     <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${c.rate}%`, backgroundColor: BRAND_NAVY }} />
@@ -266,7 +266,7 @@ export default function Dashboard() {
                       <p className="text-gray-500 truncate">{l.callerAssigned}</p>
                     </div>
                     <span className="flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">
-                      <CalendarClock size={11} /> {formatDate(l.nextCallDate)}
+                      <CalendarClock size={11} /> {formatDate(l.nextDate)}
                     </span>
                   </div>
                 ))}
@@ -309,7 +309,7 @@ export default function Dashboard() {
                       <tr key={l.leadNo} className="border-b border-gray-50 last:border-0">
                         <td className="py-2 pr-3 font-bold text-indigo-600 whitespace-nowrap">{l.leadNo}</td>
                         <td className="py-2 pr-3 text-gray-800 whitespace-nowrap">{l.personName}</td>
-                        <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.leadType}</td>
+                        <td className={`py-2 pr-3 font-semibold whitespace-nowrap ${getLeadTypeTextClass(l.leadType)}`}>{l.leadType}</td>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.number}</td>
                         <td className="py-2 pr-3 text-gray-600 whitespace-nowrap">{l.callerAssigned}</td>
                         <td className="py-2 pr-3 whitespace-nowrap">

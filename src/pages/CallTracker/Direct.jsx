@@ -9,44 +9,13 @@ import { callTrackerApi } from '../../api/callTrackerApi';
 import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { generateLeadNo, INVESTMENT_BUDGET_OPTIONS, REQUIREMENT_OPTIONS } from '../Lead/leadConstants';
-import { ENQUIRY_STATUSES, TERMINAL_STATUSES } from './callTrackerConstants';
+import { generateLeadNo } from '../Lead/leadConstants';
+import { ENQUIRY_STATUSES, DATE_STATUSES } from './callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin } from '../../utils/authUtils';
 
-const INSURANCE_TYPE_OPTIONS = [
-  { value: 'Life Insurance', label: 'Life Insurance' },
-  { value: 'Health Insurance', label: 'Health Insurance' },
-  { value: 'Vehicle Insurance', label: 'Vehicle Insurance' },
-  { value: 'Property Insurance', label: 'Property Insurance' },
-  { value: 'Accident Insurance', label: 'Accident Insurance' },
-  { value: 'Travel Insurance', label: 'Travel Insurance' },
-  { value: 'Other', label: 'Other' }
-];
-
-const INSURANCE_SUB_TYPES = {
-  'Life Insurance': [
-    { value: 'KeyMan Insurance', label: 'KeyMan Insurance' },
-    { value: 'Business Insurance', label: 'Business Insurance' },
-    { value: 'Whole Life Insurance', label: 'Whole Life Insurance' },
-    { value: 'ULIP Investment Plan', label: 'ULIP Investment Plan' },
-    { value: 'Child Insurance', label: 'Child Insurance' },
-    { value: 'Saving Plan', label: 'Saving Plan' },
-    { value: 'Retirement Plan', label: 'Retirement Plan' },
-    { value: 'Other', label: 'Other' }
-  ],
-  'Health Insurance': [
-    { value: 'Individual Health Insurance', label: 'Individual Health Insurance' },
-    { value: 'Family Health Insurance', label: 'Family Health Insurance' },
-    { value: 'Senior Citizen Insurance', label: 'Senior Citizen Insurance' },
-    { value: 'Group Insurance', label: 'Group Insurance' },
-    { value: 'Critical Illness', label: 'Critical Illness' },
-    { value: 'Other', label: 'Other' }
-  ]
-};
-
 const initialFormData = {
-  leadType: '',
+  leadType: 'Real Estate',
   leadReceiver: '',
   leadSource: '',
   referencerName: '',
@@ -59,10 +28,10 @@ const initialFormData = {
   location: '',
   whenToBuyPlan: '',
   callerAssigned: '',
+  productType: '',
   requirement: '',
   requirementOption: '',
   customRequirement: '',
-  siteLocation: '',
   insuranceType: 'Life Insurance',
   insuranceSubType: '',
   anyDesease: '',
@@ -84,22 +53,38 @@ export default function Direct({ isOpen, onClose, onSaved }) {
   const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
   const [leadReceiversMaster, setLeadReceiversMaster] = useState([]);
   const [callerNamesMaster, setCallerNamesMaster] = useState([]);
+  const [realEstateProductsMaster, setRealEstateProductsMaster] = useState([]);
+  const [realEstateRequirementsMaster, setRealEstateRequirementsMaster] = useState([]);
+  const [mutualFundProductsMaster, setMutualFundProductsMaster] = useState([]);
+  const [insuranceProductsMaster, setInsuranceProductsMaster] = useState([]);
+  const [insuranceSubProductsMaster, setInsuranceSubProductsMaster] = useState([]);
+  const [investmentBudgetsMaster, setInvestmentBudgetsMaster] = useState([]);
 
   useEffect(() => {
     if (isOpen) {
-      if (!isAdmin) {
-        setFormData(prev => ({ ...prev, callerAssigned: user?.name || user?.id || '' }));
-      }
+      setFormData(prev => ({ ...prev, callerAssigned: user?.name || user?.id || '' }));
       Promise.all([
         masterApi.getLeadTypes(),
         masterApi.getLeadSources(),
         masterApi.getLeadReceivers(),
-        masterApi.getCallerNames()
-      ]).then(([types, sources, receivers, callers]) => {
+        masterApi.getCallerNames(),
+        masterApi.getRealEstateProducts(),
+        masterApi.getRealEstateRequirements(),
+        masterApi.getMutualFundProducts(),
+        masterApi.getInsuranceProducts(),
+        masterApi.getInsuranceSubProducts(),
+        masterApi.getInvestmentBudgets()
+      ]).then(([types, sources, receivers, callers, reProducts, reRequirements, mfProducts, insProducts, insSubProducts, budgets]) => {
         setLeadTypesMaster(types);
         setLeadSourcesMaster(sources);
         setLeadReceiversMaster(receivers);
         setCallerNamesMaster(callers);
+        setRealEstateProductsMaster(reProducts);
+        setRealEstateRequirementsMaster(reRequirements);
+        setMutualFundProductsMaster(mfProducts);
+        setInsuranceProductsMaster(insProducts);
+        setInsuranceSubProductsMaster(insSubProducts);
+        setInvestmentBudgetsMaster(budgets);
       });
     }
   }, [isOpen, isAdmin, user]);
@@ -128,7 +113,17 @@ export default function Direct({ isOpen, onClose, onSaved }) {
 
   const isRealEstate = formData.leadType === 'Real Estate';
   const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');
+  const isMutualFund = formData.leadType === 'Mutual Fund';
   const isReferenceSource = formData.leadSource?.toLowerCase() === 'reference';
+
+  const realEstateProductOptions = realEstateProductsMaster.map(t => ({ value: t.productType, label: t.productType }));
+  const realEstateRequirementOptions = realEstateRequirementsMaster.map(t => ({ value: t.requirement, label: t.requirement }));
+  const mutualFundProductOptions = mutualFundProductsMaster.map(t => ({ value: t.productType, label: t.productType }));
+  const insuranceProductOptions = insuranceProductsMaster.map(t => ({ value: t.productType, label: t.productType }));
+  const insuranceSubProductOptions = insuranceSubProductsMaster
+    .filter(s => s.productType === formData.insuranceType)
+    .map(s => ({ value: s.subProductType, label: s.subProductType }));
+  const investmentBudgetOptions = investmentBudgetsMaster.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
 
   const handleChange = (field, value) => {
     setFormData(prev => {
@@ -136,7 +131,8 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       // Receiver/Caller lists are filtered by Lead Type — clear stale picks when it changes
       if (field === 'leadType') {
         updated.leadReceiver = '';
-        updated.callerAssigned = '';
+        updated.callerAssigned = user?.name || user?.id || '';
+        updated.productType = '';
         if ((value === 'Insurance' || value?.toLowerCase().includes('insurance')) && !updated.insuranceType) {
           updated.insuranceType = 'Life Insurance';
         }
@@ -147,7 +143,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       if (field === 'insuranceType') {
         updated.insuranceSubType = '';
       }
-      if (field === 'status' && (value?.toLowerCase() === 'not interested' || value === 'Received')) {
+      if (field === 'status' && !DATE_STATUSES.includes(value)) {
         updated.nextCallDate = '';
       }
       return updated;
@@ -177,20 +173,18 @@ export default function Direct({ isOpen, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
 
     if (!formData.leadType) { toast.error('Lead Type is required'); return; }
     if (!formData.leadSource) { toast.error('Lead Source is required'); return; }
     if (isReferenceSource && !formData.referencerName.trim()) { toast.error('Referencer Name is required'); return; }
-    if (!formData.personName.trim()) { toast.error('Person Name is required'); return; }
-    if (!formData.number.trim()) { toast.error('Number is required'); return; }
+    if (!formData.personName.trim()) { toast.error('Customer Name is required'); return; }
+    if (!formData.number.trim()) { toast.error('Customer Number is required'); return; }
     if (formData.number.length !== 10) { toast.error('Number must be exactly 10 digits'); return; }
     if (!formData.callerAssigned) { toast.error('Caller Assigned to is required'); return; }
     
-    const isTerminal = TERMINAL_STATUSES.includes(formData.status);
-    const showCustomerSaid = formData.status !== 'Call Not Received';
-
     if (!formData.status) { toast.error('Status is required'); return; }
-    if (showCustomerSaid && !formData.customerSaid.trim()) { toast.error('What did Customer Said is required'); return; }
+    if (!formData.customerSaid.trim()) { toast.error('What did Customer Said is required'); return; }
 
     setLoading(true);
 
@@ -202,6 +196,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
     const createdLead = await leadApi.saveLead({
       leadNo,
       timestamp,
+      processType: 'Direct',
       leadType: formData.leadType,
       leadReceiver: formData.leadReceiver,
       leadSource: formData.leadSource,
@@ -219,7 +214,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       location: formData.location,
       whenToBuyPlan: formData.whenToBuyPlan,
       callerAssigned: formData.callerAssigned,
-      siteLocation: formData.siteLocation,
+      productType: formData.productType,
       requirement: formData.requirement,
       insuranceType: formData.insuranceType,
       insuranceSubType: formData.insuranceSubType,
@@ -231,13 +226,13 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       leadId: createdLead.id,
       leadNo: createdLead.leadNo,
       status: formData.status,
-      customerSaid: showCustomerSaid ? formData.customerSaid : '',
-      nextDate: !isTerminal ? formData.nextCallDate : '',
+      customerSaid: formData.customerSaid,
+      nextDate: DATE_STATUSES.includes(formData.status) ? formData.nextCallDate : '',
       timestamp,
       timestampMs: now.getTime()
     });
 
-    if (formData.status === 'Received') {
+    if (formData.status === 'Interested' || formData.status === 'Site Visit/Meeting') {
       toast.success(`Lead ${leadNo} added and moved to Customer Master.`);
     } else if (formData.status === 'Not Interested') {
       toast.success(`Lead ${leadNo} added and logged to History.`);
@@ -258,6 +253,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       title="Add Direct Lead"
       onSubmit={handleSubmit}
       submitText={loading ? 'Saving...' : 'Save'}
+      loading={loading}
       maxWidth="max-w-2xl"
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
@@ -273,14 +269,14 @@ export default function Direct({ isOpen, onClose, onSaved }) {
           />
         </div>
 
-        {/* Lead Receiver Name */}
+        {/* Caller Assigned to */}
         <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Lead Receiver Name</label>
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Caller Name *</label>
           <SearchableDropdown
-            options={receiverOptions}
-            value={formData.leadReceiver}
-            onChange={(val) => handleChange('leadReceiver', val)}
-            placeholder="Select lead receiver"
+            options={callerOptions}
+            value={formData.callerAssigned}
+            onChange={(val) => handleChange('callerAssigned', val)}
+            placeholder="Select caller"
           />
         </div>
 
@@ -312,117 +308,22 @@ export default function Direct({ isOpen, onClose, onSaved }) {
           </div>
         )}
 
-        {/* INSURANCE SPECIFIC: Insurance Type & Sub-Type */}
-        {isInsurance && (
-          <>
-            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Insurance Type *</label>
-              <SearchableDropdown
-                options={INSURANCE_TYPE_OPTIONS}
-                value={formData.insuranceType}
-                onChange={(val) => handleChange('insuranceType', val)}
-                placeholder="Select insurance type"
-              />
-            </div>
-
-            {/* Insurance Sub Type - Only shown when Life Insurance or Health Insurance is selected */}
-            {INSURANCE_SUB_TYPES[formData.insuranceType] && (
-              <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Insurance Sub Type</label>
-                <SearchableDropdown
-                  options={INSURANCE_SUB_TYPES[formData.insuranceType]}
-                  value={formData.insuranceSubType}
-                  onChange={(val) => handleChange('insuranceSubType', val)}
-                  placeholder={`Select ${formData.insuranceType} sub type`}
-                />
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Person Name */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Person Name</label>
-          <div className="relative">
-            <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input
-              type="text"
-              value={formData.personName}
-              onChange={(e) => handleChange('personName', e.target.value)}
-              placeholder="Enter person name"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
-        </div>
-
-        {/* Number */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Number *</label>
-          <div className="relative">
-            <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input
-              type="tel"
-              inputMode="numeric"
-              maxLength={10}
-              value={formData.number}
-              onChange={(e) => handleChange('number', e.target.value.replace(/\D/g, '').slice(0, 10))}
-              placeholder="Enter 10-digit number"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
-        </div>
-
-        {/* Email */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Email</label>
-          <div className="relative">
-            <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => handleChange('email', e.target.value)}
-              placeholder="Enter email address"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
-        </div>
-
-        {/* DOB */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">DOB</label>
-          <div className="relative">
-            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-            <input
-              type="date"
-              value={formData.dob}
-              onChange={(e) => handleChange('dob', e.target.value)}
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
-        </div>
-
-        {/* Occupation */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Occupation</label>
-          <div className="relative">
-            <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input
-              type="text"
-              value={formData.occupation}
-              onChange={(e) => handleChange('occupation', e.target.value)}
-              placeholder="Enter occupation"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
-        </div>
-
-        {/* REAL ESTATE SPECIFIC: Requirement & Site Location */}
+        {/* REAL ESTATE SPECIFIC: Product Type & Requirement */}
         {isRealEstate && (
           <>
             <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type</label>
+              <SearchableDropdown
+                options={realEstateProductOptions}
+                value={formData.productType}
+                onChange={(val) => handleChange('productType', val)}
+                placeholder="Select product type"
+              />
+            </div>
+            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
               <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Requirement</label>
               <SearchableDropdown
-                options={REQUIREMENT_OPTIONS}
+                options={realEstateRequirementOptions}
                 value={formData.requirementOption}
                 onChange={handleRequirementOptionChange}
                 placeholder="Select requirement"
@@ -440,22 +341,125 @@ export default function Direct({ isOpen, onClose, onSaved }) {
                 </div>
               )}
             </div>
+          </>
+        )}
 
+        {/* MUTUAL FUND SPECIFIC: Product Type */}
+        {isMutualFund && (
+          <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type</label>
+            <SearchableDropdown
+              options={mutualFundProductOptions}
+              value={formData.productType}
+              onChange={(val) => handleChange('productType', val)}
+              placeholder="Select product type"
+            />
+          </div>
+        )}
+
+        {/* INSURANCE SPECIFIC: Product Type & Sub Product Type */}
+        {isInsurance && (
+          <>
             <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Site Location</label>
-            <div className="relative">
-              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-              <input
-                type="text"
-                value={formData.siteLocation}
-                onChange={(e) => handleChange('siteLocation', e.target.value)}
-                placeholder="e.g. Near SG Highway, Sector 5"
-                className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type *</label>
+              <SearchableDropdown
+                options={insuranceProductOptions}
+                value={formData.insuranceType}
+                onChange={(val) => handleChange('insuranceType', val)}
+                placeholder="Select product type"
               />
             </div>
+
+            {/* Sub Product Type - Only shown when the chosen Product Type has sub types defined */}
+            {insuranceSubProductOptions.length > 0 && (
+              <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Sub Product Type</label>
+                <SearchableDropdown
+                  options={insuranceSubProductOptions}
+                  value={formData.insuranceSubType}
+                  onChange={(val) => handleChange('insuranceSubType', val)}
+                  placeholder={`Select ${formData.insuranceType} sub type`}
+                />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Customer Name */}
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Name *</label>
+          <div className="relative">
+            <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <input
+              type="text"
+              value={formData.personName}
+              onChange={(e) => handleChange('personName', e.target.value)}
+              placeholder="Enter customer name"
+              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
           </div>
-        </>
-      )}
+        </div>
+
+        {/* Customer Number */}
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Number *</label>
+          <div className="relative">
+            <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <input
+              type="tel"
+              inputMode="numeric"
+              maxLength={10}
+              value={formData.number}
+              onChange={(e) => handleChange('number', e.target.value.replace(/\D/g, '').slice(0, 10))}
+              placeholder="Enter 10-digit number"
+              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
+          </div>
+        </div>
+
+        {/* Customer Email */}
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Email</label>
+          <div className="relative">
+            <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => handleChange('email', e.target.value)}
+              placeholder="Enter email address"
+              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
+          </div>
+        </div>
+
+        {/* DOB */}
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer DOB</label>
+          <div className="relative">
+            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+            <input
+              type="date"
+              value={formData.dob}
+              onChange={(e) => handleChange('dob', e.target.value)}
+              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
+          </div>
+        </div>
+
+        {/* Occupation */}
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Occupation</label>
+          <div className="relative">
+            <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <input
+              type="text"
+              value={formData.occupation}
+              onChange={(e) => handleChange('occupation', e.target.value)}
+              placeholder="Enter occupation"
+              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
+          </div>
+        </div>
 
         {/* INSURANCE SPECIFIC: Any Disease */}
         {isInsurance && (
@@ -474,20 +478,20 @@ export default function Direct({ isOpen, onClose, onSaved }) {
           </div>
         )}
 
-        {/* Investment Range */}
+        {/* Investment Budget */}
         <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Investment Range</label>
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Investment Budget</label>
           <SearchableDropdown
-            options={INVESTMENT_BUDGET_OPTIONS}
+            options={investmentBudgetOptions}
             value={formData.investmentBudget}
             onChange={(val) => handleChange('investmentBudget', val)}
-            placeholder="Select investment range"
+            placeholder="Select investment budget"
           />
         </div>
 
-        {/* Address */}
+        {/* Customer Address */}
         <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Address</label>
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Address</label>
           <div className="relative">
             <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
             <input
@@ -515,17 +519,6 @@ export default function Direct({ isOpen, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* Caller Assigned to */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Caller Assigned to *</label>
-          <SearchableDropdown
-            options={callerOptions}
-            value={formData.callerAssigned}
-            onChange={(val) => handleChange('callerAssigned', val)}
-            placeholder="Select caller"
-          />
-        </div>
-
         {/* Status */}
         <div className="space-y-1 col-span-2 sm:col-span-1">
           <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Status *</label>
@@ -539,27 +532,13 @@ export default function Direct({ isOpen, onClose, onSaved }) {
 
         {formData.status && (
           <>
-            {/* What did Customer Said — not applicable when the call wasn't received */}
-            {formData.status !== 'Call Not Received' && (
-              <div className="space-y-1 col-span-2">
-                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">What did Customer Said *</label>
-                <div className="relative">
-                  <MessageSquare className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
-                  <textarea
-                    value={formData.customerSaid}
-                    onChange={(e) => handleChange('customerSaid', e.target.value)}
-                    placeholder="Enter what the customer said"
-                    rows={3}
-                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] resize-none"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Next Call Date — any status still awaiting a follow-up */}
-            {!TERMINAL_STATUSES.includes(formData.status) && (
+            {/* Date — Future Plan Date's next-call date, or the Site Visit/Meeting date — shown
+                above What did Customer Said whenever this status collects one */}
+            {DATE_STATUSES.includes(formData.status) && (
               <div className="space-y-1 col-span-2 sm:col-span-1">
-                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Next Call Date</label>
+                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
+                  {formData.status === 'Future Plan Date' ? 'Future Plan Date' : 'Site Visit/Meeting Date'}
+                </label>
                 <div className="relative">
                   <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
                   <input
@@ -571,6 +550,21 @@ export default function Direct({ isOpen, onClose, onSaved }) {
                 </div>
               </div>
             )}
+
+            {/* What did Customer Said — asked for every status */}
+            <div className="space-y-1 col-span-2">
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">What did Customer Said *</label>
+              <div className="relative">
+                <MessageSquare className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
+                <textarea
+                  value={formData.customerSaid}
+                  onChange={(e) => handleChange('customerSaid', e.target.value)}
+                  placeholder="Enter what the customer said"
+                  rows={3}
+                  className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] resize-none"
+                />
+              </div>
+            </div>
           </>
         )}
       </div>

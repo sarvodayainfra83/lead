@@ -8,38 +8,6 @@ import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { INVESTMENT_BUDGET_OPTIONS, REQUIREMENT_OPTIONS } from './leadConstants';
-
-const INSURANCE_TYPE_OPTIONS = [
-  { value: 'Life Insurance', label: 'Life Insurance' },
-  { value: 'Health Insurance', label: 'Health Insurance' },
-  { value: 'Vehicle Insurance', label: 'Vehicle Insurance' },
-  { value: 'Property Insurance', label: 'Property Insurance' },
-  { value: 'Accident Insurance', label: 'Accident Insurance' },
-  { value: 'Travel Insurance', label: 'Travel Insurance' },
-  { value: 'Other', label: 'Other' }
-];
-
-const INSURANCE_SUB_TYPES = {
-  'Life Insurance': [
-    { value: 'KeyMan Insurance', label: 'KeyMan Insurance' },
-    { value: 'Business Insurance', label: 'Business Insurance' },
-    { value: 'Whole Life Insurance', label: 'Whole Life Insurance' },
-    { value: 'ULIP Investment Plan', label: 'ULIP Investment Plan' },
-    { value: 'Child Insurance', label: 'Child Insurance' },
-    { value: 'Saving Plan', label: 'Saving Plan' },
-    { value: 'Retirement Plan', label: 'Retirement Plan' },
-    { value: 'Other', label: 'Other' }
-  ],
-  'Health Insurance': [
-    { value: 'Individual Health Insurance', label: 'Individual Health Insurance' },
-    { value: 'Family Health Insurance', label: 'Family Health Insurance' },
-    { value: 'Senior Citizen Insurance', label: 'Senior Citizen Insurance' },
-    { value: 'Group Insurance', label: 'Group Insurance' },
-    { value: 'Critical Illness', label: 'Critical Illness' },
-    { value: 'Other', label: 'Other' }
-  ]
-};
 
 export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
   const [loading, setLoading] = useState(false);
@@ -57,8 +25,9 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
     customerAddress: '',
     whenToBuyPlan: '',
     callerAssigned: '',
+    // Real Estate / Mutual Fund field — Product Type master, filtered by Lead Type
+    productType: '',
     // Real Estate fields
-    siteLocation: '',
     requirement: '',
     requirementOption: '',
     customRequirement: '',
@@ -73,6 +42,12 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
   const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
   const [leadReceiversMaster, setLeadReceiversMaster] = useState([]);
   const [callerNamesMaster, setCallerNamesMaster] = useState([]);
+  const [realEstateProductsMaster, setRealEstateProductsMaster] = useState([]);
+  const [realEstateRequirementsMaster, setRealEstateRequirementsMaster] = useState([]);
+  const [mutualFundProductsMaster, setMutualFundProductsMaster] = useState([]);
+  const [insuranceProductsMaster, setInsuranceProductsMaster] = useState([]);
+  const [insuranceSubProductsMaster, setInsuranceSubProductsMaster] = useState([]);
+  const [investmentBudgetsMaster, setInvestmentBudgetsMaster] = useState([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -80,12 +55,24 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
         masterApi.getLeadTypes(),
         masterApi.getLeadSources(),
         masterApi.getLeadReceivers(),
-        masterApi.getCallerNames()
-      ]).then(([types, sources, receivers, callers]) => {
+        masterApi.getCallerNames(),
+        masterApi.getRealEstateProducts(),
+        masterApi.getRealEstateRequirements(),
+        masterApi.getMutualFundProducts(),
+        masterApi.getInsuranceProducts(),
+        masterApi.getInsuranceSubProducts(),
+        masterApi.getInvestmentBudgets()
+      ]).then(([types, sources, receivers, callers, reProducts, reRequirements, mfProducts, insProducts, insSubProducts, budgets]) => {
         setLeadTypesMaster(types);
         setLeadSourcesMaster(sources);
         setLeadReceiversMaster(receivers);
         setCallerNamesMaster(callers);
+        setRealEstateProductsMaster(reProducts);
+        setRealEstateRequirementsMaster(reRequirements);
+        setMutualFundProductsMaster(mfProducts);
+        setInsuranceProductsMaster(insProducts);
+        setInsuranceSubProductsMaster(insSubProducts);
+        setInvestmentBudgetsMaster(budgets);
       });
     }
   }, [isOpen]);
@@ -110,6 +97,15 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
     )
   ).map(name => ({ value: name, label: name }));
 
+  const realEstateProductOptions = realEstateProductsMaster.map(t => ({ value: t.productType, label: t.productType }));
+  const realEstateRequirementOptions = realEstateRequirementsMaster.map(t => ({ value: t.requirement, label: t.requirement }));
+  const mutualFundProductOptions = mutualFundProductsMaster.map(t => ({ value: t.productType, label: t.productType }));
+  const insuranceProductOptions = insuranceProductsMaster.map(t => ({ value: t.productType, label: t.productType }));
+  const insuranceSubProductOptions = insuranceSubProductsMaster
+    .filter(s => s.productType === formData.insuranceType)
+    .map(s => ({ value: s.subProductType, label: s.subProductType }));
+  const investmentBudgetOptions = investmentBudgetsMaster.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
+
   // Populate form whenever the modal opens with a new lead
   useEffect(() => {
     if (lead) {
@@ -127,23 +123,23 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
         customerAddress: lead.customerAddress || lead.location || '',
         whenToBuyPlan: lead.whenToBuyPlan || '',
         callerAssigned: lead.callerAssigned || '',
-        siteLocation: lead.siteLocation || '',
+        productType: lead.productType || '',
         requirement: lead.requirement || '',
         requirementOption: (() => {
           const req = (lead.requirement || '').trim();
           if (!req) return '';
-          const isPreset = REQUIREMENT_OPTIONS.some(
-            opt => opt.value !== 'Other' && opt.value.toLowerCase() === req.toLowerCase()
+          const isPreset = realEstateRequirementsMaster.some(
+            opt => opt.requirement !== 'Other' && opt.requirement.toLowerCase() === req.toLowerCase()
           );
           return isPreset
-            ? REQUIREMENT_OPTIONS.find(opt => opt.value.toLowerCase() === req.toLowerCase())?.value
+            ? realEstateRequirementsMaster.find(opt => opt.requirement.toLowerCase() === req.toLowerCase())?.requirement
             : 'Other';
         })(),
         customRequirement: (() => {
           const req = (lead.requirement || '').trim();
           if (!req) return '';
-          const isPreset = REQUIREMENT_OPTIONS.some(
-            opt => opt.value !== 'Other' && opt.value.toLowerCase() === req.toLowerCase()
+          const isPreset = realEstateRequirementsMaster.some(
+            opt => opt.requirement !== 'Other' && opt.requirement.toLowerCase() === req.toLowerCase()
           );
           return isPreset ? '' : req;
         })(),
@@ -153,10 +149,11 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
         remarks: lead.remarks || ''
       });
     }
-  }, [lead]);
+  }, [lead, realEstateRequirementsMaster]);
 
   const isRealEstate = formData.leadType === 'Real Estate';
   const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');
+  const isMutualFund = formData.leadType === 'Mutual Fund';
   const isReferenceSource = formData.leadSource?.toLowerCase() === 'reference';
 
   const handleChange = (field, value) => {
@@ -165,6 +162,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
       if (field === 'leadType') {
         updated.leadReceiver = '';
         updated.callerAssigned = '';
+        updated.productType = '';
         if ((value === 'Insurance' || value?.toLowerCase().includes('insurance')) && !updated.insuranceType) {
           updated.insuranceType = 'Life Insurance';
         }
@@ -197,6 +195,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
 
     if (!formData.leadType) { toast.error('Lead Type is required'); return; }
     if (!formData.leadReceiver) { toast.error('Lead Receiver Name is required'); return; }
@@ -236,6 +235,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
       title={`Edit Lead (${lead.leadNo})`}
       onSubmit={handleSubmit}
       submitText={loading ? 'Saving...' : 'Save Changes'}
+      loading={loading}
       maxWidth="max-w-2xl"
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
@@ -290,25 +290,74 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
           </div>
         )}
 
-        {/* INSURANCE SPECIFIC: Insurance Type & Sub-Type */}
+        {/* REAL ESTATE SPECIFIC: Product Type & Requirement */}
+        {isRealEstate && (
+          <>
+            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type</label>
+              <SearchableDropdown
+                options={realEstateProductOptions}
+                value={formData.productType}
+                onChange={(val) => handleChange('productType', val)}
+                placeholder="Select product type"
+              />
+            </div>
+            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Requirement</label>
+              <SearchableDropdown
+                options={realEstateRequirementOptions}
+                value={formData.requirementOption}
+                onChange={handleRequirementOptionChange}
+                placeholder="Select requirement"
+              />
+              {formData.requirementOption === 'Other' && (
+                <div className="relative mt-1.5 animate-in fade-in duration-200">
+                  <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <input
+                    type="text"
+                    value={formData.customRequirement}
+                    onChange={(e) => handleCustomRequirementChange(e.target.value)}
+                    placeholder="Specify other requirement (e.g. Duplex, Farmhouse)"
+                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                  />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* MUTUAL FUND SPECIFIC: Product Type */}
+        {isMutualFund && (
+          <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type</label>
+            <SearchableDropdown
+              options={mutualFundProductOptions}
+              value={formData.productType}
+              onChange={(val) => handleChange('productType', val)}
+              placeholder="Select product type"
+            />
+          </div>
+        )}
+
+        {/* INSURANCE SPECIFIC: Product Type & Sub Product Type */}
         {isInsurance && (
           <>
             <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Insurance Type *</label>
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type *</label>
               <SearchableDropdown
-                options={INSURANCE_TYPE_OPTIONS}
+                options={insuranceProductOptions}
                 value={formData.insuranceType}
                 onChange={(val) => handleChange('insuranceType', val)}
-                placeholder="Select insurance type"
+                placeholder="Select product type"
               />
             </div>
 
-            {/* Insurance Sub Type - Only shown when Life Insurance or Health Insurance is selected */}
-            {INSURANCE_SUB_TYPES[formData.insuranceType] && (
+            {/* Sub Product Type - Only shown when the chosen Product Type has sub types defined */}
+            {insuranceSubProductOptions.length > 0 && (
               <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Insurance Sub Type</label>
+                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Sub Product Type</label>
                 <SearchableDropdown
-                  options={INSURANCE_SUB_TYPES[formData.insuranceType]}
+                  options={insuranceSubProductOptions}
                   value={formData.insuranceSubType}
                   onChange={(val) => handleChange('insuranceSubType', val)}
                   placeholder={`Select ${formData.insuranceType} sub type`}
@@ -413,7 +462,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
         <div className="space-y-1 col-span-2 sm:col-span-1">
           <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Investment Budget</label>
           <SearchableDropdown
-            options={INVESTMENT_BUDGET_OPTIONS}
+            options={investmentBudgetOptions}
             value={formData.investmentBudget}
             onChange={(val) => handleChange('investmentBudget', val)}
             placeholder="Select investment budget"
@@ -445,46 +494,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
             placeholder="Select caller"
           />
         </div>
-
-        {/* REAL ESTATE SPECIFIC: Site Location & Requirement */}
-        {isRealEstate && (
-          <>
-            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Site Location</label>
-              <div className="relative">
-                <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                <input
-                  type="text"
-                  value={formData.siteLocation}
-                  onChange={(e) => handleChange('siteLocation', e.target.value)}
-                  placeholder="e.g. Near SG Highway, Sector 5"
-                  className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-                />
-              </div>
-            </div>
-            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Requirement</label>
-              <SearchableDropdown
-                options={REQUIREMENT_OPTIONS}
-                value={formData.requirementOption}
-                onChange={handleRequirementOptionChange}
-                placeholder="Select requirement"
-              />
-              {formData.requirementOption === 'Other' && (
-                <div className="relative mt-1.5 animate-in fade-in duration-200">
-                  <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                  <input
-                    type="text"
-                    value={formData.customRequirement}
-                    onChange={(e) => handleCustomRequirementChange(e.target.value)}
-                    placeholder="Specify other requirement (e.g. Duplex, Farmhouse)"
-                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-                  />
-                </div>
-              )}
-            </div>
-          </>
-        )}
 
         {/* INSURANCE SPECIFIC: Any Disease */}
         {isInsurance && (

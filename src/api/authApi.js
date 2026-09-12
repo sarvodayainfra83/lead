@@ -16,7 +16,7 @@ export const authApi = {
       .select('*')
       .eq('username', userIdCode)
       .eq('password', password)
-      .single();
+      .maybeSingle();
 
     if (error || !data) {
       throw new Error('Invalid credentials');

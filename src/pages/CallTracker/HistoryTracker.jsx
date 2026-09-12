@@ -9,13 +9,13 @@ import { LEAD_TYPES } from '../Lead/leadConstants';
 import { ENQUIRY_STATUSES, annotateFollowUpNumbers } from './callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
 import { matchesUserAssignment } from '../../utils/authUtils';
+import { getLeadTypeTextClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
 const STATUS_STYLES = {
-  Received: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Expected: 'bg-amber-50 text-amber-700 border-amber-200',
+  Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
-  'Need Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200'
+  'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
 
 export default function HistoryTracker({ tabBar }) {
@@ -81,15 +81,15 @@ export default function HistoryTracker({ tabBar }) {
   };
 
   const tableHeaders = [
-    "Lead No", "Lead Type", "Lead Source", "Person Name", "Number", "Email", "DOB", "Occupation",
-    "Investment Range", "Address", "When to Buy Plan", "Assign Caller", "Status",
+    "Lead No", "Lead Type", "Lead Source", "Customer Name", "Customer Number", "Customer Email", "DOB", "Occupation",
+    "Investment Budget", "Customer Address", "When to Buy Plan", "Assign Caller", "Status",
     "What did Customer Said", "Next Date", "Follow Up No"
   ];
 
   const renderRow = (item) => (
     <tr key={item.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
       <td className="px-4 py-3 text-center text-[14px] text-indigo-600 font-bold whitespace-nowrap">{item.leadNo}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.leadType || '-'}</td>
+      <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number || '-'}</td>
@@ -108,7 +108,7 @@ export default function HistoryTracker({ tabBar }) {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.customerSaid}>
         {item.customerSaid || '-'}
       </td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.nextDate)}</td>
+      <td className={`px-4 py-3 text-center text-[13px] whitespace-nowrap ${NEXT_DATE_CLASS}`}>{formatDate(item.nextDate)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.followUpNo}</td>
     </tr>
   );
@@ -117,7 +117,11 @@ export default function HistoryTracker({ tabBar }) {
     <div key={item.id} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
       <div className="flex justify-between items-start border-b border-gray-100 pb-2">
         <div>
-          <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{item.leadNo} · Follow Up {item.followUpNo}</span>
+          <span className="text-[9px] uppercase tracking-widest leading-none block mb-1">
+            <span className="text-indigo-500">{item.leadNo} · </span>
+            <span className={`font-semibold ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType || '-'}</span>
+            <span className="text-indigo-500"> · Follow Up {item.followUpNo}</span>
+          </span>
           <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
         </div>
         <span className={`text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase border ${STATUS_STYLES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
@@ -127,19 +131,19 @@ export default function HistoryTracker({ tabBar }) {
 
       <div className="grid grid-cols-2 gap-2 text-[10px]">
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Number</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Customer Number</p>
           <p className="text-gray-700 truncate leading-tight">{item.number || '-'}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Next Date</p>
-          <p className="text-gray-700 truncate leading-tight">{formatDate(item.nextDate)}</p>
+          <p className={`truncate leading-tight ${NEXT_DATE_CLASS}`}>{formatDate(item.nextDate)}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Source</p>
           <p className="text-gray-700 truncate leading-tight">{item.leadSource || '-'}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Email</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Customer Email</p>
           <p className="text-gray-700 truncate leading-tight">{item.email || '-'}</p>
         </div>
         <div>
@@ -151,7 +155,7 @@ export default function HistoryTracker({ tabBar }) {
           <p className="text-gray-700 truncate leading-tight">{item.occupation || '-'}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Range</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Budget</p>
           <p className="text-gray-700 truncate leading-tight">{item.investmentBudget || '-'}</p>
         </div>
         <div>
@@ -159,7 +163,7 @@ export default function HistoryTracker({ tabBar }) {
           <p className="text-gray-700 truncate leading-tight">{item.whenToBuyPlan || '-'}</p>
         </div>
         <div className="col-span-2">
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Address</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Customer Address</p>
           <p className="text-gray-700 truncate leading-tight">{item.location || '-'}</p>
         </div>
         <div className="col-span-2">

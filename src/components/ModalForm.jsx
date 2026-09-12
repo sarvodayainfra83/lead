@@ -20,7 +20,8 @@ const ModalForm = ({
   cancelText = 'Cancel',
   maxWidth = 'max-w-2xl',
   zIndex = 'z-[100]',
-  extraFooterAction = null
+  extraFooterAction = null,
+  loading = false
 }) => {
   if (!isOpen) return null;
 
@@ -64,6 +65,7 @@ const ModalForm = ({
             onCancel={onClose}
             cancelText={cancelText}
             submitText={submitText}
+            loading={loading}
             className="w-full"
             formId="ultra-compact-form"
           />

@@ -51,6 +51,50 @@ CREATE TABLE IF NOT EXISTS master_caller_names (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 5A. MASTER MUTUAL FUND PRODUCT TYPES TABLE
+CREATE TABLE IF NOT EXISTS master_mutual_fund_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_type TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5B. MASTER REAL ESTATE PRODUCT TYPES TABLE
+CREATE TABLE IF NOT EXISTS master_real_estate_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_type TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5C. MASTER REAL ESTATE REQUIREMENTS TABLE
+CREATE TABLE IF NOT EXISTS master_real_estate_requirements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    requirement TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5D. MASTER INSURANCE PRODUCT TYPES TABLE
+CREATE TABLE IF NOT EXISTS master_insurance_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_type TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5E. MASTER INSURANCE SUB PRODUCT TYPES TABLE (tied to a parent Insurance Product Type)
+CREATE TABLE IF NOT EXISTS master_insurance_sub_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_type_id UUID REFERENCES master_insurance_products(id) ON DELETE CASCADE,
+    sub_product_type TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5F. MASTER INVESTMENT BUDGETS TABLE (shared across Real Estate / Mutual Fund / Insurance)
+CREATE TABLE IF NOT EXISTS master_investment_budgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    investment_budget TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 6A. REAL ESTATE LEADS TABLE (No lead_id column)
 CREATE TABLE IF NOT EXISTS real_state (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -66,9 +110,18 @@ CREATE TABLE IF NOT EXISTS real_state (
     occupation TEXT,
     investment_budget TEXT,
     site_location TEXT,
+    -- Product Type / Requirement are FK ids into their masters (no plain-text column) — the
+    -- human-readable value is joined in from the master table wherever it's displayed (see
+    -- all_leads_view below). `requirement` stays TEXT too since it's what the Call Tracker /
+    -- Lead Edit forms read and write directly.
+    product_type_id UUID REFERENCES master_real_estate_products(id) ON DELETE SET NULL,
+    requirement_id UUID REFERENCES master_real_estate_requirements(id) ON DELETE SET NULL,
     when_to_buy_plan TEXT,
     requirement TEXT,
     remarks TEXT,
+    -- 'Lead' (created via the normal Add Lead form) or 'Direct' (created via Call Tracker's
+    -- Direct form) — set once at creation, not user-editable afterwards.
+    process_type TEXT DEFAULT 'Lead',
     timestamp TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -81,8 +134,15 @@ CREATE OR REPLACE VIEW real_estate AS SELECT * FROM real_state;
 CREATE TABLE IF NOT EXISTS insurance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     lead_receiver_id UUID REFERENCES master_lead_receivers(id) ON DELETE SET NULL,
-    insurance_type TEXT NOT NULL CHECK (insurance_type IN ('Life Insurance', 'Health Insurance', 'Vehicle Insurance', 'Property Insurance', 'Accident Insurance', 'Travel Insurance', 'Other')),
+    -- No CHECK constraint: values now come from master_insurance_products (Product Type is
+    -- editable via the Master pages, so the DB must accept whatever that master allows).
+    insurance_type TEXT NOT NULL,
     insurance_sub_type TEXT,
+    -- FK ids for the same Product Type / Sub Product Type (insurance_type / insurance_sub_type
+    -- above stay the source of truth for display and validation; these are for referential
+    -- integrity with the masters).
+    product_type_id UUID REFERENCES master_insurance_products(id) ON DELETE SET NULL,
+    sub_product_type_id UUID REFERENCES master_insurance_sub_products(id) ON DELETE SET NULL,
     lead_source_id UUID REFERENCES master_lead_sources(id) ON DELETE SET NULL,
     referencer_name TEXT,
     caller_assigned_id UUID REFERENCES master_caller_names(id) ON DELETE SET NULL,
@@ -96,6 +156,7 @@ CREATE TABLE IF NOT EXISTS insurance (
     when_to_buy_plan TEXT,
     any_desease TEXT,
     remarks TEXT,
+    process_type TEXT DEFAULT 'Lead',
     timestamp TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -115,14 +176,37 @@ CREATE TABLE IF NOT EXISTS mutual_fund (
     customer_address TEXT,
     occupation TEXT,
     investment_budget TEXT,
+    -- Product Type is FK-only here too (no plain-text column) — joined from
+    -- master_mutual_fund_products wherever it's displayed.
+    product_type_id UUID REFERENCES master_mutual_fund_products(id) ON DELETE SET NULL,
     when_to_buy_plan TEXT,
     remarks TEXT,
+    process_type TEXT DEFAULT 'Lead',
     timestamp TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6D. CENTRAL LEADS TABLE
+-- 6D. Link the Investment Budget / Product Type / Requirement / Sub Product Type masters to
+-- each lead-type table via ADD COLUMN IF NOT EXISTS — safe/idempotent to run even though the
+-- columns above are now also in the CREATE TABLE statements, for installs where these tables
+-- already existed before these FK columns did.
+ALTER TABLE real_state
+    ADD COLUMN IF NOT EXISTS investment_budget_id UUID REFERENCES master_investment_budgets(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS product_type_id UUID REFERENCES master_real_estate_products(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS requirement_id UUID REFERENCES master_real_estate_requirements(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS process_type TEXT DEFAULT 'Lead';
+ALTER TABLE mutual_fund
+    ADD COLUMN IF NOT EXISTS investment_budget_id UUID REFERENCES master_investment_budgets(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS product_type_id UUID REFERENCES master_mutual_fund_products(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS process_type TEXT DEFAULT 'Lead';
+ALTER TABLE insurance
+    ADD COLUMN IF NOT EXISTS investment_budget_id UUID REFERENCES master_investment_budgets(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS product_type_id UUID REFERENCES master_insurance_products(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS sub_product_type_id UUID REFERENCES master_insurance_sub_products(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS process_type TEXT DEFAULT 'Lead';
+
+-- 6E. CENTRAL LEADS TABLE
 -- Connected to all three lead tables via Foreign Keys (FK)
 CREATE TABLE IF NOT EXISTS leads (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -140,13 +224,21 @@ CREATE TABLE IF NOT EXISTS call_trackers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
     lead_no TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('Received', 'Expected', 'Not Interested', 'Need Meeting', 'Call Not Received')),
+    status TEXT NOT NULL CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting')),
     customer_said TEXT,
     next_date DATE,
     timestamp TEXT NOT NULL,
     timestamp_ms BIGINT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Installs where this table already existed under the old 5-status scheme: replace the CHECK
+-- constraint with the new 4-status one, and make next_date nullable again (Interested / Not
+-- Interested carry no date — only Future Plan Date / Site Visit/Meeting do).
+ALTER TABLE call_trackers DROP CONSTRAINT IF EXISTS call_trackers_status_check;
+ALTER TABLE call_trackers ADD CONSTRAINT call_trackers_status_check
+    CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting'));
+ALTER TABLE call_trackers ALTER COLUMN next_date DROP NOT NULL;
 
 -- 8. SYSTEM SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS system_settings (
@@ -159,8 +251,13 @@ CREATE TABLE IF NOT EXISTS system_settings (
 -- ==========================================
 -- UNIFIED VIEW FOR ALL LEADS ACROSS 3 TYPES
 -- ==========================================
-CREATE OR REPLACE VIEW all_leads_view AS
-SELECT 
+-- DROP + CREATE rather than CREATE OR REPLACE: Postgres only allows REPLACE to append new
+-- columns at the end of a view's column list, not insert them in the middle (which several
+-- of the columns below do relative to earlier versions of this view). DROP is safe here —
+-- a view holds no data of its own.
+DROP VIEW IF EXISTS all_leads_view;
+CREATE VIEW all_leads_view AS
+SELECT
     l.id AS id,
     l.lead_no AS lead_no,
     l.lead_type_id AS lead_type_id,
@@ -180,13 +277,16 @@ SELECT
     re.customer_address,
     re.occupation,
     re.investment_budget,
+    re.investment_budget_id,
     re.site_location,
+    rep.product_type,
     re.when_to_buy_plan,
     re.requirement,
     NULL::TEXT AS insurance_type,
     NULL::TEXT AS insurance_sub_type,
     NULL::TEXT AS any_desease,
     re.remarks,
+    re.process_type,
     re.timestamp,
     l.created_at,
     l.updated_at
@@ -196,6 +296,7 @@ JOIN real_state re ON re.id = l.real_estate_id
 LEFT JOIN master_lead_receivers lr ON lr.id = re.lead_receiver_id
 LEFT JOIN master_lead_sources ls ON ls.id = re.lead_source_id
 LEFT JOIN master_caller_names ca ON ca.id = re.caller_assigned_id
+LEFT JOIN master_real_estate_products rep ON rep.id = re.product_type_id
 
 UNION ALL
 
@@ -219,13 +320,16 @@ SELECT
     ins.customer_address,
     ins.occupation,
     ins.investment_budget,
+    ins.investment_budget_id,
     NULL::TEXT AS site_location,
+    ins.insurance_type AS product_type,
     ins.when_to_buy_plan,
     NULL::TEXT AS requirement,
     ins.insurance_type,
     ins.insurance_sub_type,
     ins.any_desease,
     ins.remarks,
+    ins.process_type,
     ins.timestamp,
     l.created_at,
     l.updated_at
@@ -258,13 +362,16 @@ SELECT
     mf.customer_address,
     mf.occupation,
     mf.investment_budget,
+    mf.investment_budget_id,
     NULL::TEXT AS site_location,
+    mfp.product_type,
     mf.when_to_buy_plan,
     NULL::TEXT AS requirement,
     NULL::TEXT AS insurance_type,
     NULL::TEXT AS insurance_sub_type,
     NULL::TEXT AS any_desease,
     mf.remarks,
+    mf.process_type,
     mf.timestamp,
     l.created_at,
     l.updated_at
@@ -273,7 +380,15 @@ JOIN master_lead_types lt ON lt.id = l.lead_type_id
 JOIN mutual_fund mf ON mf.id = l.mutual_fund_id
 LEFT JOIN master_lead_receivers lr ON lr.id = mf.lead_receiver_id
 LEFT JOIN master_lead_sources ls ON ls.id = mf.lead_source_id
-LEFT JOIN master_caller_names ca ON ca.id = mf.caller_assigned_id;
+LEFT JOIN master_caller_names ca ON ca.id = mf.caller_assigned_id
+LEFT JOIN master_mutual_fund_products mfp ON mfp.id = mf.product_type_id;
+
+-- Make the view enforce the RLS policies of the tables it reads (leads, real_state, insurance,
+-- mutual_fund, and the master_* tables it joins) instead of running as the view's owner and
+-- silently bypassing them — this is what clears Supabase's "Unrestricted" badge on the view.
+-- Since every underlying table already has an "allow all" policy, this changes nothing about
+-- what the app can actually read; it just makes that explicit instead of implicit.
+ALTER VIEW all_leads_view SET (security_invoker = true);
 
 -- ==========================================
 -- INDEXES FOR PERFORMANCE OPTIMIZATION
@@ -296,6 +411,12 @@ CREATE INDEX IF NOT EXISTS idx_mutual_fund_receiver ON mutual_fund(lead_receiver
 CREATE INDEX IF NOT EXISTS idx_mutual_fund_source ON mutual_fund(lead_source_id);
 CREATE INDEX IF NOT EXISTS idx_mutual_fund_caller ON mutual_fund(caller_assigned_id);
 
+CREATE INDEX IF NOT EXISTS idx_insurance_sub_products_type ON master_insurance_sub_products(product_type_id);
+
+CREATE INDEX IF NOT EXISTS idx_real_state_investment_budget ON real_state(investment_budget_id);
+CREATE INDEX IF NOT EXISTS idx_mutual_fund_investment_budget ON mutual_fund(investment_budget_id);
+CREATE INDEX IF NOT EXISTS idx_insurance_investment_budget ON insurance(investment_budget_id);
+
 CREATE INDEX IF NOT EXISTS idx_call_trackers_lead_id ON call_trackers(lead_id);
 CREATE INDEX IF NOT EXISTS idx_call_trackers_status ON call_trackers(status);
 CREATE INDEX IF NOT EXISTS idx_call_trackers_timestamp_ms ON call_trackers(timestamp_ms);
@@ -308,6 +429,12 @@ ALTER TABLE master_lead_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_lead_sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_lead_receivers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_caller_names ENABLE ROW LEVEL SECURITY;
+ALTER TABLE master_mutual_fund_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE master_real_estate_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE master_real_estate_requirements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE master_insurance_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE master_insurance_sub_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE master_investment_budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE real_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE insurance ENABLE ROW LEVEL SECURITY;
@@ -325,6 +452,12 @@ CREATE POLICY "Allow public all on master_lead_types" ON master_lead_types FOR A
 CREATE POLICY "Allow public all on master_lead_sources" ON master_lead_sources FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on master_lead_receivers" ON master_lead_receivers FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on master_caller_names" ON master_caller_names FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on master_mutual_fund_products" ON master_mutual_fund_products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on master_real_estate_products" ON master_real_estate_products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on master_real_estate_requirements" ON master_real_estate_requirements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on master_insurance_products" ON master_insurance_products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on master_insurance_sub_products" ON master_insurance_sub_products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on master_investment_budgets" ON master_investment_budgets FOR ALL USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow public all on leads" ON leads FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on real_state" ON real_state FOR ALL USING (true) WITH CHECK (true);
@@ -381,6 +514,59 @@ INSERT INTO master_caller_names (lead_type_id, person_name) VALUES
     ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Rajesh Sharma'),
     ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Amit Patel'),
     ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Priya Iyer');
+
+-- Seed Master Mutual Fund Product Types
+INSERT INTO master_mutual_fund_products (product_type) VALUES
+    ('Equity Fund'), ('Debit Fund'), ('Hybrid Fund'), ('Money Market Fund'), ('Growth Fund'), ('Other')
+ON CONFLICT (product_type) DO NOTHING;
+
+-- Seed Master Real Estate Product Types
+INSERT INTO master_real_estate_products (product_type) VALUES
+    ('Vrindavan Garden'), ('Bhardwaj Sky'), ('Shri Ram Lotus Valley'), ('Evarraa By Dee Vee'), ('Other')
+ON CONFLICT (product_type) DO NOTHING;
+
+-- Seed Master Real Estate Requirements
+INSERT INTO master_real_estate_requirements (requirement) VALUES
+    ('1 BHK'), ('2 BHK'), ('3 BHK'), ('4 BHK'), ('5+ BHK'), ('Flat'), ('Bungalow'), ('Villa'),
+    ('Penthouse'), ('Row House'), ('Commercial Shop'), ('Commercial Office'), ('Plot / Land'),
+    ('Farmhouse'), ('Industrial / Warehouse'), ('Other')
+ON CONFLICT (requirement) DO NOTHING;
+
+-- Seed Master Insurance Product Types
+INSERT INTO master_insurance_products (product_type) VALUES
+    ('Life Insurance'), ('Health Insurance'), ('Vehicle Insurance'), ('Property Insurance'),
+    ('Accident Insurance'), ('Travel Insurance'), ('Other')
+ON CONFLICT (product_type) DO NOTHING;
+
+-- Seed Master Insurance Sub Product Types
+INSERT INTO master_insurance_sub_products (product_type_id, sub_product_type) VALUES
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'KeyMan Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'Business Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'Whole Life Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'ULIP Investment Plan'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'Child Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'Saving Plan'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'Retirement Plan'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Life Insurance'), 'Other'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Health Insurance'), 'Individual Health Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Health Insurance'), 'Family Health Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Health Insurance'), 'Senior Citizen Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Health Insurance'), 'Group Insurance'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Health Insurance'), 'Critical Illness'),
+    ((SELECT id FROM master_insurance_products WHERE product_type = 'Health Insurance'), 'Other');
+
+-- Seed Master Investment Budgets
+INSERT INTO master_investment_budgets (investment_budget) VALUES
+    ('10k - 20k'),
+    ('20k - 50k'),
+    ('50k - 70k'),
+    ('70k - 1 Lakh'),
+    ('1 Lakh - 1.5 Lakh'),
+    ('1.5 Lakh - 2 Lakh'),
+    ('2 Lakh - 3 Lakh'),
+    ('3 Lakh - 5 Lakh'),
+    ('Above 5 Lakh')
+ON CONFLICT (investment_budget) DO NOTHING;
 
 -- Seed Settings
 INSERT INTO system_settings (key, value) VALUES 

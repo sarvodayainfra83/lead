@@ -10,7 +10,8 @@ import LeadEdit from './LeadEdit';
 import BulkUploadLead from './BulkUploadLead';
 import { LEAD_TYPES, LEAD_SOURCES } from './leadConstants';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, matchesUserReceiver } from '../../utils/authUtils';
+import { isUserAdmin, matchesUserReceiver, hasFullAccess } from '../../utils/authUtils';
+import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 
 /**
  * Formats a lead's timestamp into DD/MM/YYYY (date only, no time).
@@ -108,6 +109,7 @@ export default function PendingLead({ setHeaderAction }) {
   const [filters, setFilters] = useState({ ...initialFilters });
 
   const user = useAuthStore(state => state.user);
+  const canEdit = hasFullAccess(user, 'lead');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
@@ -254,29 +256,35 @@ export default function PendingLead({ setHeaderAction }) {
     if (setHeaderAction) {
       setHeaderAction(
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-          <button
-            onClick={handleSaveAssignments}
-            className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
-          >
-            <Save size={14} /> Save
-          </button>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
-          >
-            <Plus size={15} /> Add Lead
-          </button>
-          <button
-            onClick={openBulkUpload}
-            className="flex items-center gap-1 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
-          >
-            <Upload size={14} /> Upload
-          </button>
+          {canEdit && (
+            <button
+              onClick={handleSaveAssignments}
+              className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+            >
+              <Save size={14} /> Save
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={openAdd}
+              className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+            >
+              <Plus size={15} /> Add Lead
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={openBulkUpload}
+              className="flex items-center gap-1 bg-white border border-indigo-300 hover:bg-indigo-50 text-indigo-700 rounded-lg px-2.5 sm:px-4 h-[30px] sm:h-[32px] lg:h-[38px] text-xs md:text-sm font-semibold shadow-sm transition"
+            >
+              <Upload size={14} /> Upload
+            </button>
+          )}
         </div>
       );
     }
     return () => setHeaderAction && setHeaderAction(null);
-  }, [setHeaderAction, handleSaveAssignments, openAdd, openBulkUpload]);
+  }, [setHeaderAction, handleSaveAssignments, openAdd, openBulkUpload, canEdit]);
 
   const handleDelete = async (item) => {
     if (!window.confirm(`Delete lead ${item.leadNo} "${item.personName}"? This cannot be undone.`)) return;
@@ -300,10 +308,13 @@ export default function PendingLead({ setHeaderAction }) {
 
   const tableHeaders = [
     <input key="select-all" type="checkbox" checked={allChecked} onChange={toggleAll} className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer" />,
-    "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Lead Receiver Name", "Lead Source",
-    "Person Name", "Number", "Email", "DOB", "Occupation", "Requirement",
-    "Investment Range", "Address", "When to Buy Plan", "Remarks", "Action"
+    "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Team Member Name", "Lead Source",
+    "Reference Name", "Product Type", "Requirement", "Sub Product Type",
+    "Customer Name", "Customer Number", "Customer Email", "Customer DOB", "Customer Occupation",
+    "Investment Budget", "Customer Address", "When to Buy Plan", "Medical Condition", "Remarks",
+    "Process Type"
   ];
+  if (canEdit) tableHeaders.push("Action");
 
   const renderRow = (item) => (
     <tr key={item.leadNo} className="group hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
@@ -333,34 +344,41 @@ export default function PendingLead({ setHeaderAction }) {
           <span className="text-gray-300 text-[11px] italic">Select row to assign</span>
         )}
       </td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.leadType}</td>
+      <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.leadReceiver}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.referencerName || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.productType || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.insuranceSubType || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.location || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.anyDesease || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.remarks}>
         {item.remarks || '-'}
       </td>
-      <td
-        className="px-3 py-2 text-center whitespace-nowrap bg-white group-hover:bg-indigo-50 transition-colors"
-        style={{ position: 'sticky', right: 0, zIndex: 10, boxShadow: '-2px 0 4px rgba(0,0,0,0.08)' }}
-      >
-        <div className="flex items-center justify-center gap-1.5">
-          <button onClick={() => setEditLead(item)} title="Edit Lead" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
-            <Pencil size={13} />
-          </button>
-          <button onClick={() => handleDelete(item)} title="Delete Lead" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
-            <Trash2 size={13} />
-          </button>
-        </div>
-      </td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.processType || '-'}</td>
+      {canEdit && (
+        <td
+          className="px-3 py-2 text-center whitespace-nowrap bg-white group-hover:bg-indigo-50 transition-colors"
+          style={{ position: 'sticky', right: 0, zIndex: 10, boxShadow: '-2px 0 4px rgba(0,0,0,0.08)' }}
+        >
+          <div className="flex items-center justify-center gap-1.5">
+            <button onClick={() => setEditLead(item)} title="Edit Lead" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+              <Pencil size={13} />
+            </button>
+            <button onClick={() => handleDelete(item)} title="Delete Lead" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </td>
+      )}
     </tr>
   );
 
@@ -375,7 +393,11 @@ export default function PendingLead({ setHeaderAction }) {
             className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer mt-0.5"
           />
           <div>
-            <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{item.leadNo} · {item.leadType} · {leadDate(item)}</span>
+            <span className="text-[9px] uppercase tracking-widest leading-none block mb-1">
+              <span className="text-indigo-500">{item.leadNo} · </span>
+              <span className={`font-semibold ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType}</span>
+              <span className="text-indigo-500"> · {leadDate(item)}</span>
+            </span>
             <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
           </div>
         </div>
@@ -401,8 +423,24 @@ export default function PendingLead({ setHeaderAction }) {
           <p className="text-gray-700 truncate leading-tight">{item.leadSource}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Receiver</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Team Member Name</p>
           <p className="text-gray-700 truncate leading-tight">{item.leadReceiver}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Reference Name</p>
+          <p className="text-gray-700 truncate leading-tight">{item.referencerName || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Product Type</p>
+          <p className="text-gray-700 truncate leading-tight">{item.productType || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Requirement</p>
+          <p className="text-gray-700 truncate leading-tight">{item.requirement || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Sub Product Type</p>
+          <p className="text-gray-700 truncate leading-tight">{item.insuranceSubType || '-'}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Email</p>
@@ -417,11 +455,7 @@ export default function PendingLead({ setHeaderAction }) {
           <p className="text-gray-700 truncate leading-tight">{item.occupation || '-'}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Requirement</p>
-          <p className="text-gray-700 truncate leading-tight">{item.requirement || '-'}</p>
-        </div>
-        <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Range</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Budget</p>
           <p className="text-gray-700 truncate leading-tight">{item.investmentBudget || '-'}</p>
         </div>
         <div className="col-span-2">
@@ -432,20 +466,30 @@ export default function PendingLead({ setHeaderAction }) {
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">When to Buy</p>
           <p className="text-gray-700 truncate leading-tight">{item.whenToBuyPlan || '-'}</p>
         </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Medical Condition</p>
+          <p className="text-gray-700 truncate leading-tight">{item.anyDesease || '-'}</p>
+        </div>
         <div className="col-span-2">
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Remarks</p>
           <p className="text-gray-700 leading-tight">{item.remarks || '-'}</p>
         </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Process Type</p>
+          <p className="text-gray-700 truncate leading-tight">{item.processType || '-'}</p>
+        </div>
       </div>
 
-      <div className="flex gap-1.5">
-        <button onClick={() => setEditLead(item)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
-          <Pencil size={11} /> Edit
-        </button>
-        <button onClick={() => handleDelete(item)} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
-          <Trash2 size={11} /> Del
-        </button>
-      </div>
+      {canEdit && (
+        <div className="flex gap-1.5">
+          <button onClick={() => setEditLead(item)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
+            <Pencil size={11} /> Edit
+          </button>
+          <button onClick={() => handleDelete(item)} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
+            <Trash2 size={11} /> Del
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -596,7 +640,7 @@ export default function PendingLead({ setHeaderAction }) {
           data={paginatedLeads}
           renderRow={renderRow}
           renderCard={renderCard}
-          minWidth="2600px"
+          minWidth="3400px"
           stickyFirstColumn
           stickyLastColumn
           currentPage={currentPage}

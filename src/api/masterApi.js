@@ -15,7 +15,31 @@ import {
   getCallerNamesMaster as getLocalCallers,
   createCallerNameMaster as saveLocalCaller,
   updateCallerNameMaster as updateLocalCaller,
-  deleteCallerNameMaster as deleteLocalCaller
+  deleteCallerNameMaster as deleteLocalCaller,
+  getMutualFundProductsMaster as getLocalMutualFundProducts,
+  createMutualFundProductMaster as saveLocalMutualFundProduct,
+  updateMutualFundProductMaster as updateLocalMutualFundProduct,
+  deleteMutualFundProductMaster as deleteLocalMutualFundProduct,
+  getRealEstateProductsMaster as getLocalRealEstateProducts,
+  createRealEstateProductMaster as saveLocalRealEstateProduct,
+  updateRealEstateProductMaster as updateLocalRealEstateProduct,
+  deleteRealEstateProductMaster as deleteLocalRealEstateProduct,
+  getRealEstateRequirementsMaster as getLocalRealEstateRequirements,
+  createRealEstateRequirementMaster as saveLocalRealEstateRequirement,
+  updateRealEstateRequirementMaster as updateLocalRealEstateRequirement,
+  deleteRealEstateRequirementMaster as deleteLocalRealEstateRequirement,
+  getInsuranceProductsMaster as getLocalInsuranceProducts,
+  createInsuranceProductMaster as saveLocalInsuranceProduct,
+  updateInsuranceProductMaster as updateLocalInsuranceProduct,
+  deleteInsuranceProductMaster as deleteLocalInsuranceProduct,
+  getInsuranceSubProductsMaster as getLocalInsuranceSubProducts,
+  createInsuranceSubProductMaster as saveLocalInsuranceSubProduct,
+  updateInsuranceSubProductMaster as updateLocalInsuranceSubProduct,
+  deleteInsuranceSubProductMaster as deleteLocalInsuranceSubProduct,
+  getInvestmentBudgetsMaster as getLocalInvestmentBudgets,
+  createInvestmentBudgetMaster as saveLocalInvestmentBudget,
+  updateInvestmentBudgetMaster as updateLocalInvestmentBudget,
+  deleteInvestmentBudgetMaster as deleteLocalInvestmentBudget
 } from '../utils/storageManager';
 
 export const masterApi = {
@@ -291,5 +315,237 @@ export const masterApi = {
     const { error } = await supabase.from('master_caller_names').delete().eq('id', id);
     if (error) throw error;
     deleteLocalCaller(id);
+  },
+
+  // --- MUTUAL FUND PRODUCT TYPES ---
+  async getMutualFundProducts() {
+    if (!isSupabaseConfigured) return getLocalMutualFundProducts();
+    const { data, error } = await supabase.from('master_mutual_fund_products').select('*').order('created_at', { ascending: true });
+    if (error) { console.error('Error fetching mutual fund products:', error); return getLocalMutualFundProducts(); }
+    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, productType: d.product_type }));
+  },
+
+  async saveMutualFundProduct(obj) {
+    if (!isSupabaseConfigured) return obj.id ? updateLocalMutualFundProduct(obj) : saveLocalMutualFundProduct(obj);
+
+    if (obj.id) {
+      const { data, error } = await supabase.from('master_mutual_fund_products').update({ product_type: obj.productType }).eq('id', obj.id).select().single();
+      if (error) { console.error('Error updating mutual fund product:', error); updateLocalMutualFundProduct(obj); throw error; }
+      const result = { id: data.id, productType: data.product_type };
+      updateLocalMutualFundProduct(result);
+      return result;
+    } else {
+      const { data, error } = await supabase.from('master_mutual_fund_products').insert({ product_type: obj.productType }).select().single();
+      if (error) { console.error('Error saving mutual fund product:', error); saveLocalMutualFundProduct(obj); throw error; }
+      const result = { id: data.id, productType: data.product_type };
+      saveLocalMutualFundProduct(result);
+      return result;
+    }
+  },
+
+  async deleteMutualFundProduct(id) {
+    if (!isSupabaseConfigured) return deleteLocalMutualFundProduct(id);
+    const { error } = await supabase.from('master_mutual_fund_products').delete().eq('id', id);
+    if (error) throw error;
+    deleteLocalMutualFundProduct(id);
+  },
+
+  // --- REAL ESTATE PRODUCT TYPES ---
+  async getRealEstateProducts() {
+    if (!isSupabaseConfigured) return getLocalRealEstateProducts();
+    const { data, error } = await supabase.from('master_real_estate_products').select('*').order('created_at', { ascending: true });
+    if (error) { console.error('Error fetching real estate products:', error); return getLocalRealEstateProducts(); }
+    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, productType: d.product_type }));
+  },
+
+  async saveRealEstateProduct(obj) {
+    if (!isSupabaseConfigured) return obj.id ? updateLocalRealEstateProduct(obj) : saveLocalRealEstateProduct(obj);
+
+    if (obj.id) {
+      const { data, error } = await supabase.from('master_real_estate_products').update({ product_type: obj.productType }).eq('id', obj.id).select().single();
+      if (error) { console.error('Error updating real estate product:', error); updateLocalRealEstateProduct(obj); throw error; }
+      const result = { id: data.id, productType: data.product_type };
+      updateLocalRealEstateProduct(result);
+      return result;
+    } else {
+      const { data, error } = await supabase.from('master_real_estate_products').insert({ product_type: obj.productType }).select().single();
+      if (error) { console.error('Error saving real estate product:', error); saveLocalRealEstateProduct(obj); throw error; }
+      const result = { id: data.id, productType: data.product_type };
+      saveLocalRealEstateProduct(result);
+      return result;
+    }
+  },
+
+  async deleteRealEstateProduct(id) {
+    if (!isSupabaseConfigured) return deleteLocalRealEstateProduct(id);
+    const { error } = await supabase.from('master_real_estate_products').delete().eq('id', id);
+    if (error) throw error;
+    deleteLocalRealEstateProduct(id);
+  },
+
+  // --- REAL ESTATE REQUIREMENTS ---
+  async getRealEstateRequirements() {
+    if (!isSupabaseConfigured) return getLocalRealEstateRequirements();
+    const { data, error } = await supabase.from('master_real_estate_requirements').select('*').order('created_at', { ascending: true });
+    if (error) { console.error('Error fetching real estate requirements:', error); return getLocalRealEstateRequirements(); }
+    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, requirement: d.requirement }));
+  },
+
+  async saveRealEstateRequirement(obj) {
+    if (!isSupabaseConfigured) return obj.id ? updateLocalRealEstateRequirement(obj) : saveLocalRealEstateRequirement(obj);
+
+    if (obj.id) {
+      const { data, error } = await supabase.from('master_real_estate_requirements').update({ requirement: obj.requirement }).eq('id', obj.id).select().single();
+      if (error) { console.error('Error updating real estate requirement:', error); updateLocalRealEstateRequirement(obj); throw error; }
+      const result = { id: data.id, requirement: data.requirement };
+      updateLocalRealEstateRequirement(result);
+      return result;
+    } else {
+      const { data, error } = await supabase.from('master_real_estate_requirements').insert({ requirement: obj.requirement }).select().single();
+      if (error) { console.error('Error saving real estate requirement:', error); saveLocalRealEstateRequirement(obj); throw error; }
+      const result = { id: data.id, requirement: data.requirement };
+      saveLocalRealEstateRequirement(result);
+      return result;
+    }
+  },
+
+  async deleteRealEstateRequirement(id) {
+    if (!isSupabaseConfigured) return deleteLocalRealEstateRequirement(id);
+    const { error } = await supabase.from('master_real_estate_requirements').delete().eq('id', id);
+    if (error) throw error;
+    deleteLocalRealEstateRequirement(id);
+  },
+
+  // --- INSURANCE PRODUCT TYPES ---
+  async getInsuranceProducts() {
+    if (!isSupabaseConfigured) return getLocalInsuranceProducts();
+    const { data, error } = await supabase.from('master_insurance_products').select('*').order('created_at', { ascending: true });
+    if (error) { console.error('Error fetching insurance products:', error); return getLocalInsuranceProducts(); }
+    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, productType: d.product_type }));
+  },
+
+  async saveInsuranceProduct(obj) {
+    if (!isSupabaseConfigured) return obj.id ? updateLocalInsuranceProduct(obj) : saveLocalInsuranceProduct(obj);
+
+    if (obj.id) {
+      const { data, error } = await supabase.from('master_insurance_products').update({ product_type: obj.productType }).eq('id', obj.id).select().single();
+      if (error) { console.error('Error updating insurance product:', error); updateLocalInsuranceProduct(obj); throw error; }
+      const result = { id: data.id, productType: data.product_type };
+      updateLocalInsuranceProduct(result);
+      return result;
+    } else {
+      const { data, error } = await supabase.from('master_insurance_products').insert({ product_type: obj.productType }).select().single();
+      if (error) { console.error('Error saving insurance product:', error); saveLocalInsuranceProduct(obj); throw error; }
+      const result = { id: data.id, productType: data.product_type };
+      saveLocalInsuranceProduct(result);
+      return result;
+    }
+  },
+
+  async deleteInsuranceProduct(id) {
+    if (!isSupabaseConfigured) return deleteLocalInsuranceProduct(id);
+    const { error } = await supabase.from('master_insurance_products').delete().eq('id', id);
+    if (error) throw error;
+    deleteLocalInsuranceProduct(id);
+  },
+
+  // --- INSURANCE SUB PRODUCT TYPES (each tied to a parent Insurance Product Type) ---
+  async getInsuranceSubProducts() {
+    if (!isSupabaseConfigured) return getLocalInsuranceSubProducts();
+    const { data, error } = await supabase
+      .from('master_insurance_sub_products')
+      .select('*, master_insurance_products!product_type_id(id, product_type)')
+      .order('created_at', { ascending: true });
+    if (error) { console.error('Error fetching insurance sub products:', error); return getLocalInsuranceSubProducts(); }
+    return data.map((d, idx) => ({
+      id: d.id,
+      serialNo: idx + 1,
+      productTypeId: d.product_type_id,
+      productType: d.master_insurance_products?.product_type || '',
+      subProductType: d.sub_product_type
+    }));
+  },
+
+  async saveInsuranceSubProduct(obj) {
+    let productTypeId = obj.productTypeId;
+    if (!productTypeId && obj.productType && isSupabaseConfigured) {
+      const { data: typeRow } = await supabase.from('master_insurance_products').select('id').eq('product_type', obj.productType).maybeSingle();
+      if (typeRow) productTypeId = typeRow.id;
+    }
+
+    if (!isSupabaseConfigured) return obj.id ? updateLocalInsuranceSubProduct(obj) : saveLocalInsuranceSubProduct(obj);
+
+    if (obj.id) {
+      const { data, error } = await supabase
+        .from('master_insurance_sub_products')
+        .update({ product_type_id: productTypeId, sub_product_type: obj.subProductType })
+        .eq('id', obj.id)
+        .select('*, master_insurance_products!product_type_id(id, product_type)')
+        .single();
+      if (error) { console.error('Error updating insurance sub product:', error); updateLocalInsuranceSubProduct(obj); throw error; }
+      const result = {
+        id: data.id,
+        productTypeId: data.product_type_id,
+        productType: data.master_insurance_products?.product_type || obj.productType,
+        subProductType: data.sub_product_type
+      };
+      updateLocalInsuranceSubProduct(result);
+      return result;
+    } else {
+      const { data, error } = await supabase
+        .from('master_insurance_sub_products')
+        .insert({ product_type_id: productTypeId, sub_product_type: obj.subProductType })
+        .select('*, master_insurance_products!product_type_id(id, product_type)')
+        .single();
+      if (error) { console.error('Error saving insurance sub product:', error); saveLocalInsuranceSubProduct(obj); throw error; }
+      const result = {
+        id: data.id,
+        productTypeId: data.product_type_id,
+        productType: data.master_insurance_products?.product_type || obj.productType,
+        subProductType: data.sub_product_type
+      };
+      saveLocalInsuranceSubProduct(result);
+      return result;
+    }
+  },
+
+  async deleteInsuranceSubProduct(id) {
+    if (!isSupabaseConfigured) return deleteLocalInsuranceSubProduct(id);
+    const { error } = await supabase.from('master_insurance_sub_products').delete().eq('id', id);
+    if (error) throw error;
+    deleteLocalInsuranceSubProduct(id);
+  },
+
+  // --- INVESTMENT BUDGETS (shared across Real Estate / Mutual Fund / Insurance) ---
+  async getInvestmentBudgets() {
+    if (!isSupabaseConfigured) return getLocalInvestmentBudgets();
+    const { data, error } = await supabase.from('master_investment_budgets').select('*').order('created_at', { ascending: true });
+    if (error) { console.error('Error fetching investment budgets:', error); return getLocalInvestmentBudgets(); }
+    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, investmentBudget: d.investment_budget }));
+  },
+
+  async saveInvestmentBudget(obj) {
+    if (!isSupabaseConfigured) return obj.id ? updateLocalInvestmentBudget(obj) : saveLocalInvestmentBudget(obj);
+
+    if (obj.id) {
+      const { data, error } = await supabase.from('master_investment_budgets').update({ investment_budget: obj.investmentBudget }).eq('id', obj.id).select().single();
+      if (error) { console.error('Error updating investment budget:', error); updateLocalInvestmentBudget(obj); throw error; }
+      const result = { id: data.id, investmentBudget: data.investment_budget };
+      updateLocalInvestmentBudget(result);
+      return result;
+    } else {
+      const { data, error } = await supabase.from('master_investment_budgets').insert({ investment_budget: obj.investmentBudget }).select().single();
+      if (error) { console.error('Error saving investment budget:', error); saveLocalInvestmentBudget(obj); throw error; }
+      const result = { id: data.id, investmentBudget: data.investment_budget };
+      saveLocalInvestmentBudget(result);
+      return result;
+    }
+  },
+
+  async deleteInvestmentBudget(id) {
+    if (!isSupabaseConfigured) return deleteLocalInvestmentBudget(id);
+    const { error } = await supabase.from('master_investment_budgets').delete().eq('id', id);
+    if (error) throw error;
+    deleteLocalInvestmentBudget(id);
   }
 };

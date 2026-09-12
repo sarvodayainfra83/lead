@@ -34,6 +34,7 @@ export const leadApi = {
       location: row.customer_address || row.location || '',
       dob: row.dob || '',
       occupation: row.occupation || '',
+      investmentBudgetId: row.investment_budget_id || null,
       investmentBudget: row.investment_budget || '',
       whenToBuyPlan: row.when_to_buy_plan || '',
       remarks: row.remarks || '',
@@ -44,6 +45,11 @@ export const leadApi = {
       insuranceType: row.insurance_type || '',
       insuranceSubType: row.insurance_sub_type || '',
       anyDesease: row.any_desease || '',
+      // Product Type — Real Estate/Mutual Fund's own column, or Insurance's product type reused
+      productType: row.product_type || row.insurance_type || '',
+      // 'Lead' (Add Lead form) or 'Direct' (Call Tracker's Direct form) — defaults to 'Lead'
+      // for leads saved before this field existed.
+      processType: row.process_type || 'Lead',
       timestamp: row.timestamp || row.created_at || new Date().toISOString()
     };
   },
@@ -70,6 +76,7 @@ export const leadApi = {
     let lead_receiver_id = lead.leadReceiverId || null;
     let lead_source_id = lead.leadSourceId || null;
     let caller_assigned_id = lead.callerAssignedId || null;
+    let investment_budget_id = lead.investmentBudgetId || null;
 
     // 1. Resolve lead_type_id first
     if (!lead_type_id && lead.leadType) {
@@ -121,7 +128,52 @@ export const leadApi = {
       }
     }
 
-    return { lead_type_id, lead_receiver_id, lead_source_id, caller_assigned_id };
+    // 5. Resolve investment_budget_id
+    if (!investment_budget_id && lead.investmentBudget) {
+      const { data } = await supabase
+        .from('master_investment_budgets')
+        .select('id')
+        .eq('investment_budget', lead.investmentBudget)
+        .limit(1);
+      if (data && data[0]) investment_budget_id = data[0].id;
+    }
+
+    return { lead_type_id, lead_receiver_id, lead_source_id, caller_assigned_id, investment_budget_id };
+  },
+
+  // Resolve Product Type / Requirement / Sub Product Type names to the FK ids the detail
+  // tables actually store (real_state.product_type_id/requirement_id, mutual_fund.product_type_id,
+  // insurance.product_type_id/sub_product_type_id) — these tables have no plain-text
+  // product_type column, only the _id FK.
+  async resolveProductFkIds(lead, tableName) {
+    const result = { product_type_id: null, requirement_id: null, sub_product_type_id: null };
+
+    if (tableName === 'real_state') {
+      if (lead.productType) {
+        const { data } = await supabase.from('master_real_estate_products').select('id').eq('product_type', lead.productType).limit(1);
+        if (data && data[0]) result.product_type_id = data[0].id;
+      }
+      if (lead.requirement) {
+        const { data } = await supabase.from('master_real_estate_requirements').select('id').eq('requirement', lead.requirement).limit(1);
+        if (data && data[0]) result.requirement_id = data[0].id;
+      }
+    } else if (tableName === 'mutual_fund') {
+      if (lead.productType) {
+        const { data } = await supabase.from('master_mutual_fund_products').select('id').eq('product_type', lead.productType).limit(1);
+        if (data && data[0]) result.product_type_id = data[0].id;
+      }
+    } else if (tableName === 'insurance') {
+      if (lead.insuranceType) {
+        const { data } = await supabase.from('master_insurance_products').select('id').eq('product_type', lead.insuranceType).limit(1);
+        if (data && data[0]) result.product_type_id = data[0].id;
+      }
+      if (lead.insuranceSubType) {
+        const { data } = await supabase.from('master_insurance_sub_products').select('id').eq('sub_product_type', lead.insuranceSubType).limit(1);
+        if (data && data[0]) result.sub_product_type_id = data[0].id;
+      }
+    }
+
+    return result;
   },
 
   // Fetch all leads across all 3 tables with unified structure
@@ -154,9 +206,9 @@ export const leadApi = {
           insurance_id,
           mutual_fund_id,
           master_lead_types!lead_type_id (id, lead_type),
-          real_state!real_estate_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name)),
+          real_state!real_estate_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name), master_real_estate_products(product_type)),
           insurance!insurance_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name)),
-          mutual_fund!mutual_fund_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name))
+          mutual_fund!mutual_fund_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name), master_mutual_fund_products(product_type))
         `)
         .order('created_at', { ascending: false });
 
@@ -172,7 +224,8 @@ export const leadApi = {
             lead_type: l.master_lead_types?.lead_type,
             lead_receiver: detail.master_lead_receivers?.person_name,
             lead_source: detail.master_lead_sources?.lead_source,
-            caller_assigned: detail.master_caller_names?.person_name
+            caller_assigned: detail.master_caller_names?.person_name,
+            product_type: detail.master_real_estate_products?.product_type || detail.master_mutual_fund_products?.product_type
           });
         });
       }
@@ -193,6 +246,7 @@ export const leadApi = {
 
     const fkIds = await this.resolveLeadFkIds(leadData);
     const tableName = this.getTableNameForLeadType(leadData.leadType);
+    const productFks = await this.resolveProductFkIds(leadData, tableName);
 
     // 1. Prepare detail payload for the specific table (NO lead_id column!)
     const detailPayload = {
@@ -207,18 +261,26 @@ export const leadApi = {
       customer_address: leadData.customerAddress || leadData.location || null,
       occupation: leadData.occupation || null,
       investment_budget: leadData.investmentBudget || null,
+      investment_budget_id: fkIds.investment_budget_id,
       when_to_buy_plan: leadData.whenToBuyPlan || null,
       remarks: leadData.remarks || null,
+      process_type: leadData.processType || 'Lead',
       timestamp: leadData.timestamp || new Date().toISOString()
     };
 
     if (tableName === 'real_state') {
       detailPayload.site_location = leadData.siteLocation || null;
+      detailPayload.product_type_id = productFks.product_type_id;
       detailPayload.requirement = leadData.requirement || null;
+      detailPayload.requirement_id = productFks.requirement_id;
     } else if (tableName === 'insurance') {
       detailPayload.insurance_type = leadData.insuranceType || 'Insurance';
       detailPayload.insurance_sub_type = leadData.insuranceSubType || null;
       detailPayload.any_desease = leadData.anyDesease || null;
+      detailPayload.product_type_id = productFks.product_type_id;
+      detailPayload.sub_product_type_id = productFks.sub_product_type_id;
+    } else if (tableName === 'mutual_fund') {
+      detailPayload.product_type_id = productFks.product_type_id;
     }
 
     const { data: detailData, error: detailError } = await supabase
@@ -296,6 +358,7 @@ export const leadApi = {
     const leadType = updatedFields.leadType || parentLead?.master_lead_types?.lead_type;
     const tableName = this.getTableNameForLeadType(leadType);
     const resolvedFks = await this.resolveLeadFkIds(updatedFields);
+    const resolvedProductFks = await this.resolveProductFkIds(updatedFields, tableName);
 
     const detailId = parentLead
       ? (parentLead.real_estate_id || parentLead.insurance_id || parentLead.mutual_fund_id)
@@ -321,23 +384,42 @@ export const leadApi = {
     if (updatedFields.customerEmail !== undefined || updatedFields.email !== undefined) {
       detailPayload.customer_email = updatedFields.customerEmail || updatedFields.email;
     }
-    if (updatedFields.dob !== undefined) detailPayload.dob = updatedFields.dob;
+    if (updatedFields.dob !== undefined) detailPayload.dob = updatedFields.dob || null;
     if (updatedFields.occupation !== undefined) detailPayload.occupation = updatedFields.occupation;
-    if (updatedFields.investmentBudget !== undefined) detailPayload.investment_budget = updatedFields.investmentBudget;
+    if (updatedFields.investmentBudget !== undefined) {
+      detailPayload.investment_budget = updatedFields.investmentBudget;
+      detailPayload.investment_budget_id = resolvedFks.investment_budget_id;
+    }
     if (updatedFields.customerAddress !== undefined || updatedFields.location !== undefined) {
       detailPayload.customer_address = updatedFields.customerAddress || updatedFields.location;
     }
     if (updatedFields.whenToBuyPlan !== undefined) detailPayload.when_to_buy_plan = updatedFields.whenToBuyPlan;
     if (updatedFields.remarks !== undefined) detailPayload.remarks = updatedFields.remarks;
 
-    // Type-specific field updates
+    // Type-specific field updates. Product Type's _id columns are only written when a value
+    // was actually provided (rather than on any `!== undefined`) — the form pre-fills this
+    // field from a joined view column that can lag behind a schema change, and we'd rather
+    // leave an existing product_type_id alone than null it out from a blank we can't tell
+    // apart from an intentional clear.
     if (tableName === 'real_state') {
       if (updatedFields.siteLocation !== undefined) detailPayload.site_location = updatedFields.siteLocation;
-      if (updatedFields.requirement !== undefined) detailPayload.requirement = updatedFields.requirement;
+      if (updatedFields.productType) detailPayload.product_type_id = resolvedProductFks.product_type_id;
+      if (updatedFields.requirement !== undefined) {
+        detailPayload.requirement = updatedFields.requirement;
+        detailPayload.requirement_id = resolvedProductFks.requirement_id;
+      }
     } else if (tableName === 'insurance') {
-      if (updatedFields.insuranceType !== undefined) detailPayload.insurance_type = updatedFields.insuranceType;
-      if (updatedFields.insuranceSubType !== undefined) detailPayload.insurance_sub_type = updatedFields.insuranceSubType;
+      if (updatedFields.insuranceType !== undefined) {
+        detailPayload.insurance_type = updatedFields.insuranceType;
+        if (updatedFields.insuranceType) detailPayload.product_type_id = resolvedProductFks.product_type_id;
+      }
+      if (updatedFields.insuranceSubType !== undefined) {
+        detailPayload.insurance_sub_type = updatedFields.insuranceSubType;
+        if (updatedFields.insuranceSubType) detailPayload.sub_product_type_id = resolvedProductFks.sub_product_type_id;
+      }
       if (updatedFields.anyDesease !== undefined) detailPayload.any_desease = updatedFields.anyDesease;
+    } else if (tableName === 'mutual_fund') {
+      if (updatedFields.productType) detailPayload.product_type_id = resolvedProductFks.product_type_id;
     }
 
     detailPayload.updated_at = new Date().toISOString();

@@ -4,15 +4,21 @@ import { Plus, Pencil, Trash2, Share2 } from 'lucide-react';
 import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import DataTable from '../../components/DataTable';
+import { useAuthStore } from '../../store/authStore';
+import { hasFullAccess } from '../../utils/authUtils';
 
 export default function Leadsource({ setHeaderAction }) {
   const [rows, setRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [leadSource, setLeadSource] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+
+  const user = useAuthStore(state => state.user);
+  const canEdit = hasFullAccess(user, 'master');
 
   const load = async () => {
     const data = await masterApi.getLeadSources();
@@ -27,25 +33,33 @@ export default function Leadsource({ setHeaderAction }) {
   useEffect(() => {
     if (setHeaderAction) {
       setHeaderAction(
-        <button
-          onClick={openAdd}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 px-4 h-[32px] lg:h-[38px] text-sm font-semibold shadow-sm transition"
-        >
-          <Plus size={16} /> Add Lead Source
-        </button>
+        canEdit ? (
+          <button
+            onClick={openAdd}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 px-4 h-[32px] lg:h-[38px] text-sm font-semibold shadow-sm transition"
+          >
+            <Plus size={16} /> Add Lead Source
+          </button>
+        ) : null
       );
     }
     return () => setHeaderAction && setHeaderAction(null);
-  }, [setHeaderAction, openAdd]);
+  }, [setHeaderAction, openAdd, canEdit]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     if (!leadSource.trim()) { toast.error('Lead Source is required'); return; }
 
-    await masterApi.saveLeadSource({ id: editRow?.id, leadSource: leadSource.trim() });
-    toast.success(editRow ? 'Lead Source updated' : 'Lead Source added');
-    await load();
-    closeForm();
+    setLoading(true);
+    try {
+      await masterApi.saveLeadSource({ id: editRow?.id, leadSource: leadSource.trim() });
+      toast.success(editRow ? 'Lead Source updated' : 'Lead Source added');
+      await load();
+      closeForm();
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (row) => {
@@ -59,7 +73,8 @@ export default function Leadsource({ setHeaderAction }) {
   const totalPages = Math.ceil(sortedRows.length / itemsPerPage);
   const paginatedRows = sortedRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const tableHeaders = ["Serial No", "Lead Source", "Action"];
+  const tableHeaders = ["Serial No", "Lead Source"];
+  if (canEdit) tableHeaders.push("Action");
 
   const renderRow = (row, idx) => {
     const srNo = (currentPage - 1) * itemsPerPage + idx + 1;
@@ -67,16 +82,18 @@ export default function Leadsource({ setHeaderAction }) {
       <tr key={row.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
         <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{srNo}</td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{row.leadSource}</td>
-        <td className="px-4 py-3 text-center whitespace-nowrap">
-          <div className="flex items-center justify-center gap-1.5">
-            <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
-              <Pencil size={13} />
-            </button>
-            <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
-              <Trash2 size={13} />
-            </button>
-          </div>
-        </td>
+        {canEdit && (
+          <td className="px-4 py-3 text-center whitespace-nowrap">
+            <div className="flex items-center justify-center gap-1.5">
+              <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+                <Pencil size={13} />
+              </button>
+              <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </td>
+        )}
       </tr>
     );
   };
@@ -89,14 +106,16 @@ export default function Leadsource({ setHeaderAction }) {
           <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">Serial No {srNo}</span>
           <h4 className="text-sm text-gray-900 font-medium">{row.leadSource}</h4>
         </div>
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => openEdit(row)} className="p-1.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
-            <Pencil size={13} />
-          </button>
-          <button onClick={() => handleDelete(row)} className="p-1.5 rounded bg-red-50 text-red-600 border border-red-200">
-            <Trash2 size={13} />
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => openEdit(row)} className="p-1.5 rounded bg-indigo-50 text-indigo-600 border border-indigo-200">
+              <Pencil size={13} />
+            </button>
+            <button onClick={() => handleDelete(row)} className="p-1.5 rounded bg-red-50 text-red-600 border border-red-200">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -123,7 +142,8 @@ export default function Leadsource({ setHeaderAction }) {
         onClose={closeForm}
         title={editRow ? 'Edit Lead Source' : 'Add Lead Source'}
         onSubmit={handleSubmit}
-        submitText={editRow ? 'Update' : 'Save'}
+        submitText={loading ? 'Saving...' : (editRow ? 'Update' : 'Save')}
+        loading={loading}
         maxWidth="max-w-md"
       >
         <div className="space-y-1">

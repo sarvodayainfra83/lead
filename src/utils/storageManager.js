@@ -35,6 +35,12 @@ const STORAGE_KEYS = {
   MASTER_LEAD_SOURCES: 'pcb_master_lead_sources_v1',
   MASTER_LEAD_RECEIVERS: 'pcb_master_lead_receivers_v1',
   MASTER_CALLER_NAMES: 'pcb_master_caller_names_v1',
+  MASTER_MUTUAL_FUND_PRODUCTS: 'pcb_master_mutual_fund_products_v1',
+  MASTER_REAL_ESTATE_PRODUCTS: 'pcb_master_real_estate_products_v1',
+  MASTER_REAL_ESTATE_REQUIREMENTS: 'pcb_master_real_estate_requirements_v1',
+  MASTER_INSURANCE_PRODUCTS: 'pcb_master_insurance_products_v1',
+  MASTER_INSURANCE_SUB_PRODUCTS: 'pcb_master_insurance_sub_products_v1',
+  MASTER_INVESTMENT_BUDGETS: 'pcb_master_investment_budgets_v1',
   DESIGNS: 'pcb_designs_v1',
   MATERIAL_REQUIREMENTS: 'pcb_material_requirements_v1',
   EXECUTIONS: 'pcb_executions_v1',
@@ -103,6 +109,49 @@ const DEFAULT_MASTER_CALLER_NAMES = (() => {
   }));
 })();
 
+// Product Type / Requirement masters that feed the Lead form's per-Lead-Type dropdowns
+const DEFAULT_MASTER_MUTUAL_FUND_PRODUCTS = [
+  'Equity Fund', 'Debit Fund', 'Hybrid Fund', 'Money Market Fund', 'Growth Fund', 'Other'
+].map((productType, i) => ({ id: `mfp-${i + 1}`, serialNo: i + 1, productType }));
+
+const DEFAULT_MASTER_REAL_ESTATE_PRODUCTS = [
+  'Vrindavan Garden', 'Bhardwaj Sky', 'Shri Ram Lotus Valley', 'Evarraa By Dee Vee', 'Other'
+].map((productType, i) => ({ id: `rep-${i + 1}`, serialNo: i + 1, productType }));
+
+const DEFAULT_MASTER_REAL_ESTATE_REQUIREMENTS = [
+  '1 BHK', '2 BHK', '3 BHK', '4 BHK', '5+ BHK', 'Flat', 'Bungalow', 'Villa', 'Penthouse',
+  'Row House', 'Commercial Shop', 'Commercial Office', 'Plot / Land', 'Farmhouse',
+  'Industrial / Warehouse', 'Other'
+].map((requirement, i) => ({ id: `rer-${i + 1}`, serialNo: i + 1, requirement }));
+
+const DEFAULT_MASTER_INSURANCE_PRODUCTS = [
+  'Life Insurance', 'Health Insurance', 'Vehicle Insurance', 'Property Insurance',
+  'Accident Insurance', 'Travel Insurance', 'Other'
+].map((productType, i) => ({ id: `inp-${i + 1}`, serialNo: i + 1, productType }));
+
+const DEFAULT_MASTER_INSURANCE_SUB_PRODUCTS = (() => {
+  const byProduct = {
+    'Life Insurance': [
+      'KeyMan Insurance', 'Business Insurance', 'Whole Life Insurance', 'ULIP Investment Plan',
+      'Child Insurance', 'Saving Plan', 'Retirement Plan', 'Other'
+    ],
+    'Health Insurance': [
+      'Individual Health Insurance', 'Family Health Insurance', 'Senior Citizen Insurance',
+      'Group Insurance', 'Critical Illness', 'Other'
+    ]
+  };
+  let sn = 0;
+  return Object.entries(byProduct).flatMap(([productType, subTypes]) => subTypes.map(subProductType => {
+    sn += 1;
+    return { id: `insp-${sn}`, serialNo: sn, productType, subProductType };
+  }));
+})();
+
+const DEFAULT_MASTER_INVESTMENT_BUDGETS = [
+  '10k - 20k', '20k - 50k', '50k - 70k', '70k - 1 Lakh', '1 Lakh - 1.5 Lakh',
+  '1.5 Lakh - 2 Lakh', '2 Lakh - 3 Lakh', '3 Lakh - 5 Lakh', 'Above 5 Lakh'
+].map((investmentBudget, i) => ({ id: `ivb-${i + 1}`, serialNo: i + 1, investmentBudget }));
+
 // Initialize storage with defaults
 export const initializeStorage = () => {
   if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
@@ -122,6 +171,24 @@ export const initializeStorage = () => {
   }
   if (!localStorage.getItem(STORAGE_KEYS.MASTER_CALLER_NAMES)) {
     localStorage.setItem(STORAGE_KEYS.MASTER_CALLER_NAMES, JSON.stringify(DEFAULT_MASTER_CALLER_NAMES));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.MASTER_MUTUAL_FUND_PRODUCTS)) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_MUTUAL_FUND_PRODUCTS, JSON.stringify(DEFAULT_MASTER_MUTUAL_FUND_PRODUCTS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.MASTER_REAL_ESTATE_PRODUCTS)) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_REAL_ESTATE_PRODUCTS, JSON.stringify(DEFAULT_MASTER_REAL_ESTATE_PRODUCTS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.MASTER_REAL_ESTATE_REQUIREMENTS)) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_REAL_ESTATE_REQUIREMENTS, JSON.stringify(DEFAULT_MASTER_REAL_ESTATE_REQUIREMENTS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.MASTER_INSURANCE_PRODUCTS)) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_INSURANCE_PRODUCTS, JSON.stringify(DEFAULT_MASTER_INSURANCE_PRODUCTS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.MASTER_INSURANCE_SUB_PRODUCTS)) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_INSURANCE_SUB_PRODUCTS, JSON.stringify(DEFAULT_MASTER_INSURANCE_SUB_PRODUCTS));
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.MASTER_INVESTMENT_BUDGETS)) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_INVESTMENT_BUDGETS, JSON.stringify(DEFAULT_MASTER_INVESTMENT_BUDGETS));
   }
   if (!localStorage.getItem(STORAGE_KEYS.CREDITS)) {
     localStorage.setItem(STORAGE_KEYS.CREDITS, JSON.stringify(DEFAULT_CREDITS));
@@ -2610,6 +2677,44 @@ export const getCallerNamesMaster = callerNameCrud.getAll;
 export const createCallerNameMaster = callerNameCrud.create;
 export const updateCallerNameMaster = callerNameCrud.update;
 export const deleteCallerNameMaster = callerNameCrud.remove;
+
+// Product Type (Mutual Fund / Real Estate / Insurance) and Requirement (Real Estate) masters —
+// feed the Lead form's Product Type / Sub Product Type / Requirement dropdowns per Lead Type.
+const mutualFundProductCrud = makeMasterCrud(STORAGE_KEYS.MASTER_MUTUAL_FUND_PRODUCTS);
+export const getMutualFundProductsMaster = mutualFundProductCrud.getAll;
+export const createMutualFundProductMaster = mutualFundProductCrud.create;
+export const updateMutualFundProductMaster = mutualFundProductCrud.update;
+export const deleteMutualFundProductMaster = mutualFundProductCrud.remove;
+
+const realEstateProductCrud = makeMasterCrud(STORAGE_KEYS.MASTER_REAL_ESTATE_PRODUCTS);
+export const getRealEstateProductsMaster = realEstateProductCrud.getAll;
+export const createRealEstateProductMaster = realEstateProductCrud.create;
+export const updateRealEstateProductMaster = realEstateProductCrud.update;
+export const deleteRealEstateProductMaster = realEstateProductCrud.remove;
+
+const realEstateRequirementCrud = makeMasterCrud(STORAGE_KEYS.MASTER_REAL_ESTATE_REQUIREMENTS);
+export const getRealEstateRequirementsMaster = realEstateRequirementCrud.getAll;
+export const createRealEstateRequirementMaster = realEstateRequirementCrud.create;
+export const updateRealEstateRequirementMaster = realEstateRequirementCrud.update;
+export const deleteRealEstateRequirementMaster = realEstateRequirementCrud.remove;
+
+const insuranceProductCrud = makeMasterCrud(STORAGE_KEYS.MASTER_INSURANCE_PRODUCTS);
+export const getInsuranceProductsMaster = insuranceProductCrud.getAll;
+export const createInsuranceProductMaster = insuranceProductCrud.create;
+export const updateInsuranceProductMaster = insuranceProductCrud.update;
+export const deleteInsuranceProductMaster = insuranceProductCrud.remove;
+
+const insuranceSubProductCrud = makeMasterCrud(STORAGE_KEYS.MASTER_INSURANCE_SUB_PRODUCTS);
+export const getInsuranceSubProductsMaster = insuranceSubProductCrud.getAll;
+export const createInsuranceSubProductMaster = insuranceSubProductCrud.create;
+export const updateInsuranceSubProductMaster = insuranceSubProductCrud.update;
+export const deleteInsuranceSubProductMaster = insuranceSubProductCrud.remove;
+
+const investmentBudgetCrud = makeMasterCrud(STORAGE_KEYS.MASTER_INVESTMENT_BUDGETS);
+export const getInvestmentBudgetsMaster = investmentBudgetCrud.getAll;
+export const createInvestmentBudgetMaster = investmentBudgetCrud.create;
+export const updateInvestmentBudgetMaster = investmentBudgetCrud.update;
+export const deleteInvestmentBudgetMaster = investmentBudgetCrud.remove;
 
 // --- Material Requirement Operations ---
 export const getReqMaterials = () => {

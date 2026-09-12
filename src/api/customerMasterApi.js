@@ -1,15 +1,17 @@
 import { leadApi } from './leadApi';
 import { callTrackerApi } from './callTrackerApi';
-import { getLeadStatus } from '../pages/CallTracker/callTrackerConstants';
+import { getLeadStatus, CONVERTED_STATUSES } from '../pages/CallTracker/callTrackerConstants';
 
 export const customerMasterApi = {
-  // Fetch converted customers (leads with latest status === 'Received')
+  // Fetch converted customers (leads whose latest status is Interested or Site Visit/Meeting)
   async getConvertedCustomers() {
     const [leads, trackers] = await Promise.all([
       leadApi.getLeads(),
       callTrackerApi.getCallTrackers()
     ]);
 
-    return leads.filter(lead => getLeadStatus(trackers, lead.id) === 'Received');
+    return leads
+      .map(lead => ({ ...lead, status: getLeadStatus(trackers, lead.id) }))
+      .filter(lead => CONVERTED_STATUSES.includes(lead.status));
   }
 };

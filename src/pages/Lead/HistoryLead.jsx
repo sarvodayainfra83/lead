@@ -8,6 +8,7 @@ import { LEAD_TYPES, LEAD_SOURCES } from './leadConstants';
 import { formatLeadDate } from './PendingLead';
 import { useAuthStore } from '../../store/authStore';
 import { matchesUserAssignment } from '../../utils/authUtils';
+import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 
 /**
  * HistoryLead
@@ -72,9 +73,11 @@ export default function HistoryLead() {
     return formatLeadDate(item.timestamp || item.date || item.created_at);
   };
   const tableHeaders = [
-    "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Lead Receiver Name", "Lead Source",
-    "Person Name", "Number", "Email", "DOB", "Occupation", "Requirement",
-    "Investment Range", "Address", "When to Buy Plan", "Remarks"
+    "Lead No", "Lead Date", "Assign Caller", "Lead Type", "Team Member Name", "Lead Source",
+    "Reference Name", "Product Type", "Requirement", "Sub Product Type",
+    "Customer Name", "Customer Number", "Customer Email", "Customer DOB", "Customer Occupation",
+    "Investment Budget", "Customer Address", "When to Buy Plan", "Medical Condition", "Remarks",
+    "Process Type"
   ];
 
   const renderRow = (item) => (
@@ -82,21 +85,26 @@ export default function HistoryLead() {
       <td className="px-4 py-3 text-center text-[14px] text-indigo-600 font-bold whitespace-nowrap">{item.leadNo}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{leadDate(item)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.callerAssigned}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.leadType}</td>
+      <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.leadReceiver}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.referencerName || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.productType || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.insuranceSubType || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.location || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.anyDesease || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.remarks}>
         {item.remarks || '-'}
       </td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.processType || '-'}</td>
     </tr>
   );
 
@@ -104,7 +112,11 @@ export default function HistoryLead() {
     <div key={item.leadNo} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
       <div className="flex justify-between items-start border-b border-gray-100 pb-2">
         <div>
-          <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{item.leadNo} · {item.leadType} · {leadDate(item)}</span>
+          <span className="text-[9px] uppercase tracking-widest leading-none block mb-1">
+            <span className="text-indigo-500">{item.leadNo} · </span>
+            <span className={`font-semibold ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType}</span>
+            <span className="text-indigo-500"> · {leadDate(item)}</span>
+          </span>
           <h4 className="text-sm text-gray-900 leading-tight">{item.personName}</h4>
         </div>
       </div>
@@ -123,8 +135,24 @@ export default function HistoryLead() {
           <p className="text-gray-700 truncate leading-tight">{item.leadSource}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Receiver</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Team Member Name</p>
           <p className="text-gray-700 truncate leading-tight">{item.leadReceiver}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Reference Name</p>
+          <p className="text-gray-700 truncate leading-tight">{item.referencerName || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Product Type</p>
+          <p className="text-gray-700 truncate leading-tight">{item.productType || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Requirement</p>
+          <p className="text-gray-700 truncate leading-tight">{item.requirement || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Sub Product Type</p>
+          <p className="text-gray-700 truncate leading-tight">{item.insuranceSubType || '-'}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Email</p>
@@ -139,11 +167,7 @@ export default function HistoryLead() {
           <p className="text-gray-700 truncate leading-tight">{item.occupation || '-'}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Requirement</p>
-          <p className="text-gray-700 truncate leading-tight">{item.requirement || '-'}</p>
-        </div>
-        <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Range</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Budget</p>
           <p className="text-gray-700 truncate leading-tight">{item.investmentBudget || '-'}</p>
         </div>
         <div className="col-span-2">
@@ -154,9 +178,17 @@ export default function HistoryLead() {
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">When to Buy</p>
           <p className="text-gray-700 truncate leading-tight">{item.whenToBuyPlan || '-'}</p>
         </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Medical Condition</p>
+          <p className="text-gray-700 truncate leading-tight">{item.anyDesease || '-'}</p>
+        </div>
         <div className="col-span-2">
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Remarks</p>
           <p className="text-gray-700 leading-tight">{item.remarks || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Process Type</p>
+          <p className="text-gray-700 truncate leading-tight">{item.processType || '-'}</p>
         </div>
       </div>
     </div>
@@ -275,7 +307,7 @@ export default function HistoryLead() {
           data={paginatedLeads}
           renderRow={renderRow}
           renderCard={renderCard}
-          minWidth="2400px"
+          minWidth="3200px"
           currentPage={currentPage}
           totalPages={totalPages}
           itemsPerPage={itemsPerPage}

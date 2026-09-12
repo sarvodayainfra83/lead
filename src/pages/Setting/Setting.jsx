@@ -6,6 +6,8 @@ import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import DataTable from '../../components/DataTable';
 import InfoPopover from '../../components/InfoPopover';
+import { useAuthStore } from '../../store/authStore';
+import { hasFullAccess } from '../../utils/authUtils';
 
 // Every page an access level can be granted for — Admins bypass this and always get full access.
 const APP_PAGES = [
@@ -37,11 +39,15 @@ const initialFormData = {
 };
 
 export default function Setting() {
+  const { user } = useAuthStore();
+  const canEdit = hasFullAccess(user, 'setting');
+
   const [rows, setRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [formData, setFormData] = useState({ ...initialFormData });
   const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -88,29 +94,35 @@ export default function Setting() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     if (!formData.name.trim()) { toast.error('Name is required'); return; }
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
     if (!formData.id.trim()) { toast.error('ID is required'); return; }
     if (!formData.password.trim()) { toast.error('Password is required'); return; }
 
-    const existing = await settingApi.getUsers();
-    const idTaken = existing.some(u => u.id === formData.id && (!editRow || u.id !== editRow.id));
-    if (idTaken) { toast.error('This ID is already in use'); return; }
+    setLoading(true);
+    try {
+      const existing = await settingApi.getUsers();
+      const idTaken = existing.some(u => u.id === formData.id && (!editRow || u.id !== editRow.id));
+      if (idTaken) { toast.error('This ID is already in use'); return; }
 
-    const payload = {
-      name: formData.name.trim(),
-      number: formData.number.trim(),
-      gmail: formData.gmail.trim(),
-      id: formData.id.trim(),
-      password: formData.password,
-      role: formData.role,
-      accessPages: formData.role === 'ADMIN' ? {} : formData.accessPages
-    };
+      const payload = {
+        name: formData.name.trim(),
+        number: formData.number.trim(),
+        gmail: formData.gmail.trim(),
+        id: formData.id.trim(),
+        password: formData.password,
+        role: formData.role,
+        accessPages: formData.role === 'ADMIN' ? {} : formData.accessPages
+      };
 
-    await settingApi.saveUser(payload);
-    toast.success(editRow ? 'User updated' : 'User added');
-    await load();
-    closeForm();
+      await settingApi.saveUser(payload);
+      toast.success(editRow ? 'User updated' : 'User added');
+      await load();
+      closeForm();
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (row) => {
@@ -146,20 +158,23 @@ export default function Setting() {
   const totalPages = Math.ceil(filteredRows.length / itemsPerPage);
   const paginatedRows = filteredRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const tableHeaders = ["Action", "Serial No", "Name", "Number", "Gmail", "ID", "Pass", "Page Access"];
+  const tableHeaders = ["Serial No", "Name", "Number", "Gmail", "ID", "Pass", "Page Access"];
+  if (canEdit) tableHeaders.unshift("Action");
 
   const renderRow = (row) => (
     <tr key={row.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
-      <td className="px-3 py-2.5">
-        <div className="flex items-center justify-center gap-1.5">
-          <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
-            <Pencil size={13} />
-          </button>
-          <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
-            <Trash2 size={13} />
-          </button>
-        </div>
-      </td>
+      {canEdit && (
+        <td className="px-3 py-2.5">
+          <div className="flex items-center justify-center gap-1.5">
+            <button onClick={() => openEdit(row)} title="Edit" className="inline-flex items-center justify-center p-1.5 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 transition-colors">
+              <Pencil size={13} />
+            </button>
+            <button onClick={() => handleDelete(row)} title="Delete" className="inline-flex items-center justify-center p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-colors">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </td>
+      )}
       <td className="px-4 py-2.5 text-center text-[13px] text-indigo-600 font-bold whitespace-nowrap">{serialLabel(row)}</td>
       <td className="px-4 py-2.5 text-center text-[13px] font-medium text-gray-900 whitespace-nowrap">{row.name}</td>
       <td className="px-4 py-2.5 text-center text-[13px] text-gray-600 whitespace-nowrap">{row.number || '-'}</td>
@@ -219,14 +234,16 @@ export default function Setting() {
         </div>
       </div>
 
-      <div className="flex gap-1.5 pt-1">
-        <button onClick={() => openEdit(row)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
-          <Pencil size={11} /> Edit
-        </button>
-        <button onClick={() => handleDelete(row)} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
-          <Trash2 size={11} /> Del
-        </button>
-      </div>
+      {canEdit && (
+        <div className="flex gap-1.5 pt-1">
+          <button onClick={() => openEdit(row)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
+            <Pencil size={11} /> Edit
+          </button>
+          <button onClick={() => handleDelete(row)} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1">
+            <Trash2 size={11} /> Del
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -243,12 +260,14 @@ export default function Setting() {
             className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2 py-1.5 focus:outline-none focus:border-indigo-500 text-sm h-[36px]"
           />
         </div>
-        <button
-          onClick={openAdd}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center justify-center gap-2 px-4 h-[36px] text-sm font-semibold shadow-sm transition flex-shrink-0"
-        >
-          <Plus size={16} /> Add User
-        </button>
+        {canEdit && (
+          <button
+            onClick={openAdd}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center justify-center gap-2 px-4 h-[36px] text-sm font-semibold shadow-sm transition flex-shrink-0"
+          >
+            <Plus size={16} /> Add User
+          </button>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
@@ -272,7 +291,8 @@ export default function Setting() {
         onClose={closeForm}
         title={editRow ? 'Edit User' : 'Add User'}
         onSubmit={handleSubmit}
-        submitText={editRow ? 'Update' : 'Save'}
+        submitText={loading ? 'Saving...' : (editRow ? 'Update' : 'Save')}
+        loading={loading}
         maxWidth="max-w-2xl"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
