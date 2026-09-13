@@ -26,7 +26,8 @@ const Layout = () => {
 
         {/* Header - Sticky */}
         <Header
-          onMenuClick={() => setSidebarOpen(true)}
+          sidebarOpen={sidebarOpen}
+          onMenuClick={() => setSidebarOpen(prev => !prev)}
           user={user}
         />
 

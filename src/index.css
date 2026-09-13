@@ -96,3 +96,36 @@ table th, table td {
 .animate-pulse-subtle {
   animation: pulse-subtle 2.5s ease-in-out infinite;
 }
+
+/* iOS Safari renders <input type="date"> with its own compact native chrome that mostly ignores
+   our padding/height/border classes, so it ends up shorter, oddly aligned, and visibly different
+   from every other field next to it. Stripping the native appearance (the picker still opens on
+   tap — that behavior comes from type="date" itself, not from its default styling) lets our own
+   border/height/padding apply consistently like it already does on Chrome/Android, and forcing a
+   matching line-height keeps the date text vertically centered instead of clipped to one edge. */
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #fff;
+  line-height: normal;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/* Prevent mobile browsers (iOS Safari in particular) from auto-zooming the whole page when a
+   form field is focused. That zoom is triggered purely by the focused field's font-size being
+   under 16px — our compact forms use ~11-13px text, so every popup form/dropdown input used to
+   zoom in on tap and only recenter on the field itself, not the page, leaving the modal's own
+   header shoved off-screen until the user manually zoomed back out. Bumping just the focus-time
+   font-size to 16px (without changing the visual size the rest of the time) stops the zoom
+   entirely while keeping the compact look everywhere else. Scoped to mobile widths only — the
+   zoom behavior doesn't happen on desktop, so desktop/tablet text sizes are untouched. */
+@media (max-width: 640px) {
+  input:focus,
+  select:focus,
+  textarea:focus {
+    font-size: 16px !important;
+  }
+}

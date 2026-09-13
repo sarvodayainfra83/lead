@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Search, User, Menu, Settings, X, Phone, Mail, IdCard, ShieldCheck } from 'lucide-react';
 
-const Header = ({ onMenuClick, user }) => {
+const Header = ({ sidebarOpen, onMenuClick, user }) => {
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
 
@@ -19,9 +19,10 @@ const Header = ({ onMenuClick, user }) => {
         <div className="flex items-center gap-4 flex-1">
           <button
             onClick={onMenuClick}
+            title={sidebarOpen ? 'Hide menu' : 'Show menu'}
             className="lg:hidden p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
           >
-            <Menu size={24} />
+            {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
 
