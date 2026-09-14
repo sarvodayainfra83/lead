@@ -70,13 +70,93 @@ export const leadApi = {
     return 'real_state';
   },
 
+  // Helper to sanitize and validate UUID strings to avoid PostgreSQL invalid input syntax errors
+  cleanUuid(val) {
+    if (!val || typeof val !== 'string') return null;
+    const trimmed = val.trim();
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+      return trimmed;
+    }
+    return null;
+  },
+
+  // Helper to format any date/timestamp into ISO-8601 string for DB TIMESTAMPTZ columns
+  formatTimestampForDb(val) {
+    if (!val) return new Date().toISOString();
+    if (val instanceof Date) {
+      return !isNaN(val.getTime()) ? val.toISOString() : new Date().toISOString();
+    }
+    const str = String(val).trim();
+    if (!str) return new Date().toISOString();
+
+    // Check if formatted as DD/MM/YYYY or DD/MM/YYYY HH:mm:ss
+    if (str.includes('/')) {
+      const parts = str.split(' ');
+      const dateParts = parts[0].split('/');
+      if (dateParts.length === 3) {
+        const [d, m, y] = dateParts.map(Number);
+        const fullYear = y < 100 ? 2000 + y : y;
+        let hh = 0, mm = 0, ss = 0;
+        if (parts[1]) {
+          const timeParts = parts[1].split(':').map(Number);
+          hh = Number(timeParts[0]) || 0;
+          mm = Number(timeParts[1]) || 0;
+          ss = Number(timeParts[2]) || 0;
+        }
+        const dObj = new Date(fullYear, m - 1, d, hh, mm, ss);
+        if (!isNaN(dObj.getTime())) return dObj.toISOString();
+      }
+    }
+
+    const dObj = new Date(str);
+    if (!isNaN(dObj.getTime())) {
+      return dObj.toISOString();
+    }
+
+    return new Date().toISOString();
+  },
+
+  // Helper to format DOB into YYYY-MM-DD string or null for DB DATE columns
+  formatDobForDb(val) {
+    if (!val) return null;
+    if (val instanceof Date) {
+      if (isNaN(val.getTime())) return null;
+      return `${val.getFullYear()}-${String(val.getMonth() + 1).padStart(2, '0')}-${String(val.getDate()).padStart(2, '0')}`;
+    }
+    const str = String(val).trim();
+    if (!str) return null;
+
+    // DD/MM/YYYY format
+    if (str.includes('/')) {
+      const parts = str.split('/');
+      if (parts.length === 3) {
+        const [d, m, y] = parts.map(Number);
+        const fullYear = y < 100 ? 2000 + y : y;
+        return `${fullYear}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      }
+    }
+
+    // YYYY-MM-DD format
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(str)) {
+      const [y, m, d] = str.split('-').map(Number);
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+
+    const dObj = new Date(str);
+    if (!isNaN(dObj.getTime())) {
+      return `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, '0')}-${String(dObj.getDate()).padStart(2, '0')}`;
+    }
+
+    return null;
+  },
+
   // Helper to resolve string names to Master FK UUIDs reliably
   async resolveLeadFkIds(lead) {
-    let lead_type_id = lead.leadTypeId || null;
-    let lead_receiver_id = lead.leadReceiverId || null;
-    let lead_source_id = lead.leadSourceId || null;
-    let caller_assigned_id = lead.callerAssignedId || null;
-    let investment_budget_id = lead.investmentBudgetId || null;
+    let lead_type_id = this.cleanUuid(lead.leadTypeId);
+    let lead_receiver_id = this.cleanUuid(lead.leadReceiverId);
+    let lead_source_id = this.cleanUuid(lead.leadSourceId);
+    let caller_assigned_id = this.cleanUuid(lead.callerAssignedId);
+    let investment_budget_id = this.cleanUuid(lead.investmentBudgetId);
 
     // 1. Resolve lead_type_id first
     if (!lead_type_id && lead.leadType) {
@@ -146,28 +226,32 @@ export const leadApi = {
   // insurance.product_type_id/sub_product_type_id) — these tables have no plain-text
   // product_type column, only the _id FK.
   async resolveProductFkIds(lead, tableName) {
-    const result = { product_type_id: null, requirement_id: null, sub_product_type_id: null };
+    const result = {
+      product_type_id: this.cleanUuid(lead.productTypeId),
+      requirement_id: this.cleanUuid(lead.requirementId),
+      sub_product_type_id: this.cleanUuid(lead.subProductTypeId)
+    };
 
     if (tableName === 'real_state') {
-      if (lead.productType) {
+      if (!result.product_type_id && lead.productType) {
         const { data } = await supabase.from('master_real_estate_products').select('id').eq('product_type', lead.productType).limit(1);
         if (data && data[0]) result.product_type_id = data[0].id;
       }
-      if (lead.requirement) {
+      if (!result.requirement_id && lead.requirement) {
         const { data } = await supabase.from('master_real_estate_requirements').select('id').eq('requirement', lead.requirement).limit(1);
         if (data && data[0]) result.requirement_id = data[0].id;
       }
     } else if (tableName === 'mutual_fund') {
-      if (lead.productType) {
+      if (!result.product_type_id && lead.productType) {
         const { data } = await supabase.from('master_mutual_fund_products').select('id').eq('product_type', lead.productType).limit(1);
         if (data && data[0]) result.product_type_id = data[0].id;
       }
     } else if (tableName === 'insurance') {
-      if (lead.insuranceType) {
+      if (!result.product_type_id && lead.insuranceType) {
         const { data } = await supabase.from('master_insurance_products').select('id').eq('product_type', lead.insuranceType).limit(1);
         if (data && data[0]) result.product_type_id = data[0].id;
       }
-      if (lead.insuranceSubType) {
+      if (!result.sub_product_type_id && lead.insuranceSubType) {
         const { data } = await supabase.from('master_insurance_sub_products').select('id').eq('sub_product_type', lead.insuranceSubType).limit(1);
         if (data && data[0]) result.sub_product_type_id = data[0].id;
       }
@@ -253,19 +337,19 @@ export const leadApi = {
       lead_receiver_id: fkIds.lead_receiver_id,
       lead_source_id: fkIds.lead_source_id,
       caller_assigned_id: fkIds.caller_assigned_id,
-      referencer_name: leadData.referencerName || null,
+      referencer_name: leadData.referencerName ? String(leadData.referencerName).trim() : null,
       customer_name: leadData.customerName || leadData.personName || '',
       customer_number: leadData.customerNumber || leadData.number || '',
-      customer_email: leadData.customerEmail || leadData.email || null,
-      dob: leadData.dob || null,
-      customer_address: leadData.customerAddress || leadData.location || null,
-      occupation: leadData.occupation || null,
-      investment_budget: leadData.investmentBudget || null,
+      customer_email: (leadData.customerEmail || leadData.email) ? String(leadData.customerEmail || leadData.email).trim() : null,
+      dob: this.formatDobForDb(leadData.dob),
+      customer_address: (leadData.customerAddress || leadData.location) ? String(leadData.customerAddress || leadData.location).trim() : null,
+      occupation: leadData.occupation ? String(leadData.occupation).trim() : null,
+      investment_budget: leadData.investmentBudget ? String(leadData.investmentBudget).trim() : null,
       investment_budget_id: fkIds.investment_budget_id,
-      when_to_buy_plan: leadData.whenToBuyPlan || null,
-      remarks: leadData.remarks || null,
+      when_to_buy_plan: leadData.whenToBuyPlan ? String(leadData.whenToBuyPlan).trim() : null,
+      remarks: leadData.remarks ? String(leadData.remarks).trim() : null,
       process_type: leadData.processType || 'Lead',
-      timestamp: leadData.timestamp || new Date().toISOString()
+      timestamp: this.formatTimestampForDb(leadData.timestamp)
     };
 
     if (tableName === 'real_state') {
@@ -374,7 +458,7 @@ export const leadApi = {
     if (updatedFields.callerAssignedId !== undefined || updatedFields.callerAssigned !== undefined) {
       detailPayload.caller_assigned_id = resolvedFks.caller_assigned_id;
     }
-    if (updatedFields.referencerName !== undefined) detailPayload.referencer_name = updatedFields.referencerName;
+    if (updatedFields.referencerName !== undefined) detailPayload.referencer_name = updatedFields.referencerName ? String(updatedFields.referencerName).trim() : null;
     if (updatedFields.customerName !== undefined || updatedFields.personName !== undefined) {
       detailPayload.customer_name = updatedFields.customerName || updatedFields.personName;
     }
@@ -382,19 +466,20 @@ export const leadApi = {
       detailPayload.customer_number = updatedFields.customerNumber || updatedFields.number;
     }
     if (updatedFields.customerEmail !== undefined || updatedFields.email !== undefined) {
-      detailPayload.customer_email = updatedFields.customerEmail || updatedFields.email;
+      detailPayload.customer_email = (updatedFields.customerEmail || updatedFields.email) ? String(updatedFields.customerEmail || updatedFields.email).trim() : null;
     }
-    if (updatedFields.dob !== undefined) detailPayload.dob = updatedFields.dob || null;
-    if (updatedFields.occupation !== undefined) detailPayload.occupation = updatedFields.occupation;
+    if (updatedFields.dob !== undefined) detailPayload.dob = this.formatDobForDb(updatedFields.dob);
+    if (updatedFields.occupation !== undefined) detailPayload.occupation = updatedFields.occupation ? String(updatedFields.occupation).trim() : null;
     if (updatedFields.investmentBudget !== undefined) {
-      detailPayload.investment_budget = updatedFields.investmentBudget;
+      detailPayload.investment_budget = updatedFields.investmentBudget ? String(updatedFields.investmentBudget).trim() : null;
       detailPayload.investment_budget_id = resolvedFks.investment_budget_id;
     }
     if (updatedFields.customerAddress !== undefined || updatedFields.location !== undefined) {
-      detailPayload.customer_address = updatedFields.customerAddress || updatedFields.location;
+      detailPayload.customer_address = (updatedFields.customerAddress || updatedFields.location) ? String(updatedFields.customerAddress || updatedFields.location).trim() : null;
     }
-    if (updatedFields.whenToBuyPlan !== undefined) detailPayload.when_to_buy_plan = updatedFields.whenToBuyPlan;
-    if (updatedFields.remarks !== undefined) detailPayload.remarks = updatedFields.remarks;
+    if (updatedFields.whenToBuyPlan !== undefined) detailPayload.when_to_buy_plan = updatedFields.whenToBuyPlan ? String(updatedFields.whenToBuyPlan).trim() : null;
+    if (updatedFields.remarks !== undefined) detailPayload.remarks = updatedFields.remarks ? String(updatedFields.remarks).trim() : null;
+    if (updatedFields.timestamp !== undefined) detailPayload.timestamp = this.formatTimestampForDb(updatedFields.timestamp);
 
     // Type-specific field updates. Product Type's _id columns are only written when a value
     // was actually provided (rather than on any `!== undefined`) — the form pre-fills this

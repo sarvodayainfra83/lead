@@ -163,8 +163,7 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
     try {
       const existingLeads = await leadApi.getLeads();
       const leadNo = generateLeadNo(formData.leadType, existingLeads);
-      const now = new Date();
-      const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const timestamp = new Date().toISOString();
 
       const newLead = {
         leadNo,

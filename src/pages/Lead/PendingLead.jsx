@@ -33,16 +33,15 @@ export const formatLeadDate = (val) => {
     }
   }
 
-  // If in DB format e.g. "2026-08-09 16:37:10+00" or "2026-08-09T..."
-  // Database format is YYYY-DD-MM (e.g. 2026-08-09 -> 8th September 2026)
+  // If in DB format e.g. "2026-09-14 16:37:10+00" or "2026-09-14T..."
   if (str.includes('-')) {
     const datePart = str.split('T')[0].split(' ')[0];
     const parts = datePart.split('-');
     if (parts.length === 3) {
       if (parts[0].length === 4) {
         const year = parts[0];
-        const day = String(parts[1]).padStart(2, '0');
-        const month = String(parts[2]).padStart(2, '0');
+        const month = String(parts[1]).padStart(2, '0');
+        const day = String(parts[2]).padStart(2, '0');
         return `${day}/${month}/${year}`;
       } else {
         const day = String(parts[0]).padStart(2, '0');

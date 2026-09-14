@@ -32,7 +32,7 @@ const COLUMN_MAP = {
 const pad2 = (n) => String(n).padStart(2, '0');
 
 const toTimestamp = (date) =>
-  `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+  date instanceof Date && !isNaN(date.getTime()) ? date.toISOString() : new Date().toISOString();
 
 const parseCreatedDate = (value) => {
   if (value instanceof Date && !isNaN(value.getTime())) return value;
