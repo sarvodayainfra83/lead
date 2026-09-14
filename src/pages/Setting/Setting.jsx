@@ -14,9 +14,13 @@ const APP_PAGES = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'lead', label: 'Lead' },
   { key: 'callTracker', label: 'Call Tracker' },
+  { key: 'assignVisitor', label: 'Assign Visitor' },
+  { key: 'visitorFollowUp', label: 'Visitor Follow Up' },
   { key: 'customerMaster', label: 'Customer Master' },
-  { key: 'master', label: 'Master' },
   { key: 'callerReport', label: 'Caller Report' },
+  { key: 'attendance', label: 'Attendance' },
+  { key: 'attendanceReport', label: 'Attendance Report' },
+  { key: 'master', label: 'Master' },
   { key: 'setting', label: 'Setting' }
 ];
 

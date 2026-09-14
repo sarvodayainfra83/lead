@@ -75,12 +75,10 @@ export default function Customermaster() {
   // Distinct text color per Lead Type so the column is easy to scan at a glance (shared across the app)
   const leadTypeColorClass = getLeadTypeTextClass;
 
-  // Status badge — only Interested / Site Visit/Meeting ever land here (Customer Master
-  // only lists converted leads), each with its own accent color.
+  // Status badge — only Interested leads land here (Customer Master only lists converted leads)
   const statusBadgeClass = (status) => {
     switch (status) {
       case 'Interested': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'Site Visit/Meeting': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       default: return 'bg-gray-50 text-gray-600 border-gray-200';
     }
   };

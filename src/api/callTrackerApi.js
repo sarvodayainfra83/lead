@@ -61,19 +61,25 @@ export const callTrackerApi = {
       this.getCallTrackers()
     ]);
     const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
+    const leadsByNo = Object.fromEntries(leads.map(l => [l.leadNo, l]));
     return trackers.map(t => {
-      const lead = leadsById[t.leadId] || {};
+      const lead = leadsById[t.leadId] || leadsByNo[t.leadNo] || {};
       return {
-        ...t,
         ...lead,
+        ...t,
         id: t.id,
-        leadId: t.leadId,
+        leadId: t.leadId || lead.id,
         leadNo: t.leadNo || lead.leadNo || '',
         leadDate: lead.timestamp || '',
         personName: lead.customerName || lead.personName || '',
         number: lead.customerNumber || lead.number || '',
         email: lead.customerEmail || lead.email || '',
-        location: lead.customerAddress || lead.location || ''
+        location: lead.customerAddress || lead.location || '',
+        requirement: lead.requirement || '',
+        investmentBudget: lead.investmentBudget || '',
+        whenToBuyPlan: lead.whenToBuyPlan || '',
+        callerAssigned: lead.callerAssigned || t.callerAssigned || '',
+        leadSource: lead.leadSource || ''
       };
     });
   },

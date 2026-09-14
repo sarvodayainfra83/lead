@@ -16,6 +16,10 @@ import {
   createCallerNameMaster as saveLocalCaller,
   updateCallerNameMaster as updateLocalCaller,
   deleteCallerNameMaster as deleteLocalCaller,
+  getVisitorsMaster as getLocalVisitors,
+  createVisitorMaster as saveLocalVisitor,
+  updateVisitorMaster as updateLocalVisitor,
+  deleteVisitorMaster as deleteLocalVisitor,
   getMutualFundProductsMaster as getLocalMutualFundProducts,
   createMutualFundProductMaster as saveLocalMutualFundProduct,
   updateMutualFundProductMaster as updateLocalMutualFundProduct,
@@ -315,6 +319,90 @@ export const masterApi = {
     const { error } = await supabase.from('master_caller_names').delete().eq('id', id);
     if (error) throw error;
     deleteLocalCaller(id);
+  },
+
+  // --- VISITOR NAMES ---
+  async getVisitors() {
+    if (!isSupabaseConfigured) return getLocalVisitors();
+    const { data, error } = await supabase
+      .from('master_visitor_names')
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.warn('Fallback to local storage for visitors:', error.message);
+      return getLocalVisitors();
+    }
+    return data.map((d, idx) => ({
+      id: d.id,
+      serialNo: idx + 1,
+      leadTypeId: d.lead_type_id,
+      leadType: d.master_lead_types?.lead_type || '',
+      personName: d.person_name
+    }));
+  },
+
+  async saveVisitor(visitorObj) {
+    let leadTypeId = visitorObj.leadTypeId;
+    if (!leadTypeId && visitorObj.leadType && isSupabaseConfigured) {
+      const { data: typeRow } = await supabase.from('master_lead_types').select('id').eq('lead_type', visitorObj.leadType).maybeSingle();
+      if (typeRow) leadTypeId = typeRow.id;
+    }
+
+    if (!isSupabaseConfigured) {
+      if (visitorObj.id) {
+        return updateLocalVisitor(visitorObj.id, visitorObj);
+      }
+      return saveLocalVisitor(visitorObj);
+    }
+
+    if (visitorObj.id) {
+      const { data, error } = await supabase
+        .from('master_visitor_names')
+        .update({ lead_type_id: leadTypeId, person_name: visitorObj.personName })
+        .eq('id', visitorObj.id)
+        .select('*, master_lead_types!lead_type_id(id, lead_type)')
+        .single();
+      if (error) {
+        console.error('Error updating visitor in Supabase, updating locally:', error);
+        updateLocalVisitor(visitorObj.id, visitorObj);
+        return { ...visitorObj, leadTypeId };
+      }
+      const result = {
+        id: data.id,
+        leadTypeId: data.lead_type_id,
+        leadType: data.master_lead_types?.lead_type || visitorObj.leadType,
+        personName: data.person_name
+      };
+      updateLocalVisitor(visitorObj.id, result);
+      return result;
+    } else {
+      const { data, error } = await supabase
+        .from('master_visitor_names')
+        .insert({ lead_type_id: leadTypeId, person_name: visitorObj.personName })
+        .select('*, master_lead_types!lead_type_id(id, lead_type)')
+        .single();
+      if (error) {
+        console.error('Error saving visitor in Supabase, saving locally:', error);
+        return saveLocalVisitor(visitorObj);
+      }
+      const result = {
+        id: data.id,
+        leadTypeId: data.lead_type_id,
+        leadType: data.master_lead_types?.lead_type || visitorObj.leadType,
+        personName: data.person_name
+      };
+      saveLocalVisitor(result);
+      return result;
+    }
+  },
+
+  async deleteVisitor(id) {
+    if (!isSupabaseConfigured) return deleteLocalVisitor(id);
+    const { error } = await supabase.from('master_visitor_names').delete().eq('id', id);
+    if (error) {
+      console.warn('Error deleting visitor in Supabase, deleting locally:', error.message);
+    }
+    deleteLocalVisitor(id);
   },
 
   // --- MUTUAL FUND PRODUCT TYPES ---

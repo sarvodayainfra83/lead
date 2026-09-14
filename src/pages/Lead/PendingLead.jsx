@@ -117,7 +117,7 @@ export default function PendingLead({ setHeaderAction }) {
       leadApi.getLeads(),
       masterApi.getCallerNames()
     ]);
-    const unassigned = allLeads.filter(l => !l.callerAssigned);
+    const unassigned = allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct');
     setLeads(isUserAdmin(user) ? unassigned : unassigned.filter(l => matchesUserReceiver(l, user)));
     setCallersMaster(callers);
   };

@@ -1,11 +1,12 @@
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { DEFAULT_USER_ACCESS } from '../utils/storageManager';
 
 /**
  * AccessGuard
  * Enforces the Page Access levels configured in Setting — Admins always pass;
- * Users are blocked when their level for this page is 'none' (or unset).
+ * Users are blocked when their level for this page is 'none'.
  *
  * Props:
  *   pageKey  – key into the user's accessPages map (matches Setting.jsx's APP_PAGES)
@@ -16,7 +17,11 @@ const AccessGuard = ({ pageKey, children }) => {
 
   if (!user) return null; // ProtectedRoute handles the unauthenticated case
 
-  const hasAccess = user.role === 'ADMIN' || (user.accessPages?.[pageKey] && user.accessPages[pageKey] !== 'none');
+  const accessLevel = user.role === 'ADMIN'
+    ? 'full'
+    : (user.accessPages?.[pageKey] !== undefined ? user.accessPages[pageKey] : (DEFAULT_USER_ACCESS[pageKey] || 'none'));
+
+  const hasAccess = accessLevel !== 'none';
 
   if (!hasAccess) {
     return (

@@ -81,35 +81,39 @@ export default function HistoryTracker({ tabBar }) {
   };
 
   const tableHeaders = [
-    "Lead No", "Lead Type", "Lead Source", "Customer Name", "Customer Number", "Customer Email", "DOB", "Occupation",
-    "Investment Budget", "Customer Address", "When to Buy Plan", "Assign Caller", "Status",
-    "What did Customer Said", "Next Date", "Follow Up No"
+    "Lead No", "Lead Type", "Follow Up No", "Status", "What did Customer Said", "Next Call Date",
+    "Customer Name", "Customer Number", "Customer Email", "DOB", "Occupation", "Requirement",
+    "Investment Budget", "Customer Address", "When to Buy Plan", "Assign Caller", "Lead Source", "Remarks"
   ];
 
   const renderRow = (item) => (
     <tr key={item.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
       <td className="px-4 py-3 text-center text-[14px] text-indigo-600 font-bold whitespace-nowrap">{item.leadNo}</td>
       <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.location || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.callerAssigned || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.followUpNo}</td>
       <td className="px-4 py-3 text-center whitespace-nowrap">
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase border ${STATUS_STYLES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
           {item.status}
         </span>
       </td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.customerSaid}>
+      <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[220px] truncate" title={item.customerSaid}>
         {item.customerSaid || '-'}
       </td>
-      <td className={`px-4 py-3 text-center text-[13px] whitespace-nowrap ${NEXT_DATE_CLASS}`}>{formatDate(item.nextDate)}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.followUpNo}</td>
+      <td className={`px-4 py-3 text-center text-[13px] whitespace-nowrap ${item.nextDate ? NEXT_DATE_CLASS : 'text-gray-400'}`}>{formatDate(item.nextDate)}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.location || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">{item.callerAssigned || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap max-w-[200px] truncate" title={item.remarks}>
+        {item.remarks || '-'}
+      </td>
     </tr>
   );
 
@@ -135,8 +139,8 @@ export default function HistoryTracker({ tabBar }) {
           <p className="text-gray-700 truncate leading-tight">{item.number || '-'}</p>
         </div>
         <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Next Date</p>
-          <p className={`truncate leading-tight ${NEXT_DATE_CLASS}`}>{formatDate(item.nextDate)}</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Next Call Date</p>
+          <p className={`truncate leading-tight ${item.nextDate ? NEXT_DATE_CLASS : 'text-gray-700'}`}>{formatDate(item.nextDate)}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Source</p>
@@ -153,6 +157,10 @@ export default function HistoryTracker({ tabBar }) {
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Occupation</p>
           <p className="text-gray-700 truncate leading-tight">{item.occupation || '-'}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Requirement</p>
+          <p className="text-gray-700 truncate leading-tight">{item.requirement || '-'}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Investment Budget</p>
@@ -174,6 +182,12 @@ export default function HistoryTracker({ tabBar }) {
           <div className="col-span-2">
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">What Customer Said</p>
             <p className="text-gray-700 leading-tight">{item.customerSaid}</p>
+          </div>
+        )}
+        {item.remarks && (
+          <div className="col-span-2">
+            <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Remarks</p>
+            <p className="text-gray-700 leading-tight">{item.remarks}</p>
           </div>
         )}
       </div>

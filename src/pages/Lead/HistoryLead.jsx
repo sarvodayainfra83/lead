@@ -28,7 +28,7 @@ export default function HistoryLead() {
 
   useEffect(() => {
     leadApi.getLeads().then(allLeads => {
-      setLeads(allLeads.filter(l => !!l.callerAssigned && matchesUserAssignment(l, user)));
+      setLeads(allLeads.filter(l => (!!l.callerAssigned || l.processType === 'Direct') && matchesUserAssignment(l, user)));
     });
   }, [user]);
 

@@ -31,10 +31,13 @@ const STORAGE_KEYS = {
   PROJECTS: 'pcb_projects_v1',
   LEADS: 'pcb_leads_v1',
   CALL_TRACKERS: 'pcb_call_trackers_v1',
+  ASSIGNED_VISITORS: 'pcb_assigned_visitors_v1',
+  VISITOR_FOLLOW_UPS: 'pcb_visitor_follow_ups_v1',
   MASTER_LEAD_TYPES: 'pcb_master_lead_types_v1',
   MASTER_LEAD_SOURCES: 'pcb_master_lead_sources_v1',
   MASTER_LEAD_RECEIVERS: 'pcb_master_lead_receivers_v1',
   MASTER_CALLER_NAMES: 'pcb_master_caller_names_v1',
+  MASTER_VISITOR_NAMES: 'pcb_master_visitor_names_v1',
   MASTER_MUTUAL_FUND_PRODUCTS: 'pcb_master_mutual_fund_products_v1',
   MASTER_REAL_ESTATE_PRODUCTS: 'pcb_master_real_estate_products_v1',
   MASTER_REAL_ESTATE_REQUIREMENTS: 'pcb_master_real_estate_requirements_v1',
@@ -44,12 +47,25 @@ const STORAGE_KEYS = {
   DESIGNS: 'pcb_designs_v1',
   MATERIAL_REQUIREMENTS: 'pcb_material_requirements_v1',
   EXECUTIONS: 'pcb_executions_v1',
-  ACTUALS: 'pcb_actuals_v1'
+  ACTUALS: 'pcb_actuals_v1',
+  ATTENDANCE: 'pcb_attendance_v1'
 };
 
 // Initialize default data
 // accessPages is a { [pageKey]: 'none' | 'view' | 'edit' | 'full' } map, ignored for ADMIN (always full access)
-const DEFAULT_USER_ACCESS = { dashboard: 'view', lead: 'edit', callTracker: 'edit', customerMaster: 'view', master: 'none', callerReport: 'none', setting: 'none' };
+export const DEFAULT_USER_ACCESS = {
+  dashboard: 'view',
+  lead: 'edit',
+  callTracker: 'edit',
+  assignVisitor: 'edit',
+  visitorFollowUp: 'edit',
+  customerMaster: 'view',
+  callerReport: 'none',
+  attendance: 'edit',
+  attendanceReport: 'view',
+  master: 'none',
+  setting: 'none'
+};
 
 const DEFAULT_USERS = [
   { id: 'admin', serialNo: 1, name: 'Rajesh Sharma', number: '9876500001', gmail: 'rajesh.sharma@sarvodayainfracon.com', password: 'admin123', role: 'ADMIN', accessPages: {} },
@@ -106,6 +122,16 @@ const DEFAULT_MASTER_CALLER_NAMES = (() => {
   return types.flatMap(leadType => names.map(personName => {
     sn += 1;
     return { id: `mcn-${sn}`, serialNo: sn, leadType, personName };
+  }));
+})();
+
+const DEFAULT_MASTER_VISITOR_NAMES = (() => {
+  const types = ['Real Estate', 'Mutual Fund', 'Insurance'];
+  const names = ['Rajesh Sharma', 'Amit Patel', 'Priya Iyer'];
+  let sn = 0;
+  return types.flatMap(leadType => names.map(personName => {
+    sn += 1;
+    return { id: `mvn-${sn}`, serialNo: sn, leadType, personName };
   }));
 })();
 
@@ -172,6 +198,9 @@ export const initializeStorage = () => {
   if (!localStorage.getItem(STORAGE_KEYS.MASTER_CALLER_NAMES)) {
     localStorage.setItem(STORAGE_KEYS.MASTER_CALLER_NAMES, JSON.stringify(DEFAULT_MASTER_CALLER_NAMES));
   }
+  if (!localStorage.getItem(STORAGE_KEYS.MASTER_VISITOR_NAMES)) {
+    localStorage.setItem(STORAGE_KEYS.MASTER_VISITOR_NAMES, JSON.stringify(DEFAULT_MASTER_VISITOR_NAMES));
+  }
   if (!localStorage.getItem(STORAGE_KEYS.MASTER_MUTUAL_FUND_PRODUCTS)) {
     localStorage.setItem(STORAGE_KEYS.MASTER_MUTUAL_FUND_PRODUCTS, JSON.stringify(DEFAULT_MASTER_MUTUAL_FUND_PRODUCTS));
   }
@@ -231,7 +260,7 @@ export const initializeStorage = () => {
         const missingKeys = Object.keys(DEFAULT_USER_ACCESS).filter(k => updated.accessPages[k] === undefined);
         if (missingKeys.length > 0) {
           updated.accessPages = { ...updated.accessPages };
-          missingKeys.forEach(k => { updated.accessPages[k] = 'none'; });
+          missingKeys.forEach(k => { updated.accessPages[k] = DEFAULT_USER_ACCESS[k] || 'none'; });
           usersChanged = true;
         }
       }
@@ -2625,6 +2654,66 @@ export const deleteCallTracker = (id) => {
   saveCallTrackers(trackers.filter(t => t.id !== id));
 };
 
+// --- Assigned Visitors Operations ---
+export const getAssignedVisitors = () => {
+  return getFromStorage(STORAGE_KEYS.ASSIGNED_VISITORS) || [];
+};
+
+export const saveAssignedVisitors = (visitors) => saveToStorage(STORAGE_KEYS.ASSIGNED_VISITORS, visitors);
+
+export const saveAssignedVisitor = (entry) => {
+  const list = getAssignedVisitors();
+  list.push(entry);
+  saveAssignedVisitors(list);
+  return entry;
+};
+
+export const updateAssignedVisitor = (id, updatedFields) => {
+  const list = getAssignedVisitors();
+  const index = list.findIndex(v => v.id === id);
+  if (index !== -1) {
+    list[index] = { ...list[index], ...updatedFields };
+    saveAssignedVisitors(list);
+    return list[index];
+  }
+  return null;
+};
+
+export const deleteAssignedVisitor = (id) => {
+  const list = getAssignedVisitors();
+  saveAssignedVisitors(list.filter(v => v.id !== id));
+};
+
+// --- Visitor Follow Ups Operations ---
+export const getVisitorFollowUps = () => {
+  return getFromStorage(STORAGE_KEYS.VISITOR_FOLLOW_UPS) || [];
+};
+
+export const saveVisitorFollowUps = (followUps) => saveToStorage(STORAGE_KEYS.VISITOR_FOLLOW_UPS, followUps);
+
+export const saveVisitorFollowUp = (entry) => {
+  const list = getVisitorFollowUps();
+  list.push(entry);
+  saveVisitorFollowUps(list);
+  return entry;
+};
+
+export const updateVisitorFollowUp = (id, updatedFields) => {
+  const list = getVisitorFollowUps();
+  const index = list.findIndex(v => v.id === id);
+  if (index !== -1) {
+    list[index] = { ...list[index], ...updatedFields };
+    saveVisitorFollowUps(list);
+    return list[index];
+  }
+  return null;
+};
+
+export const deleteVisitorFollowUp = (id) => {
+  const list = getVisitorFollowUps();
+  saveVisitorFollowUps(list.filter(v => v.id !== id));
+};
+
 // --- Master Data Operations ---
 // Lead Type / Lead Source / Lead Receiver / Caller Name lists that feed the
 // Lead and Direct Lead form dropdowns (Lead Receiver / Caller Name filtered by Lead Type).
@@ -2677,6 +2766,12 @@ export const getCallerNamesMaster = callerNameCrud.getAll;
 export const createCallerNameMaster = callerNameCrud.create;
 export const updateCallerNameMaster = callerNameCrud.update;
 export const deleteCallerNameMaster = callerNameCrud.remove;
+
+const visitorNameCrud = makeMasterCrud(STORAGE_KEYS.MASTER_VISITOR_NAMES);
+export const getVisitorsMaster = visitorNameCrud.getAll;
+export const createVisitorMaster = visitorNameCrud.create;
+export const updateVisitorMaster = visitorNameCrud.update;
+export const deleteVisitorMaster = visitorNameCrud.remove;
 
 // Product Type (Mutual Fund / Real Estate / Insurance) and Requirement (Real Estate) masters —
 // feed the Lead form's Product Type / Sub Product Type / Requirement dropdowns per Lead Type.
@@ -2751,10 +2846,33 @@ export const getActuals = () => {
 
 export const saveActuals = (data) => saveToStorage(STORAGE_KEYS.ACTUALS, data);
 
-export const saveActual = (entry) => {
-  const data = getActuals();
-  data.push(entry);
-  saveActuals(data);
+// --- Attendance Log Operations ---
+export const getAttendanceLogs = () => {
+  return getFromStorage(STORAGE_KEYS.ATTENDANCE) || [];
+};
+
+export const saveAttendanceLogs = (data) => saveToStorage(STORAGE_KEYS.ATTENDANCE, data);
+
+export const saveAttendanceLog = (entry) => {
+  const logs = getAttendanceLogs();
+  const index = logs.findIndex(l => l.id === entry.id);
+  if (index >= 0) {
+    logs[index] = { ...logs[index], ...entry };
+  } else {
+    logs.push({
+      ...entry,
+      id: entry.id || `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      serialNo: logs.length + 1
+    });
+  }
+  saveAttendanceLogs(logs);
   return entry;
+};
+
+export const deleteAttendanceLog = (id) => {
+  const logs = getAttendanceLogs();
+  const filtered = logs.filter(l => l.id !== id);
+  saveAttendanceLogs(filtered);
+  return true;
 };
 

@@ -193,7 +193,7 @@ export default function PendingTracker({ tabBar }) {
   };
 
   const tableHeaders = [
-    "Lead No", "Lead Type", "Follow Up No", "Status", "What did Customer Show", "Next Call Date",
+    "Lead No", "Lead Type", "Follow Up No", "Status", "What did Customer Said", "Next Call Date",
     "Customer Name", "Customer Number", "Customer Email", "DOB", "Occupation", "Requirement",
     "Investment Budget", "Customer Address", "When to Buy Plan", "Assign Caller", "Remarks"
   ];
@@ -231,7 +231,7 @@ export default function PendingTracker({ tabBar }) {
       <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[220px] truncate" title={item.customerSaid || ''}>
         {item.customerSaid || '-'}
       </td>
-      <td className={`px-4 py-3 text-center text-[13px] whitespace-nowrap ${NEXT_DATE_CLASS}`}>{formatDate(item.nextCallDate)}</td>
+      <td className={`px-4 py-3 text-center text-[13px] whitespace-nowrap ${item.nextCallDate ? NEXT_DATE_CLASS : 'text-gray-400'}`}>{formatDate(item.nextCallDate)}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-medium whitespace-nowrap">{item.personName}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.number}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
@@ -270,7 +270,7 @@ export default function PendingTracker({ tabBar }) {
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Next Call Date</p>
-          <p className={`truncate leading-tight ${NEXT_DATE_CLASS}`}>{formatDate(item.nextCallDate)}</p>
+          <p className={`truncate leading-tight ${item.nextCallDate ? NEXT_DATE_CLASS : 'text-gray-700'}`}>{formatDate(item.nextCallDate)}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Status</p>

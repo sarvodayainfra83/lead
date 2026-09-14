@@ -12,16 +12,21 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  UserCheck,
+  UserSearch,
+  Fingerprint,
+  ClipboardCheck
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
+import { DEFAULT_USER_ACCESS } from '../utils/storageManager';
 import companyLogo from '../Assets/Logo.jpeg';
 
 const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuthStore();
-  const { pendingLeadCount, pendingTrackerCount, customerCount, refresh } = useBadgeCountStore();
+  const { pendingLeadCount, pendingTrackerCount, pendingVisitorCount, pendingVisitorFollowUpCount, customerCount, refresh } = useBadgeCountStore();
 
   useEffect(() => {
     refresh();
@@ -46,16 +51,24 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', pageKey: 'dashboard' },
     { path: '/lead', icon: UserPlus, label: 'Lead', pageKey: 'lead', badgeCount: pendingLeadCount },
     { path: '/call-tracker', icon: PhoneCall, label: 'Call Tracker', pageKey: 'callTracker', badgeCount: pendingTrackerCount },
+    { path: '/assign-visitor', icon: UserCheck, label: 'Assign Visitor', pageKey: 'assignVisitor', badgeCount: pendingVisitorCount },
+    { path: '/visitor-follow-up', icon: UserSearch, label: 'Visitor Follow Up', pageKey: 'visitorFollowUp', badgeCount: pendingVisitorFollowUpCount },
     { path: '/customer-master', icon: Users, label: 'Customer Master', pageKey: 'customerMaster', badgeCount: customerCount },
     { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
+    { path: '/attendance', icon: Fingerprint, label: 'Attendance', pageKey: 'attendance' },
+    { path: '/attendance-report', icon: ClipboardCheck, label: 'Attendance Report', pageKey: 'attendanceReport' },
     { path: '/master', icon: Database, label: 'Master', pageKey: 'master' },
     { path: '/setting', icon: Settings, label: 'Setting', pageKey: 'setting' },
   ];
 
   // Admins see everything; Users only see pages their access level isn't 'none' for
-  const menuItems = allMenuItems.filter(
-    (item) => user?.role === 'ADMIN' || (user?.accessPages?.[item.pageKey] && user.accessPages[item.pageKey] !== 'none')
-  );
+  const menuItems = allMenuItems.filter((item) => {
+    if (user?.role === 'ADMIN') return true;
+    const accessLevel = user?.accessPages?.[item.pageKey] !== undefined
+      ? user.accessPages[item.pageKey]
+      : (DEFAULT_USER_ACCESS[item.pageKey] || 'none');
+    return accessLevel !== 'none';
+  });
 
   return (
     <>

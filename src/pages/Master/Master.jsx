@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Tag, User, Share2, Phone, Building2, ClipboardList, TrendingUp, ShieldCheck, Layers, Wallet } from 'lucide-react';
+import { Tag, User, Share2, Phone, UserCheck, Building2, ClipboardList, TrendingUp, ShieldCheck, Layers, Wallet } from 'lucide-react';
 import LeadType from './LeadType';
 import LeadReceiver from './LeadReceiver';
 import Leadsource from './Leadsource';
 import CallerName from './CallerName';
+import VisitorName from './VisitorName';
 import RealEstateProduct from './RealEstateProduct';
 import RealEstateRequirement from './RealEstateRequirement';
 import MutualFundProduct from './MutualFundProduct';
@@ -14,7 +15,7 @@ import InvestmentBudget from './InvestmentBudget';
 /**
  * Master
  * Manages every Master Data list as tabs on a single page — Lead Type, Lead Receiver,
- * Lead Source, Caller Name, plus the per-Lead-Type Product Type / Requirement / Sub
+ * Lead Source, Caller Name, Visitor, plus the per-Lead-Type Product Type / Requirement / Sub
  * Product Type lists. These feed the dropdowns on the Lead and Direct Lead forms.
  */
 export default function Master() {
@@ -26,6 +27,7 @@ export default function Master() {
     { key: 'leadReceiver', label: 'Lead Receiver', icon: User, Component: LeadReceiver },
     { key: 'leadSource', label: 'Lead Source', icon: Share2, Component: Leadsource },
     { key: 'callerName', label: 'Caller Name', icon: Phone, Component: CallerName },
+    { key: 'visitorName', label: 'Visitor', icon: UserCheck, Component: VisitorName },
     { key: 'realEstateProduct', label: 'RE Product', icon: Building2, Component: RealEstateProduct },
     { key: 'realEstateRequirement', label: 'RE Requirement', icon: ClipboardList, Component: RealEstateRequirement },
     { key: 'mutualFundProduct', label: 'MF Product', icon: TrendingUp, Component: MutualFundProduct },

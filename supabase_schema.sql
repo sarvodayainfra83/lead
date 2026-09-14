@@ -240,7 +240,60 @@ ALTER TABLE call_trackers ADD CONSTRAINT call_trackers_status_check
     CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting'));
 ALTER TABLE call_trackers ALTER COLUMN next_date DROP NOT NULL;
 
--- 8. SYSTEM SETTINGS TABLE
+-- 8. ASSIGNED VISITORS TABLE (Site Visit / Meeting stage)
+CREATE TABLE IF NOT EXISTS assigned_visitors (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    lead_no TEXT NOT NULL,
+    call_tracker_id UUID REFERENCES call_trackers(id) ON DELETE SET NULL,
+    visitor_name TEXT NOT NULL,
+    visitor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    visit_date DATE NOT NULL,
+    location TEXT,
+    remarks TEXT,
+    status TEXT DEFAULT 'Assigned' CHECK (status IN ('Assigned', 'Completed', 'Cancelled', 'Rescheduled')),
+    assigned_by TEXT,
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_assigned_visitors_lead_id ON assigned_visitors(lead_id);
+CREATE INDEX IF NOT EXISTS idx_assigned_visitors_lead_no ON assigned_visitors(lead_no);
+CREATE INDEX IF NOT EXISTS idx_assigned_visitors_visitor_name ON assigned_visitors(visitor_name);
+CREATE INDEX IF NOT EXISTS idx_assigned_visitors_visit_date ON assigned_visitors(visit_date);
+CREATE INDEX IF NOT EXISTS idx_assigned_visitors_status ON assigned_visitors(status);
+
+-- 8A. VISITOR FOLLOW UPS TABLE (Visitor Follow-Up stage)
+CREATE TABLE IF NOT EXISTS visitor_follow_ups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    lead_no TEXT NOT NULL,
+    assigned_visitor_id UUID REFERENCES assigned_visitors(id) ON DELETE SET NULL,
+    visitor_name TEXT NOT NULL,
+    visitor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    visit_date DATE,
+    status TEXT NOT NULL CHECK (status IN ('Interested', 'Not Interested', 'Future Plan', 'Did Not Show')),
+    interest_level TEXT CHECK (interest_level IN ('High', 'Medium', 'Low')),
+    what_happened TEXT,
+    next_visit_date DATE,
+    follow_up_no INTEGER DEFAULT 1,
+    timestamp_ms BIGINT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_lead_id ON visitor_follow_ups(lead_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_lead_no ON visitor_follow_ups(lead_no);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_assigned_visitor_id ON visitor_follow_ups(assigned_visitor_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visitor_id ON visitor_follow_ups(visitor_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visitor_name ON visitor_follow_ups(visitor_name);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_status ON visitor_follow_ups(status);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visit_date ON visitor_follow_ups(visit_date);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_next_visit_date ON visitor_follow_ups(next_visit_date);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_created_at ON visitor_follow_ups(created_at);
+
+-- 9. SYSTEM SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS system_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     key TEXT UNIQUE NOT NULL,
@@ -440,6 +493,8 @@ ALTER TABLE real_state ENABLE ROW LEVEL SECURITY;
 ALTER TABLE insurance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mutual_fund ENABLE ROW LEVEL SECURITY;
 ALTER TABLE call_trackers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE assigned_visitors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE visitor_follow_ups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_settings ENABLE ROW LEVEL SECURITY;
 
 -- Permissive public policies for client API access
@@ -464,6 +519,8 @@ CREATE POLICY "Allow public all on real_state" ON real_state FOR ALL USING (true
 CREATE POLICY "Allow public all on insurance" ON insurance FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on mutual_fund" ON mutual_fund FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on call_trackers" ON call_trackers FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on assigned_visitors" ON assigned_visitors FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public all on visitor_follow_ups" ON visitor_follow_ups FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on system_settings" ON system_settings FOR ALL USING (true) WITH CHECK (true);
 
 -- ==========================================
@@ -574,3 +631,60 @@ INSERT INTO system_settings (key, value) VALUES
     ('paymentModes', '["Cash", "Cheque", "Bank Transfer", "Online Payment"]'::jsonb),
     ('lastSerialNumber', '0'::jsonb)
 ON CONFLICT (key) DO NOTHING;
+
+-- ==========================================
+-- 10. ATTENDANCE LOGS TABLE & STORAGE
+-- ==========================================
+CREATE TABLE IF NOT EXISTS attendance_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    serial_no BIGSERIAL,
+    user_id TEXT,
+    user_name TEXT NOT NULL,
+    date TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    timestamp_ms BIGINT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('In', 'Out', 'Half Day', 'IN', 'OUT', 'HALF DAY')),
+    photo_url TEXT NOT NULL,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    location_name TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_user_name ON attendance_logs(user_name);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_date ON attendance_logs(date);
+CREATE INDEX IF NOT EXISTS idx_attendance_logs_timestamp_ms ON attendance_logs(timestamp_ms DESC);
+
+ALTER TABLE attendance_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all operations for anon on attendance_logs"
+ON attendance_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- Storage Bucket for Attendance Photos
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'attendance-photos',
+    'attendance-photos',
+    true,
+    52428800, -- 50MB limit
+    ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+)
+ON CONFLICT (id) DO UPDATE 
+SET public = true,
+    file_size_limit = 52428800,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+
+CREATE POLICY "Public Read Access for Attendance Photos"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'attendance-photos');
+
+CREATE POLICY "Public Insert Access for Attendance Photos"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'attendance-photos');
+
+CREATE POLICY "Public Update Access for Attendance Photos"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'attendance-photos');
+
+CREATE POLICY "Public Delete Access for Attendance Photos"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'attendance-photos');

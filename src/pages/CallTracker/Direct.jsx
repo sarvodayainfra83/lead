@@ -190,7 +190,8 @@ export default function Direct({ isOpen, onClose, onSaved }) {
 
     const existingLeads = await leadApi.getLeads();
     const leadNo = generateLeadNo(formData.leadType, existingLeads);
-    const timestamp = new Date().toISOString();
+    const now = new Date();
+    const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
     const createdLead = await leadApi.saveLead({
       leadNo,
@@ -231,8 +232,10 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       timestampMs: now.getTime()
     });
 
-    if (formData.status === 'Interested' || formData.status === 'Site Visit/Meeting') {
+    if (formData.status === 'Interested') {
       toast.success(`Lead ${leadNo} added and moved to Customer Master.`);
+    } else if (formData.status === 'Site Visit/Meeting') {
+      toast.success(`Lead ${leadNo} added and moved to Assign Visitor.`);
     } else if (formData.status === 'Not Interested') {
       toast.success(`Lead ${leadNo} added and logged to History.`);
     } else {

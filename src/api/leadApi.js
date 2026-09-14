@@ -21,7 +21,7 @@ export const leadApi = {
       leadSourceId: row.lead_source_id || null,
       leadSource: row.lead_source || row.master_lead_sources?.lead_source || '',
       callerAssignedId: row.caller_assigned_id || null,
-      callerAssigned: row.caller_assigned || row.master_caller_names?.person_name || '',
+      callerAssigned: row.caller_assigned || row.callerAssigned || row.master_caller_names?.person_name || '',
       referencerName: row.referencer_name || '',
       // Customer details with aliases for backward compatibility
       customerName: row.customer_name || row.person_name || '',
@@ -49,7 +49,7 @@ export const leadApi = {
       productType: row.product_type || row.insurance_type || '',
       // 'Lead' (Add Lead form) or 'Direct' (Call Tracker's Direct form) — defaults to 'Lead'
       // for leads saved before this field existed.
-      processType: row.process_type || 'Lead',
+      processType: row.process_type || row.processType || 'Lead',
       timestamp: row.timestamp || row.created_at || new Date().toISOString()
     };
   },
@@ -204,7 +204,24 @@ export const leadApi = {
         caller_assigned_id = data[0].id;
       } else {
         const { data: fallback } = await supabase.from('master_caller_names').select('id').eq('person_name', lead.callerAssigned).limit(1);
-        if (fallback && fallback[0]) caller_assigned_id = fallback[0].id;
+        if (fallback && fallback[0]) {
+          caller_assigned_id = fallback[0].id;
+        } else if (isSupabaseConfigured) {
+          // Auto-register caller name so caller_assigned_id FK is preserved
+          try {
+            const { data: newCaller } = await supabase
+              .from('master_caller_names')
+              .insert({
+                lead_type_id: lead_type_id || null,
+                person_name: String(lead.callerAssigned).trim()
+              })
+              .select('id')
+              .single();
+            if (newCaller?.id) caller_assigned_id = newCaller.id;
+          } catch (e) {
+            console.warn('Auto-registering caller name failed:', e);
+          }
+        }
       }
     }
 
