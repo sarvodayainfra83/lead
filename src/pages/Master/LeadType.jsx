@@ -69,7 +69,7 @@ export default function LeadType({ setHeaderAction }) {
     toast.success('Lead Type deleted');
   };
 
-  const sortedRows = [...rows].reverse();
+  const sortedRows = [...rows];
   const totalPages = Math.ceil(sortedRows.length / itemsPerPage);
   const paginatedRows = sortedRows.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 

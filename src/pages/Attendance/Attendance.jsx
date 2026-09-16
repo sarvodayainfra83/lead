@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Plus, Search, Image as ImageIcon, ExternalLink, RotateCcw, MapPin, Calendar, UserCheck
+  Plus, Search, Image as ImageIcon, ExternalLink, RotateCcw, MapPin, Calendar, UserCheck, Clock, CheckCircle2
 } from 'lucide-react';
 import { attendanceApi } from '../../api/attendanceApi';
 import DataTable from '../../components/DataTable';
@@ -24,13 +24,42 @@ export default function Attendance() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
+  const todayStatus = attendanceApi.getUserTodayAttendanceStatus(logs, user);
+
+  const formatInTime = (item) => {
+    if (!item) return '-';
+    if (item.timestamp && typeof item.timestamp === 'string') {
+      const parts = item.timestamp.trim().split(' ');
+      if (parts.length >= 2) {
+        const timePart = parts[1];
+        const [h, m, s] = timePart.split(':');
+        if (h !== undefined && m !== undefined) {
+          const hourNum = parseInt(h, 10);
+          if (!isNaN(hourNum)) {
+            const ampm = hourNum >= 12 ? 'PM' : 'AM';
+            const hour12 = hourNum % 12 || 12;
+            return `${String(hour12).padStart(2, '0')}:${m}${s ? `:${s}` : ''} ${ampm}`;
+          }
+        }
+        return timePart;
+      }
+    }
+    if (item.timestampMs) {
+      const d = new Date(item.timestampMs);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+      }
+    }
+    return '-';
+  };
+
   const loadLogs = async () => {
     setLoading(true);
     try {
       const allLogs = await attendanceApi.getAttendanceLogs();
       const userLogs = isAdmin
         ? allLogs
-        : allLogs.filter(l => l.userName === user?.name || l.userId === user?.id);
+        : allLogs.filter(l => l.userName === user?.name || l.userId === user?.id || l.userId === user?.dbId);
       setLogs(userLogs);
     } catch (err) {
       console.error('Failed to load attendance logs:', err);
@@ -80,10 +109,11 @@ export default function Attendance() {
   );
 
   const tableHeaders = [
-    "SERIAL NO", "DATE", "NAME", "PHOTO", "STATUS", "LATITUDE", "LONGITUDE", "LOCATION"
+    "SERIAL NO", "DATE", "NAME", "PHOTO", "STATUS", "IN TIME", "LOCATION"
   ];
 
-  const renderRow = (item) => {
+  const renderRow = (item, index) => {
+    const serialNo = (currentPage - 1) * itemsPerPage + index + 1;
     const mapsUrl = item.latitude && item.longitude
       ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
       : null;
@@ -98,7 +128,7 @@ export default function Attendance() {
     return (
       <tr key={item.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
         <td className="px-4 py-3 text-center text-[13px] font-bold text-gray-700 whitespace-nowrap">
-          {item.serialNo}
+          {serialNo}
         </td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">
           {item.date || item.timestamp?.split(' ')[0] || '-'}
@@ -123,13 +153,13 @@ export default function Attendance() {
             {item.status}
           </span>
         </td>
-        <td className="px-4 py-3 text-center text-[13px] font-mono text-gray-600 whitespace-nowrap">
-          {item.latitude !== null && item.latitude !== undefined ? item.latitude.toFixed(6) : '-'}
+        <td className="px-4 py-3 text-center whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-mono font-semibold">
+            <Clock size={12} className="text-emerald-600" />
+            {formatInTime(item)}
+          </span>
         </td>
-        <td className="px-4 py-3 text-center text-[13px] font-mono text-gray-600 whitespace-nowrap">
-          {item.longitude !== null && item.longitude !== undefined ? item.longitude.toFixed(6) : '-'}
-        </td>
-        <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[320px] truncate" title={item.locationName}>
+        <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[360px] truncate" title={item.locationName}>
           {mapsUrl ? (
             <a
               href={mapsUrl}
@@ -148,7 +178,8 @@ export default function Attendance() {
     );
   };
 
-  const renderCard = (item) => {
+  const renderCard = (item, index) => {
+    const serialNo = (currentPage - 1) * itemsPerPage + index + 1;
     const mapsUrl = item.latitude && item.longitude
       ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
       : null;
@@ -164,27 +195,27 @@ export default function Attendance() {
         <div className="flex justify-between items-start border-b border-gray-100 pb-2">
           <div>
             <span className="text-[9px] uppercase tracking-widest text-indigo-500 font-bold block mb-0.5">
-              Log #{item.serialNo} · {item.date}
+              Log #{serialNo} · {item.date}
             </span>
             <h4 className="text-sm font-bold text-gray-900 leading-tight">{item.userName}</h4>
           </div>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${getStatusBadgeClass(item.status)}`}>
-            {item.status}
-          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${getStatusBadgeClass(item.status)}`}>
+              {item.status}
+            </span>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200">
+              <Clock size={10} className="text-emerald-600" />
+              {formatInTime(item)}
+            </span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-[10px]">
+        <div className="grid grid-cols-1 gap-2 text-[10px]">
           <div>
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Time</p>
             <p className="text-gray-700 font-medium truncate">{item.timestamp?.split(' ')[1] || item.date}</p>
           </div>
           <div>
-            <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Coordinates</p>
-            <p className="text-gray-700 font-mono truncate">
-              {item.latitude ? `${item.latitude.toFixed(4)}, ${item.longitude?.toFixed(4)}` : '-'}
-            </p>
-          </div>
-          <div className="col-span-2">
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Location</p>
             <p className="text-gray-700 leading-tight">{item.locationName || '-'}</p>
           </div>
@@ -232,9 +263,27 @@ export default function Attendance() {
         {canEdit && (
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 h-[38px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0"
+            className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[38px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer ${
+              todayStatus.isLocked
+                ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                : todayStatus.hasMarkedIn
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                : 'bg-slate-900 hover:bg-slate-800 text-white'
+            }`}
           >
-            <UserCheck size={16} /> Attendance
+            {todayStatus.isLocked ? (
+              <>
+                <CheckCircle2 size={16} /> Completed Today
+              </>
+            ) : todayStatus.hasMarkedIn ? (
+              <>
+                <Clock size={16} /> Mark Out / Half Day
+              </>
+            ) : (
+              <>
+                <UserCheck size={16} /> Attendance
+              </>
+            )}
           </button>
         )}
       </div>
@@ -246,7 +295,7 @@ export default function Attendance() {
           data={paginatedLogs}
           renderRow={renderRow}
           renderCard={renderCard}
-          minWidth="1600px"
+          minWidth="1200px"
           currentPage={currentPage}
           totalPages={totalPages}
           itemsPerPage={itemsPerPage}
@@ -262,10 +311,11 @@ export default function Attendance() {
         onClose={() => {
           try {
             sessionStorage.removeItem('attendance_camera_session');
-          } catch (e) {}
+          } catch (e) { }
           setShowModal(false);
         }}
         onSaved={loadLogs}
+        existingLogs={logs}
       />
 
       {/* Photo Lightbox Modal */}

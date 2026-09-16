@@ -5,9 +5,305 @@
 -- Enable UUID extension if not enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. USERS TABLE
+-- ====================================================================
+-- MIGRATION SCRIPT: MERGE 3 MASTER TABLES INTO USERS TABLE
+-- Run these queries directly in Supabase SQL Editor for existing database:
+-- ====================================================================
+
+-- --------------------------------------------------------------------
+-- PART 1: UPDATE / ALTER QUERIES (For tables requiring column changes)
+-- --------------------------------------------------------------------
+
+-- 1.1 Add 'position' and 'lead_type_id' columns to 'users' table
+ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS lead_type_id UUID REFERENCES master_lead_types(id) ON DELETE SET NULL;
+
+-- 1.2 (Safe Data Migration): Copy missing master records into users so names are preserved
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'master_caller_names') THEN
+        INSERT INTO users (username, name, password, role, position, lead_type_id)
+        SELECT 
+            LOWER(REGEXP_REPLACE(m.person_name, '[^a-zA-Z0-9]', '', 'g')) || '_' || SUBSTRING(m.id::text, 1, 4),
+            m.person_name,
+            'user123',
+            'USER',
+            'Caller',
+            m.lead_type_id
+        FROM master_caller_names m
+        WHERE NOT EXISTS (SELECT 1 FROM users u WHERE LOWER(TRIM(u.name)) = LOWER(TRIM(m.person_name)))
+        ON CONFLICT (username) DO NOTHING;
+    END IF;
+
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'master_visitor_names') THEN
+        INSERT INTO users (username, name, password, role, position, lead_type_id)
+        SELECT 
+            LOWER(REGEXP_REPLACE(m.person_name, '[^a-zA-Z0-9]', '', 'g')) || '_' || SUBSTRING(m.id::text, 1, 4),
+            m.person_name,
+            'user123',
+            'USER',
+            'Visitor',
+            m.lead_type_id
+        FROM master_visitor_names m
+        WHERE NOT EXISTS (SELECT 1 FROM users u WHERE LOWER(TRIM(u.name)) = LOWER(TRIM(m.person_name)))
+        ON CONFLICT (username) DO NOTHING;
+    END IF;
+
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'master_lead_receivers') THEN
+        INSERT INTO users (username, name, password, role, position, lead_type_id)
+        SELECT 
+            LOWER(REGEXP_REPLACE(m.person_name, '[^a-zA-Z0-9]', '', 'g')) || '_' || SUBSTRING(m.id::text, 1, 4),
+            m.person_name,
+            'user123',
+            'USER',
+            'Lead Receiver',
+            m.lead_type_id
+        FROM master_lead_receivers m
+        WHERE NOT EXISTS (SELECT 1 FROM users u WHERE LOWER(TRIM(u.name)) = LOWER(TRIM(m.person_name)))
+        ON CONFLICT (username) DO NOTHING;
+    END IF;
+END $$;
+
+-- 1.3 DROP OLD FOREIGN KEY CONSTRAINTS FIRST
+-- (Must be dropped before updating IDs, otherwise Postgres rejects users.id because it's not in master tables)
+ALTER TABLE real_state 
+    DROP CONSTRAINT IF EXISTS real_state_lead_receiver_id_fkey,
+    DROP CONSTRAINT IF EXISTS real_state_caller_assigned_id_fkey;
+
+ALTER TABLE insurance 
+    DROP CONSTRAINT IF EXISTS insurance_lead_receiver_id_fkey,
+    DROP CONSTRAINT IF EXISTS insurance_caller_assigned_id_fkey;
+
+ALTER TABLE mutual_fund 
+    DROP CONSTRAINT IF EXISTS mutual_fund_lead_receiver_id_fkey,
+    DROP CONSTRAINT IF EXISTS mutual_fund_caller_assigned_id_fkey;
+
+-- 1.4 MAP EXISTING LEADS: Replace old master table IDs with matching users(id)
+DO $$
+BEGIN
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'master_lead_receivers') THEN
+        UPDATE real_state rs
+        SET lead_receiver_id = u.id
+        FROM master_lead_receivers mlr
+        JOIN users u ON LOWER(TRIM(u.name)) = LOWER(TRIM(mlr.person_name))
+        WHERE rs.lead_receiver_id = mlr.id;
+
+        UPDATE insurance ins
+        SET lead_receiver_id = u.id
+        FROM master_lead_receivers mlr
+        JOIN users u ON LOWER(TRIM(u.name)) = LOWER(TRIM(mlr.person_name))
+        WHERE ins.lead_receiver_id = mlr.id;
+
+        UPDATE mutual_fund mf
+        SET lead_receiver_id = u.id
+        FROM master_lead_receivers mlr
+        JOIN users u ON LOWER(TRIM(u.name)) = LOWER(TRIM(mlr.person_name))
+        WHERE mf.lead_receiver_id = mlr.id;
+    END IF;
+
+    IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'master_caller_names') THEN
+        UPDATE real_state rs
+        SET caller_assigned_id = u.id
+        FROM master_caller_names mcn
+        JOIN users u ON LOWER(TRIM(u.name)) = LOWER(TRIM(mcn.person_name))
+        WHERE rs.caller_assigned_id = mcn.id;
+
+        UPDATE insurance ins
+        SET caller_assigned_id = u.id
+        FROM master_caller_names mcn
+        JOIN users u ON LOWER(TRIM(u.name)) = LOWER(TRIM(mcn.person_name))
+        WHERE ins.caller_assigned_id = mcn.id;
+
+        UPDATE mutual_fund mf
+        SET caller_assigned_id = u.id
+        FROM master_caller_names mcn
+        JOIN users u ON LOWER(TRIM(u.name)) = LOWER(TRIM(mcn.person_name))
+        WHERE mf.caller_assigned_id = mcn.id;
+    END IF;
+END $$;
+
+-- 1.5 SAFETY CLEANUP: Nullify any orphaned IDs that do not exist in users
+UPDATE real_state SET lead_receiver_id = NULL WHERE lead_receiver_id IS NOT NULL AND lead_receiver_id NOT IN (SELECT id FROM users);
+UPDATE real_state SET caller_assigned_id = NULL WHERE caller_assigned_id IS NOT NULL AND caller_assigned_id NOT IN (SELECT id FROM users);
+
+UPDATE insurance SET lead_receiver_id = NULL WHERE lead_receiver_id IS NOT NULL AND lead_receiver_id NOT IN (SELECT id FROM users);
+UPDATE insurance SET caller_assigned_id = NULL WHERE caller_assigned_id IS NOT NULL AND caller_assigned_id NOT IN (SELECT id FROM users);
+
+UPDATE mutual_fund SET lead_receiver_id = NULL WHERE lead_receiver_id IS NOT NULL AND lead_receiver_id NOT IN (SELECT id FROM users);
+UPDATE mutual_fund SET caller_assigned_id = NULL WHERE caller_assigned_id IS NOT NULL AND caller_assigned_id NOT IN (SELECT id FROM users);
+
+-- 1.6 ADD NEW FOREIGN KEYS referencing users(id)
+ALTER TABLE real_state
+    ADD CONSTRAINT real_state_lead_receiver_id_fkey 
+    FOREIGN KEY (lead_receiver_id) REFERENCES users(id) ON DELETE SET NULL,
+    ADD CONSTRAINT real_state_caller_assigned_id_fkey 
+    FOREIGN KEY (caller_assigned_id) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE insurance
+    ADD CONSTRAINT insurance_lead_receiver_id_fkey 
+    FOREIGN KEY (lead_receiver_id) REFERENCES users(id) ON DELETE SET NULL,
+    ADD CONSTRAINT insurance_caller_assigned_id_fkey 
+    FOREIGN KEY (caller_assigned_id) REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE mutual_fund
+    ADD CONSTRAINT mutual_fund_lead_receiver_id_fkey 
+    FOREIGN KEY (lead_receiver_id) REFERENCES users(id) ON DELETE SET NULL,
+    ADD CONSTRAINT mutual_fund_caller_assigned_id_fkey 
+    FOREIGN KEY (caller_assigned_id) REFERENCES users(id) ON DELETE SET NULL;
+
+-- 1.7 RECREATE VIEW: Update all_leads_view to join users directly for caller and lead receiver
+CREATE OR REPLACE VIEW all_leads_view AS
+SELECT 
+    l.id AS id,
+    l.lead_no AS lead_no,
+    l.lead_type_id AS lead_type_id,
+    lt.lead_type AS lead_type,
+    re.id AS detail_id,
+    re.lead_receiver_id,
+    lr.name AS lead_receiver,
+    re.lead_source_id,
+    ls.lead_source AS lead_source,
+    re.referencer_name,
+    re.caller_assigned_id,
+    ca.name AS caller_assigned,
+    re.customer_name,
+    re.customer_number,
+    re.customer_email,
+    re.dob,
+    re.customer_address,
+    re.occupation,
+    re.investment_budget,
+    re.investment_budget_id,
+    re.site_location,
+    rep.product_type,
+    re.when_to_buy_plan,
+    re.requirement,
+    NULL::TEXT AS insurance_type,
+    NULL::TEXT AS insurance_sub_type,
+    NULL::TEXT AS any_desease,
+    re.remarks,
+    re.process_type,
+    re.timestamp,
+    l.created_at,
+    l.updated_at
+FROM leads l
+JOIN master_lead_types lt ON lt.id = l.lead_type_id
+JOIN real_state re ON re.id = l.real_estate_id
+LEFT JOIN users lr ON lr.id = re.lead_receiver_id
+LEFT JOIN master_lead_sources ls ON ls.id = re.lead_source_id
+LEFT JOIN users ca ON ca.id = re.caller_assigned_id
+LEFT JOIN master_real_estate_products rep ON rep.id = re.product_type_id
+
+UNION ALL
+
+SELECT 
+    l.id AS id,
+    l.lead_no AS lead_no,
+    l.lead_type_id AS lead_type_id,
+    lt.lead_type AS lead_type,
+    ins.id AS detail_id,
+    ins.lead_receiver_id,
+    lr.name AS lead_receiver,
+    ins.lead_source_id,
+    ls.lead_source AS lead_source,
+    ins.referencer_name,
+    ins.caller_assigned_id,
+    ca.name AS caller_assigned,
+    ins.customer_name,
+    ins.customer_number,
+    ins.customer_email,
+    ins.dob,
+    ins.customer_address,
+    ins.occupation,
+    ins.investment_budget,
+    ins.investment_budget_id,
+    NULL::TEXT AS site_location,
+    ins.insurance_type AS product_type,
+    ins.when_to_buy_plan,
+    NULL::TEXT AS requirement,
+    ins.insurance_type,
+    ins.insurance_sub_type,
+    ins.any_desease,
+    ins.remarks,
+    ins.process_type,
+    ins.timestamp,
+    l.created_at,
+    l.updated_at
+FROM leads l
+JOIN master_lead_types lt ON lt.id = l.lead_type_id
+JOIN insurance ins ON ins.id = l.insurance_id
+LEFT JOIN users lr ON lr.id = ins.lead_receiver_id
+LEFT JOIN master_lead_sources ls ON ls.id = ins.lead_source_id
+LEFT JOIN users ca ON ca.id = ins.caller_assigned_id
+
+UNION ALL
+
+SELECT 
+    l.id AS id,
+    l.lead_no AS lead_no,
+    l.lead_type_id AS lead_type_id,
+    lt.lead_type AS lead_type,
+    mf.id AS detail_id,
+    mf.lead_receiver_id,
+    lr.name AS lead_receiver,
+    mf.lead_source_id,
+    ls.lead_source AS lead_source,
+    mf.referencer_name,
+    mf.caller_assigned_id,
+    ca.name AS caller_assigned,
+    mf.customer_name,
+    mf.customer_number,
+    mf.customer_email,
+    mf.dob,
+    mf.customer_address,
+    mf.occupation,
+    mf.investment_budget,
+    mf.investment_budget_id,
+    NULL::TEXT AS site_location,
+    mfp.product_type,
+    mf.when_to_buy_plan,
+    NULL::TEXT AS requirement,
+    NULL::TEXT AS insurance_type,
+    NULL::TEXT AS insurance_sub_type,
+    NULL::TEXT AS any_desease,
+    mf.remarks,
+    mf.process_type,
+    mf.timestamp,
+    l.created_at,
+    l.updated_at
+FROM leads l
+JOIN master_lead_types lt ON lt.id = l.lead_type_id
+JOIN mutual_fund mf ON mf.id = l.mutual_fund_id
+LEFT JOIN users lr ON lr.id = mf.lead_receiver_id
+LEFT JOIN master_lead_sources ls ON ls.id = mf.lead_source_id
+LEFT JOIN users ca ON ca.id = mf.caller_assigned_id
+LEFT JOIN master_mutual_fund_products mfp ON mfp.id = mf.product_type_id;
+
+ALTER VIEW all_leads_view SET (security_invoker = true);
+
+-- --------------------------------------------------------------------
+-- PART 2: DELETE / DROP QUERIES (For removing obsolete master tables)
+-- --------------------------------------------------------------------
+
+-- Drops the 3 tables and any cascade dependencies (old constraints/policies)
+DROP TABLE IF EXISTS master_lead_receivers CASCADE;
+DROP TABLE IF EXISTS master_caller_names CASCADE;
+DROP TABLE IF EXISTS master_visitor_names CASCADE;
+
+-- ====================================================================
+
+-- 1. MASTER LEAD TYPES TABLE
+CREATE TABLE IF NOT EXISTS master_lead_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_type TEXT UNIQUE NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. USERS TABLE
 -- id: Internal PostgreSQL UUID Primary Key
 -- username: Unique Human-Readable Username entered at login (e.g. 'admin', 'user', 'user2')
+-- position: Team role category ('Caller', 'Visitor', 'Lead Receiver', etc.)
+-- lead_type_id: Foreign key linking team member to their primary Lead Type
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username TEXT UNIQUE NOT NULL,
@@ -16,16 +312,11 @@ CREATE TABLE IF NOT EXISTS users (
     gmail TEXT,
     password TEXT NOT NULL,
     role TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER')),
+    position TEXT,
+    lead_type_id UUID REFERENCES master_lead_types(id) ON DELETE SET NULL,
     access_pages JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 2. MASTER LEAD TYPES TABLE
-CREATE TABLE IF NOT EXISTS master_lead_types (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lead_type TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 3. MASTER LEAD SOURCES TABLE
@@ -35,23 +326,7 @@ CREATE TABLE IF NOT EXISTS master_lead_sources (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. MASTER LEAD RECEIVERS TABLE
-CREATE TABLE IF NOT EXISTS master_lead_receivers (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lead_type_id UUID REFERENCES master_lead_types(id) ON DELETE CASCADE,
-    person_name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 5. MASTER CALLER NAMES TABLE
-CREATE TABLE IF NOT EXISTS master_caller_names (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lead_type_id UUID REFERENCES master_lead_types(id) ON DELETE CASCADE,
-    person_name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 5A. MASTER MUTUAL FUND PRODUCT TYPES TABLE
+-- 4. MASTER MUTUAL FUND PRODUCT TYPES TABLE
 CREATE TABLE IF NOT EXISTS master_mutual_fund_products (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_type TEXT UNIQUE NOT NULL,
@@ -98,10 +373,10 @@ CREATE TABLE IF NOT EXISTS master_investment_budgets (
 -- 6A. REAL ESTATE LEADS TABLE (No lead_id column)
 CREATE TABLE IF NOT EXISTS real_state (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lead_receiver_id UUID REFERENCES master_lead_receivers(id) ON DELETE SET NULL,
+    lead_receiver_id UUID REFERENCES users(id) ON DELETE SET NULL,
     lead_source_id UUID REFERENCES master_lead_sources(id) ON DELETE SET NULL,
     referencer_name TEXT,
-    caller_assigned_id UUID REFERENCES master_caller_names(id) ON DELETE SET NULL,
+    caller_assigned_id UUID REFERENCES users(id) ON DELETE SET NULL,
     customer_name TEXT NOT NULL,
     customer_number TEXT NOT NULL,
     customer_email TEXT,
@@ -133,7 +408,7 @@ CREATE OR REPLACE VIEW real_estate AS SELECT * FROM real_state;
 -- 6B. INSURANCE LEADS TABLE (No lead_id column)
 CREATE TABLE IF NOT EXISTS insurance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lead_receiver_id UUID REFERENCES master_lead_receivers(id) ON DELETE SET NULL,
+    lead_receiver_id UUID REFERENCES users(id) ON DELETE SET NULL,
     -- No CHECK constraint: values now come from master_insurance_products (Product Type is
     -- editable via the Master pages, so the DB must accept whatever that master allows).
     insurance_type TEXT NOT NULL,
@@ -145,7 +420,7 @@ CREATE TABLE IF NOT EXISTS insurance (
     sub_product_type_id UUID REFERENCES master_insurance_sub_products(id) ON DELETE SET NULL,
     lead_source_id UUID REFERENCES master_lead_sources(id) ON DELETE SET NULL,
     referencer_name TEXT,
-    caller_assigned_id UUID REFERENCES master_caller_names(id) ON DELETE SET NULL,
+    caller_assigned_id UUID REFERENCES users(id) ON DELETE SET NULL,
     customer_name TEXT NOT NULL,
     customer_number TEXT NOT NULL,
     customer_email TEXT,
@@ -165,10 +440,10 @@ CREATE TABLE IF NOT EXISTS insurance (
 -- 6C. MUTUAL FUND LEADS TABLE (No lead_id column)
 CREATE TABLE IF NOT EXISTS mutual_fund (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lead_receiver_id UUID REFERENCES master_lead_receivers(id) ON DELETE SET NULL,
+    lead_receiver_id UUID REFERENCES users(id) ON DELETE SET NULL,
     lead_source_id UUID REFERENCES master_lead_sources(id) ON DELETE SET NULL,
     referencer_name TEXT,
-    caller_assigned_id UUID REFERENCES master_caller_names(id) ON DELETE SET NULL,
+    caller_assigned_id UUID REFERENCES users(id) ON DELETE SET NULL,
     customer_name TEXT NOT NULL,
     customer_number TEXT NOT NULL,
     customer_email TEXT,
@@ -346,9 +621,9 @@ SELECT
 FROM leads l
 JOIN master_lead_types lt ON lt.id = l.lead_type_id
 JOIN real_state re ON re.id = l.real_estate_id
-LEFT JOIN master_lead_receivers lr ON lr.id = re.lead_receiver_id
+LEFT JOIN users lr ON lr.id = re.lead_receiver_id
 LEFT JOIN master_lead_sources ls ON ls.id = re.lead_source_id
-LEFT JOIN master_caller_names ca ON ca.id = re.caller_assigned_id
+LEFT JOIN users ca ON ca.id = re.caller_assigned_id
 LEFT JOIN master_real_estate_products rep ON rep.id = re.product_type_id
 
 UNION ALL
@@ -360,12 +635,12 @@ SELECT
     lt.lead_type AS lead_type,
     ins.id AS detail_id,
     ins.lead_receiver_id,
-    lr.person_name AS lead_receiver,
+    lr.name AS lead_receiver,
     ins.lead_source_id,
     ls.lead_source AS lead_source,
     ins.referencer_name,
     ins.caller_assigned_id,
-    ca.person_name AS caller_assigned,
+    ca.name AS caller_assigned,
     ins.customer_name,
     ins.customer_number,
     ins.customer_email,
@@ -389,9 +664,9 @@ SELECT
 FROM leads l
 JOIN master_lead_types lt ON lt.id = l.lead_type_id
 JOIN insurance ins ON ins.id = l.insurance_id
-LEFT JOIN master_lead_receivers lr ON lr.id = ins.lead_receiver_id
+LEFT JOIN users lr ON lr.id = ins.lead_receiver_id
 LEFT JOIN master_lead_sources ls ON ls.id = ins.lead_source_id
-LEFT JOIN master_caller_names ca ON ca.id = ins.caller_assigned_id
+LEFT JOIN users ca ON ca.id = ins.caller_assigned_id
 
 UNION ALL
 
@@ -402,12 +677,12 @@ SELECT
     lt.lead_type AS lead_type,
     mf.id AS detail_id,
     mf.lead_receiver_id,
-    lr.person_name AS lead_receiver,
+    lr.name AS lead_receiver,
     mf.lead_source_id,
     ls.lead_source AS lead_source,
     mf.referencer_name,
     mf.caller_assigned_id,
-    ca.person_name AS caller_assigned,
+    ca.name AS caller_assigned,
     mf.customer_name,
     mf.customer_number,
     mf.customer_email,
@@ -431,9 +706,9 @@ SELECT
 FROM leads l
 JOIN master_lead_types lt ON lt.id = l.lead_type_id
 JOIN mutual_fund mf ON mf.id = l.mutual_fund_id
-LEFT JOIN master_lead_receivers lr ON lr.id = mf.lead_receiver_id
+LEFT JOIN users lr ON lr.id = mf.lead_receiver_id
 LEFT JOIN master_lead_sources ls ON ls.id = mf.lead_source_id
-LEFT JOIN master_caller_names ca ON ca.id = mf.caller_assigned_id
+LEFT JOIN users ca ON ca.id = mf.caller_assigned_id
 LEFT JOIN master_mutual_fund_products mfp ON mfp.id = mf.product_type_id;
 
 -- Make the view enforce the RLS policies of the tables it reads (leads, real_state, insurance,
@@ -480,8 +755,6 @@ CREATE INDEX IF NOT EXISTS idx_call_trackers_timestamp_ms ON call_trackers(times
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_lead_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_lead_sources ENABLE ROW LEVEL SECURITY;
-ALTER TABLE master_lead_receivers ENABLE ROW LEVEL SECURITY;
-ALTER TABLE master_caller_names ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_mutual_fund_products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_real_estate_products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE master_real_estate_requirements ENABLE ROW LEVEL SECURITY;
@@ -505,8 +778,6 @@ CREATE POLICY "Allow public delete access on users" ON users FOR DELETE USING (t
 
 CREATE POLICY "Allow public all on master_lead_types" ON master_lead_types FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on master_lead_sources" ON master_lead_sources FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all on master_lead_receivers" ON master_lead_receivers FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public all on master_caller_names" ON master_caller_names FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on master_mutual_fund_products" ON master_mutual_fund_products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on master_real_estate_products" ON master_real_estate_products FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public all on master_real_estate_requirements" ON master_real_estate_requirements FOR ALL USING (true) WITH CHECK (true);
@@ -527,50 +798,26 @@ CREATE POLICY "Allow public all on system_settings" ON system_settings FOR ALL U
 -- DEFAULT SEED DATA
 -- ==========================================
 
--- Seed Users
-INSERT INTO users (username, name, number, gmail, password, role, access_pages)
-VALUES 
-    ('admin', 'Rajesh Sharma', '9876500001', 'rajesh.sharma@sarvodayainfracon.com', 'admin123', 'ADMIN', '{}'::jsonb),
-    ('user', 'Amit Patel', '9876500002', 'amit.patel@sarvodayainfracon.com', 'user123', 'USER', '{"dashboard": "view", "lead": "edit", "callTracker": "edit", "customerMaster": "view", "master": "none", "callerReport": "none", "setting": "none"}'::jsonb),
-    ('user2', 'Priya Iyer', '9876500003', 'priya.iyer@sarvodayainfracon.com', 'user123', 'USER', '{"dashboard": "view", "lead": "edit", "callTracker": "edit", "customerMaster": "view", "master": "none", "callerReport": "none", "setting": "none"}'::jsonb)
-ON CONFLICT (username) DO NOTHING;
-
--- Seed Master Lead Types
+-- Seed Master Lead Types first
 INSERT INTO master_lead_types (lead_type) VALUES 
     ('Real Estate'),
     ('Mutual Fund'),
     ('Insurance')
 ON CONFLICT (lead_type) DO NOTHING;
 
+-- Seed Users with Position and Lead Type
+INSERT INTO users (username, name, number, gmail, password, role, position, lead_type_id, access_pages)
+VALUES 
+    ('admin', 'Rajesh Sharma', '9876500001', 'rajesh.sharma@sarvodayainfracon.com', 'admin123', 'ADMIN', 'Lead Receiver', (SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), '{}'::jsonb),
+    ('user', 'Amit Patel', '9876500002', 'amit.patel@sarvodayainfracon.com', 'user123', 'USER', 'Caller', (SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), '{"dashboard": "view", "lead": "edit", "callTracker": "edit", "customerMaster": "view", "master": "none", "callerReport": "none", "setting": "none"}'::jsonb),
+    ('user2', 'Priya Iyer', '9876500003', 'priya.iyer@sarvodayainfracon.com', 'user123', 'USER', 'Visitor', (SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), '{"dashboard": "view", "lead": "edit", "callTracker": "edit", "customerMaster": "view", "master": "none", "callerReport": "none", "setting": "none"}'::jsonb)
+ON CONFLICT (username) DO NOTHING;
+
 -- Seed Master Lead Sources
 INSERT INTO master_lead_sources (lead_source) VALUES 
     ('Website'), ('Reference'), ('Walk-in'), ('Cold Call'), 
     ('Social Media'), ('Newspaper Ad'), ('Advertisement'), ('Other')
 ON CONFLICT (lead_source) DO NOTHING;
-
--- Seed Master Lead Receivers
-INSERT INTO master_lead_receivers (lead_type_id, person_name) VALUES 
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), 'Rajesh Sharma'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), 'Amit Patel'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), 'Priya Iyer'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Mutual Fund'), 'Rajesh Sharma'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Mutual Fund'), 'Amit Patel'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Mutual Fund'), 'Priya Iyer'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Rajesh Sharma'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Amit Patel'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Priya Iyer');
-
--- Seed Master Caller Names
-INSERT INTO master_caller_names (lead_type_id, person_name) VALUES 
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), 'Rajesh Sharma'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), 'Amit Patel'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Real Estate'), 'Priya Iyer'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Mutual Fund'), 'Rajesh Sharma'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Mutual Fund'), 'Amit Patel'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Mutual Fund'), 'Priya Iyer'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Rajesh Sharma'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Amit Patel'),
-    ((SELECT id FROM master_lead_types WHERE lead_type = 'Insurance'), 'Priya Iyer');
 
 -- Seed Master Mutual Fund Product Types
 INSERT INTO master_mutual_fund_products (product_type) VALUES
@@ -687,4 +934,150 @@ USING (bucket_id = 'attendance-photos');
 
 CREATE POLICY "Public Delete Access for Attendance Photos"
 ON storage.objects FOR DELETE
-USING (bucket_id = 'attendance-photos');
+USING (bucket_id = 'attendance-photos');
+
+-- Storage Bucket for Products (Multiple Images)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'products',
+    'products',
+    true,
+    52428800, -- 50MB limit
+    ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+)
+ON CONFLICT (id) DO UPDATE 
+SET public = true,
+    file_size_limit = 52428800,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+
+CREATE POLICY "Public Read Access for Products"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'products');
+
+CREATE POLICY "Public Insert Access for Products"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'products');
+
+CREATE POLICY "Public Update Access for Products"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'products');
+
+CREATE POLICY "Public Delete Access for Products"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'products');
+
+
+
+-- =============================================================================
+-- 12. ENHANCED PRODUCT CATALOG SCHEMAS (ALTER TABLE)
+-- Updates master_real_estate_products, master_insurance_products, and
+-- master_mutual_fund_products by adding ONLY new columns (compared to the
+-- initial CREATE TABLE queries on top which already created id, product_type,
+-- and created_at).
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- 12A. ALTER MASTER_REAL_ESTATE_PRODUCTS
+-- -----------------------------------------------------------------------------
+-- Drop UNIQUE constraint on product_type so multiple products can share the same category (e.g. 'Apartment')
+ALTER TABLE master_real_estate_products 
+    DROP CONSTRAINT IF EXISTS master_real_estate_products_product_type_key;
+
+ALTER TABLE master_real_estate_products
+    ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT '' NOT NULL,
+    ADD COLUMN IF NOT EXISTS project_name VARCHAR(150),
+    ADD COLUMN IF NOT EXISTS bhk VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS price VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS area TEXT , 
+    ADD COLUMN IF NOT EXISTS area_unit VARCHAR(20) DEFAULT 'sqft',
+    ADD COLUMN IF NOT EXISTS carpet_area NUMERIC(12,2),
+    ADD COLUMN IF NOT EXISTS built_up_area NUMERIC(12,2),
+    ADD COLUMN IF NOT EXISTS floor_number SMALLINT,
+    ADD COLUMN IF NOT EXISTS total_floors SMALLINT,
+    ADD COLUMN IF NOT EXISTS facing VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS bedrooms SMALLINT,
+    ADD COLUMN IF NOT EXISTS bathrooms SMALLINT,
+    ADD COLUMN IF NOT EXISTS balconies SMALLINT,
+    ADD COLUMN IF NOT EXISTS parking TEXT,
+    ADD COLUMN IF NOT EXISTS possession_date DATE,
+    ADD COLUMN IF NOT EXISTS construction_status VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS rera_number VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS builder_name VARCHAR(150),
+    ADD COLUMN IF NOT EXISTS address TEXT,
+    ADD COLUMN IF NOT EXISTS amenities TEXT,
+    ADD COLUMN IF NOT EXISTS images TEXT,
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+
+CREATE INDEX IF NOT EXISTS idx_mrep_product_type ON master_real_estate_products(product_type);
+CREATE INDEX IF NOT EXISTS idx_mrep_is_active ON master_real_estate_products(is_active);
+CREATE INDEX IF NOT EXISTS idx_mrep_is_featured ON master_real_estate_products(is_featured);
+
+
+ALTER TABLE master_insurance_products 
+    DROP CONSTRAINT IF EXISTS master_insurance_products_product_type_key;
+
+ALTER TABLE master_insurance_products
+    ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT '' NOT NULL,
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS insurance_sub_type VARCHAR(100) DEFAULT '' NOT NULL,
+    ADD COLUMN IF NOT EXISTS insurer_name VARCHAR(150) DEFAULT '' NOT NULL,
+    ADD COLUMN IF NOT EXISTS plan_type VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS coverage_amount NUMERIC(15,2),
+    ADD COLUMN IF NOT EXISTS premium_amount NUMERIC(15,2),
+    ADD COLUMN IF NOT EXISTS premium_frequency VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS policy_term INTEGER,
+    ADD COLUMN IF NOT EXISTS policy_term_unit VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS entry_age_min SMALLINT,
+    ADD COLUMN IF NOT EXISTS entry_age_max SMALLINT,
+    ADD COLUMN IF NOT EXISTS claim_settlement_ratio NUMERIC(5,2),
+    ADD COLUMN IF NOT EXISTS benefits JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS features JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS exclusions JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS documents JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS cover_image TEXT,
+    ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+
+CREATE INDEX IF NOT EXISTS idx_mip_product_type ON master_insurance_products(product_type);
+CREATE INDEX IF NOT EXISTS idx_mip_is_active ON master_insurance_products(is_active);
+CREATE INDEX IF NOT EXISTS idx_mip_is_featured ON master_insurance_products(is_featured);
+
+ALTER TABLE master_mutual_fund_products 
+    DROP CONSTRAINT IF EXISTS master_mutual_fund_products_product_type_key;
+
+ALTER TABLE master_mutual_fund_products
+    ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT '' NOT NULL,
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS fund_house VARCHAR(150) DEFAULT '' NOT NULL,
+    ADD COLUMN IF NOT EXISTS scheme_name VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS risk_level VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS investment_objective TEXT,
+    ADD COLUMN IF NOT EXISTS min_investment NUMERIC(15,2),
+    ADD COLUMN IF NOT EXISTS min_sip_amount NUMERIC(15,2),
+    ADD COLUMN IF NOT EXISTS expense_ratio NUMERIC(6,3),
+    ADD COLUMN IF NOT EXISTS exit_load VARCHAR(100),
+    ADD COLUMN IF NOT EXISTS benchmark VARCHAR(150),
+    ADD COLUMN IF NOT EXISTS returns_1y NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS returns_3y NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS returns_5y NUMERIC(8,2),
+    ADD COLUMN IF NOT EXISTS benefits JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS features JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS cover_image TEXT,
+    ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+
+CREATE INDEX IF NOT EXISTS idx_mmfp_product_type ON master_mutual_fund_products(product_type);
+CREATE INDEX IF NOT EXISTS idx_mmfp_is_active ON master_mutual_fund_products(is_active);
+CREATE INDEX IF NOT EXISTS idx_mmfp_is_featured ON master_mutual_fund_products(is_featured);
+
+

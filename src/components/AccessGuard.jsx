@@ -19,7 +19,11 @@ const AccessGuard = ({ pageKey, children }) => {
 
   const accessLevel = user.role === 'ADMIN'
     ? 'full'
-    : (user.accessPages?.[pageKey] !== undefined ? user.accessPages[pageKey] : (DEFAULT_USER_ACCESS[pageKey] || 'none'));
+    : (user.accessPages?.[pageKey] !== undefined
+        ? user.accessPages[pageKey]
+        : (pageKey === 'setting' || pageKey === 'master'
+            ? (user.accessPages?.master ?? user.accessPages?.setting ?? DEFAULT_USER_ACCESS.master ?? 'none')
+            : (DEFAULT_USER_ACCESS[pageKey] || 'none')));
 
   const hasAccess = accessLevel !== 'none';
 

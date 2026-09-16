@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
 
 /**
@@ -43,8 +44,8 @@ const ModalAlert = ({
     }
   }[type] || {};
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[1000] p-4 animate-in fade-in duration-300">
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 animate-in fade-in duration-300">
       <div 
         className={`bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl ${config.shadow} animate-in zoom-in-95 duration-300 flex flex-col items-center text-center relative overflow-hidden`}
       >
@@ -89,7 +90,8 @@ const ModalAlert = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

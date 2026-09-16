@@ -97,18 +97,31 @@ export const dashboardApi = {
       ? allUsers
       : allUsers.filter(u => matchesUserAssignment(u.name, user) || matchesUserAssignment(u.id, user));
 
-    const callerStats = relevantUsers
-      .filter(u => u.name)
-      .map(u => {
-        const assignedLeads = leadsWithStatus.filter(l => l.callerAssigned === u.name);
-        const total = assignedLeads.length;
-        const converted = assignedLeads.filter(l => CONVERTED_STATUSES.includes(l._status)).length;
-        const pending = assignedLeads.filter(l => isLeadPending(trackers, l)).length;
-        const rate = total > 0 ? Math.round((converted / total) * 100) : 0;
-        return { name: u.name, total, converted, pending, rate };
-      })
-      .filter(c => c.total > 0)
-      .sort((a, b) => b.converted - a.converted || b.rate - a.rate);
+    // Deduplicate by caller name so multiple user entries for the same person don't produce duplicate items
+    const seenCallerNames = new Set();
+    const callerStats = [];
+
+    relevantUsers
+      .filter(u => u.name && u.name.trim())
+      .forEach(u => {
+        const callerName = u.name.trim();
+        if (!seenCallerNames.has(callerName.toLowerCase())) {
+          seenCallerNames.add(callerName.toLowerCase());
+          const assignedLeads = leadsWithStatus.filter(l => 
+            (l.callerAssigned && l.callerAssigned.trim().toLowerCase() === callerName.toLowerCase()) ||
+            l.callerAssignedId === u.id
+          );
+          const total = assignedLeads.length;
+          const converted = assignedLeads.filter(l => CONVERTED_STATUSES.includes(l._status)).length;
+          const pending = assignedLeads.filter(l => isLeadPending(trackers, l)).length;
+          const rate = total > 0 ? Math.round((converted / total) * 100) : 0;
+          if (total > 0) {
+            callerStats.push({ id: u.id, name: callerName, total, converted, pending, rate });
+          }
+        }
+      });
+
+    callerStats.sort((a, b) => b.converted - a.converted || b.rate - a.rate);
 
     // Upcoming Follow-ups (leads with non-terminal status and nextDate)
     const trackersByLead = {};

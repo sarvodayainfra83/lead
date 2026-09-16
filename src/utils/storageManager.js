@@ -60,6 +60,7 @@ export const DEFAULT_USER_ACCESS = {
   assignVisitor: 'edit',
   visitorFollowUp: 'edit',
   customerMaster: 'view',
+  products: 'edit',
   callerReport: 'none',
   attendance: 'edit',
   attendanceReport: 'view',
@@ -68,9 +69,9 @@ export const DEFAULT_USER_ACCESS = {
 };
 
 const DEFAULT_USERS = [
-  { id: 'admin', serialNo: 1, name: 'Rajesh Sharma', number: '9876500001', gmail: 'rajesh.sharma@sarvodayainfracon.com', password: 'admin123', role: 'ADMIN', accessPages: {} },
-  { id: 'user', serialNo: 2, name: 'Amit Patel', number: '9876500002', gmail: 'amit.patel@sarvodayainfracon.com', password: 'user123', role: 'USER', accessPages: { ...DEFAULT_USER_ACCESS } },
-  { id: 'user2', serialNo: 3, name: 'Priya Iyer', number: '9876500003', gmail: 'priya.iyer@sarvodayainfracon.com', password: 'user123', role: 'USER', accessPages: { ...DEFAULT_USER_ACCESS } }
+  { id: 'admin', serialNo: 1, name: 'Rajesh Sharma', number: '9876500001', gmail: 'rajesh.sharma@sarvodayainfracon.com', password: 'admin123', role: 'ADMIN', position: 'Lead Receiver', leadTypeId: 'mlt-1', leadType: 'Real Estate', accessPages: {} },
+  { id: 'user', serialNo: 2, name: 'Amit Patel', number: '9876500002', gmail: 'amit.patel@sarvodayainfracon.com', password: 'user123', role: 'USER', position: 'Caller', leadTypeId: 'mlt-1', leadType: 'Real Estate', accessPages: { ...DEFAULT_USER_ACCESS } },
+  { id: 'user2', serialNo: 3, name: 'Priya Iyer', number: '9876500003', gmail: 'priya.iyer@sarvodayainfracon.com', password: 'user123', role: 'USER', position: 'Visitor', leadTypeId: 'mlt-1', leadType: 'Real Estate', accessPages: { ...DEFAULT_USER_ACCESS } }
 ];
 
 // Users created before a given field/page existed carry the legacy generic name so we can
@@ -2755,23 +2756,54 @@ export const createLeadSourceMaster = leadSourceCrud.create;
 export const updateLeadSourceMaster = leadSourceCrud.update;
 export const deleteLeadSourceMaster = leadSourceCrud.remove;
 
-const leadReceiverCrud = makeMasterCrud(STORAGE_KEYS.MASTER_LEAD_RECEIVERS);
-export const getLeadReceiversMaster = leadReceiverCrud.getAll;
-export const createLeadReceiverMaster = leadReceiverCrud.create;
-export const updateLeadReceiverMaster = leadReceiverCrud.update;
-export const deleteLeadReceiverMaster = leadReceiverCrud.remove;
+export const getLeadReceiversMaster = () => {
+  const users = getUsers();
+  return users
+    .map((u, i) => ({
+      id: u.id,
+      serialNo: i + 1,
+      personName: u.name,
+      leadTypeId: u.leadTypeId || '',
+      leadType: u.leadType || '',
+      role: u.role,
+      position: u.position
+    }));
+};
+export const createLeadReceiverMaster = (obj) => obj;
+export const updateLeadReceiverMaster = (id, obj) => obj;
+export const deleteLeadReceiverMaster = (id) => id;
 
-const callerNameCrud = makeMasterCrud(STORAGE_KEYS.MASTER_CALLER_NAMES);
-export const getCallerNamesMaster = callerNameCrud.getAll;
-export const createCallerNameMaster = callerNameCrud.create;
-export const updateCallerNameMaster = callerNameCrud.update;
-export const deleteCallerNameMaster = callerNameCrud.remove;
+export const getCallerNamesMaster = () => {
+  const users = getUsers();
+  return users
+    .filter(u => String(u.position || '').toLowerCase().includes('caller'))
+    .map((u, i) => ({
+      id: u.id,
+      serialNo: i + 1,
+      personName: u.name,
+      leadTypeId: u.leadTypeId || '',
+      leadType: u.leadType || ''
+    }));
+};
+export const createCallerNameMaster = (obj) => obj;
+export const updateCallerNameMaster = (id, obj) => obj;
+export const deleteCallerNameMaster = (id) => id;
 
-const visitorNameCrud = makeMasterCrud(STORAGE_KEYS.MASTER_VISITOR_NAMES);
-export const getVisitorsMaster = visitorNameCrud.getAll;
-export const createVisitorMaster = visitorNameCrud.create;
-export const updateVisitorMaster = visitorNameCrud.update;
-export const deleteVisitorMaster = visitorNameCrud.remove;
+export const getVisitorsMaster = () => {
+  const users = getUsers();
+  return users
+    .filter(u => String(u.position || '').toLowerCase().includes('visitor'))
+    .map((u, i) => ({
+      id: u.id,
+      serialNo: i + 1,
+      personName: u.name,
+      leadTypeId: u.leadTypeId || '',
+      leadType: u.leadType || ''
+    }));
+};
+export const createVisitorMaster = (obj) => obj;
+export const updateVisitorMaster = (id, obj) => obj;
+export const deleteVisitorMaster = (id) => id;
 
 // Product Type (Mutual Fund / Real Estate / Insurance) and Requirement (Real Estate) masters —
 // feed the Lead form's Product Type / Sub Product Type / Requirement dropdowns per Lead Type.

@@ -36,22 +36,25 @@ export const useBadgeCountStore = create((set) => ({
 
       // Leads assigned to the user (or all if admin)
       const userLeads = isAdmin ? allLeads : allLeads.filter(l => matchesUserAssignment(l, user));
-      const userTrackers = isAdmin ? allTrackers : allTrackers.filter(t => matchesUserAssignment(t, user));
+      const userLeadIdSet = new Set(userLeads.flatMap(l => [String(l.id), String(l.leadNo)].filter(Boolean)));
+      const userTrackers = isAdmin ? allTrackers : allTrackers.filter(t => userLeadIdSet.has(String(t.leadId)) || userLeadIdSet.has(String(t.leadNo)));
 
       // Pending leads without caller assigned (exclude direct leads created in Call Tracker)
       const pendingLeadCount = isAdmin
         ? allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct').length
         : allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct' && matchesUserReceiver(l, user)).length;
 
-      // Pending tracker leads awaiting a call
-      const pendingTrackerCount = userLeads.filter(l => isLeadPending(userTrackers, l)).length;
+      // Pending tracker leads awaiting a call (must use allTrackers to check actual terminal status)
+      const pendingTrackerCount = userLeads.filter(l => isLeadPending(allTrackers, l)).length;
 
       // Pending visitor assignment (Site Visit/Meeting leads not yet assigned a visitor)
       const assignedLeadSet = new Set(
         allVisitors.filter(v => v.status !== 'Cancelled').map(v => String(v.leadId || v.leadNo))
       );
-      const pendingVisitorCount = userLeads.filter(l => {
-        const status = getLeadStatus(userTrackers, l.id);
+      const pendingVisitorCount = allLeads.filter(l => {
+        const isUserMatch = isAdmin || matchesUserAssignment(l, user) || matchesUserReceiver(l, user);
+        if (!isUserMatch) return false;
+        const status = getLeadStatus(allTrackers, l.id, l.leadNo);
         return status === 'Site Visit/Meeting' && !assignedLeadSet.has(String(l.id)) && !assignedLeadSet.has(String(l.leadNo));
       }).length;
 
@@ -81,7 +84,7 @@ export const useBadgeCountStore = create((set) => ({
         const leadFollowUps = (followUpsByLead[String(l.id)] || followUpsByLead[String(l.leadNo)] || [])
           .sort((x, y) => (x.timestampMs || 0) - (y.timestampMs || 0));
         const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
-        const callStatus = getLeadStatus(userTrackers, l.id);
+        const callStatus = getLeadStatus(allTrackers, l.id, l.leadNo);
 
         if (latestFollowUp) {
           const isRejected =

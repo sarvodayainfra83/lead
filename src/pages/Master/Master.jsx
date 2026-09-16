@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
-import { Tag, User, Share2, Phone, UserCheck, Building2, ClipboardList, TrendingUp, ShieldCheck, Layers, Wallet } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { Users, Tag, Share2, Building2, ClipboardList, TrendingUp, ShieldCheck, Layers, Wallet } from 'lucide-react';
+import Setting from '../Setting/Setting';
 import LeadType from './LeadType';
-import LeadReceiver from './LeadReceiver';
 import Leadsource from './Leadsource';
-import CallerName from './CallerName';
-import VisitorName from './VisitorName';
 import RealEstateProduct from './RealEstateProduct';
 import RealEstateRequirement from './RealEstateRequirement';
 import MutualFundProduct from './MutualFundProduct';
@@ -13,21 +12,27 @@ import InsuranceSubProduct from './InsuranceSubProduct';
 import InvestmentBudget from './InvestmentBudget';
 
 /**
- * Master
- * Manages every Master Data list as tabs on a single page — Lead Type, Lead Receiver,
- * Lead Source, Caller Name, Visitor, plus the per-Lead-Type Product Type / Requirement / Sub
- * Product Type lists. These feed the dropdowns on the Lead and Direct Lead forms.
+ * Master & Settings Unified Hub
+ * Manages Users & Permissions (Setting) alongside all Master Data categories
+ * on a single unified page with smooth tabbed navigation.
  */
 export default function Master() {
-  const [activeTab, setActiveTab] = useState('leadType');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => {
+    return location.pathname.includes('setting') ? 'users' : 'users';
+  });
   const [headerAction, setHeaderAction] = useState(null);
 
+  useEffect(() => {
+    if (location.pathname.includes('setting')) {
+      setActiveTab('users');
+    }
+  }, [location.pathname]);
+
   const tabs = [
+    { key: 'users', label: 'Users & Team', icon: Users, Component: Setting },
     { key: 'leadType', label: 'Lead Type', icon: Tag, Component: LeadType },
-    { key: 'leadReceiver', label: 'Lead Receiver', icon: User, Component: LeadReceiver },
     { key: 'leadSource', label: 'Lead Source', icon: Share2, Component: Leadsource },
-    { key: 'callerName', label: 'Caller Name', icon: Phone, Component: CallerName },
-    { key: 'visitorName', label: 'Visitor', icon: UserCheck, Component: VisitorName },
     { key: 'realEstateProduct', label: 'RE Product', icon: Building2, Component: RealEstateProduct },
     { key: 'realEstateRequirement', label: 'RE Requirement', icon: ClipboardList, Component: RealEstateRequirement },
     { key: 'mutualFundProduct', label: 'MF Product', icon: TrendingUp, Component: MutualFundProduct },
@@ -40,18 +45,18 @@ export default function Master() {
 
   return (
     <div className="flex flex-col md:flex-row h-full min-h-0 bg-white md:bg-gray-50/30">
-      {/* Sidebar for Master Data */}
+      {/* Sidebar for Master Data & Settings */}
       <div className="w-full md:w-[260px] flex-shrink-0 border-r border-gray-200 overflow-y-auto no-scrollbar hidden md:flex flex-col bg-white">
-        <div className="px-6 pt-6 pb-4">
-          <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Master Data</h2>
+        <div className="px-6 pt-5 pb-3">
+          <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Master & Settings</h2>
         </div>
         <div className="px-3 pb-6 flex flex-col gap-1">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors w-full text-left ${activeTab === key
-                ? 'bg-[#f0f7ff] text-[#0f172a]'
+              onClick={() => { setActiveTab(key); setHeaderAction(null); }}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors w-full text-left cursor-pointer ${activeTab === key
+                ? 'bg-indigo-50 text-indigo-950 font-semibold'
                 : 'bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                 }`}
             >
@@ -68,8 +73,8 @@ export default function Master() {
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border h-[30px] whitespace-nowrap flex-shrink-0 ${activeTab === key
+              onClick={() => { setActiveTab(key); setHeaderAction(null); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border h-[32px] whitespace-nowrap flex-shrink-0 cursor-pointer ${activeTab === key
                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                 : 'bg-white text-gray-600 border-gray-200 hover:bg-indigo-50 hover:text-indigo-600'
                 }`}
@@ -83,21 +88,15 @@ export default function Master() {
 
       {/* Main Content */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Header area containing Search and Header Action */}
-        <div className="px-4 sm:px-6 pt-4 pb-2 md:py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 flex-shrink-0">
-          <div className="relative w-full sm:w-[350px]">
-            <svg 
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" 
-              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8"></circle>
-              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
-            <input 
-              type="text" 
-              placeholder="Search details..." 
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm" 
-            />
+        {/* Header area containing Tab Title and Header Action */}
+        <div className="px-4 sm:px-6 py-3 md:py-4 flex items-center justify-between gap-4 flex-shrink-0 border-b border-gray-100 bg-white">
+          <div className="flex items-center gap-2">
+            <h1 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">
+              {tabs.find(t => t.key === activeTab)?.label}
+            </h1>
+            <span className="text-xs text-gray-400 font-normal hidden sm:inline">
+              · Master Data & Settings
+            </span>
           </div>
           <div className="flex-shrink-0">
             {headerAction}
@@ -105,10 +104,11 @@ export default function Master() {
         </div>
 
         {/* Dynamic Component */}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {ActiveComponent && <ActiveComponent setHeaderAction={setHeaderAction} />}
         </div>
       </div>
     </div>
   );
 }
+

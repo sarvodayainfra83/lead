@@ -161,20 +161,27 @@ export const masterApi = {
     deleteLocalSource(idOrName);
   },
 
-  // --- LEAD RECEIVERS ---
+  // --- LEAD RECEIVERS / TEAM MEMBERS (Queried from users table) ---
   async getLeadReceivers() {
     if (!isSupabaseConfigured) return getLocalReceivers();
     const { data, error } = await supabase
-      .from('master_lead_receivers')
+      .from('users')
       .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching lead receivers:', error); return getLocalReceivers(); }
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.warn('Error fetching team members from users table:', error.message);
+      return getLocalReceivers();
+    }
     return data.map((d, idx) => ({
       id: d.id,
+      userId: d.username,
       serialNo: idx + 1,
       leadTypeId: d.lead_type_id,
       leadType: d.master_lead_types?.lead_type || '',
-      personName: d.person_name
+      personName: d.name,
+      role: d.role,
+      position: d.position
     }));
   },
 
@@ -186,75 +193,45 @@ export const masterApi = {
     }
 
     if (!isSupabaseConfigured) {
-      if (receiverObj.id) {
-        return updateLocalReceiver(receiverObj.id, receiverObj);
-      }
-      return saveLocalReceiver(receiverObj);
+      return receiverObj.id ? updateLocalReceiver(receiverObj.id, receiverObj) : saveLocalReceiver(receiverObj);
     }
 
+    // Update user's position to Lead Receiver
     if (receiverObj.id) {
-      const { data, error } = await supabase
-        .from('master_lead_receivers')
-        .update({ lead_type_id: leadTypeId, person_name: receiverObj.personName })
-        .eq('id', receiverObj.id)
-        .select('*, master_lead_types!lead_type_id(id, lead_type)')
-        .single();
-      if (error) {
-        console.error('Error updating lead receiver:', error);
-        updateLocalReceiver(receiverObj.id, receiverObj);
-        throw error;
-      }
-      const result = {
-        id: data.id,
-        leadTypeId: data.lead_type_id,
-        leadType: data.master_lead_types?.lead_type || receiverObj.leadType,
-        personName: data.person_name
-      };
-      updateLocalReceiver(receiverObj.id, result);
-      return result;
-    } else {
-      const { data, error } = await supabase
-        .from('master_lead_receivers')
-        .insert({ lead_type_id: leadTypeId, person_name: receiverObj.personName })
-        .select('*, master_lead_types!lead_type_id(id, lead_type)')
-        .single();
-      if (error) {
-        console.error('Error saving lead receiver:', error);
-        saveLocalReceiver(receiverObj);
-        throw error;
-      }
-      const result = {
-        id: data.id,
-        leadTypeId: data.lead_type_id,
-        leadType: data.master_lead_types?.lead_type || receiverObj.leadType,
-        personName: data.person_name
-      };
-      saveLocalReceiver(result);
-      return result;
+      await supabase
+        .from('users')
+        .update({ position: 'Lead Receiver', lead_type_id: leadTypeId })
+        .eq('id', receiverObj.id);
     }
+    return { ...receiverObj, leadTypeId };
   },
 
   async deleteLeadReceiver(id) {
     if (!isSupabaseConfigured) return deleteLocalReceiver(id);
-    const { error } = await supabase.from('master_lead_receivers').delete().eq('id', id);
-    if (error) throw error;
+    await supabase.from('users').update({ position: null }).eq('id', id);
     deleteLocalReceiver(id);
   },
 
-  // --- CALLER NAMES ---
+  // --- CALLER NAMES (Queried from users table with position = 'Caller') ---
   async getCallerNames() {
     if (!isSupabaseConfigured) return getLocalCallers();
     const { data, error } = await supabase
-      .from('master_caller_names')
+      .from('users')
       .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching caller names:', error); return getLocalCallers(); }
+      .ilike('position', '%Caller%')
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.warn('Error fetching caller names from users table:', error.message);
+      return getLocalCallers();
+    }
     return data.map((d, idx) => ({
       id: d.id,
+      userId: d.username,
       serialNo: idx + 1,
       leadTypeId: d.lead_type_id,
       leadType: d.master_lead_types?.lead_type || '',
-      personName: d.person_name
+      personName: d.name
     }));
   },
 
@@ -266,78 +243,45 @@ export const masterApi = {
     }
 
     if (!isSupabaseConfigured) {
-      if (callerObj.id) {
-        return updateLocalCaller(callerObj.id, callerObj);
-      }
-      return saveLocalCaller(callerObj);
+      return callerObj.id ? updateLocalCaller(callerObj.id, callerObj) : saveLocalCaller(callerObj);
     }
 
+    // Update user's position to Caller
     if (callerObj.id) {
-      const { data, error } = await supabase
-        .from('master_caller_names')
-        .update({ lead_type_id: leadTypeId, person_name: callerObj.personName })
-        .eq('id', callerObj.id)
-        .select('*, master_lead_types!lead_type_id(id, lead_type)')
-        .single();
-      if (error) {
-        console.error('Error updating caller name:', error);
-        updateLocalCaller(callerObj.id, callerObj);
-        throw error;
-      }
-      const result = {
-        id: data.id,
-        leadTypeId: data.lead_type_id,
-        leadType: data.master_lead_types?.lead_type || callerObj.leadType,
-        personName: data.person_name
-      };
-      updateLocalCaller(callerObj.id, result);
-      return result;
-    } else {
-      const { data, error } = await supabase
-        .from('master_caller_names')
-        .insert({ lead_type_id: leadTypeId, person_name: callerObj.personName })
-        .select('*, master_lead_types!lead_type_id(id, lead_type)')
-        .single();
-      if (error) {
-        console.error('Error saving caller name:', error);
-        saveLocalCaller(callerObj);
-        throw error;
-      }
-      const result = {
-        id: data.id,
-        leadTypeId: data.lead_type_id,
-        leadType: data.master_lead_types?.lead_type || callerObj.leadType,
-        personName: data.person_name
-      };
-      saveLocalCaller(result);
-      return result;
+      await supabase
+        .from('users')
+        .update({ position: 'Caller', lead_type_id: leadTypeId })
+        .eq('id', callerObj.id);
     }
+    return { ...callerObj, leadTypeId };
   },
 
   async deleteCallerName(id) {
     if (!isSupabaseConfigured) return deleteLocalCaller(id);
-    const { error } = await supabase.from('master_caller_names').delete().eq('id', id);
-    if (error) throw error;
+    await supabase.from('users').update({ position: null }).eq('id', id);
     deleteLocalCaller(id);
   },
 
-  // --- VISITOR NAMES ---
+  // --- VISITOR NAMES (Queried from users table with position = 'Visitor') ---
   async getVisitors() {
     if (!isSupabaseConfigured) return getLocalVisitors();
     const { data, error } = await supabase
-      .from('master_visitor_names')
+      .from('users')
       .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .order('created_at', { ascending: true });
+      .ilike('position', '%Visitor%')
+      .order('name', { ascending: true });
+
     if (error) {
-      console.warn('Fallback to local storage for visitors:', error.message);
+      console.warn('Error fetching visitors from users table:', error.message);
       return getLocalVisitors();
     }
     return data.map((d, idx) => ({
       id: d.id,
+      userId: d.username,
       serialNo: idx + 1,
       leadTypeId: d.lead_type_id,
       leadType: d.master_lead_types?.lead_type || '',
-      personName: d.person_name
+      personName: d.name
     }));
   },
 
@@ -349,59 +293,22 @@ export const masterApi = {
     }
 
     if (!isSupabaseConfigured) {
-      if (visitorObj.id) {
-        return updateLocalVisitor(visitorObj.id, visitorObj);
-      }
-      return saveLocalVisitor(visitorObj);
+      return visitorObj.id ? updateLocalVisitor(visitorObj.id, visitorObj) : saveLocalVisitor(visitorObj);
     }
 
+    // Update user's position to Visitor
     if (visitorObj.id) {
-      const { data, error } = await supabase
-        .from('master_visitor_names')
-        .update({ lead_type_id: leadTypeId, person_name: visitorObj.personName })
-        .eq('id', visitorObj.id)
-        .select('*, master_lead_types!lead_type_id(id, lead_type)')
-        .single();
-      if (error) {
-        console.error('Error updating visitor in Supabase, updating locally:', error);
-        updateLocalVisitor(visitorObj.id, visitorObj);
-        return { ...visitorObj, leadTypeId };
-      }
-      const result = {
-        id: data.id,
-        leadTypeId: data.lead_type_id,
-        leadType: data.master_lead_types?.lead_type || visitorObj.leadType,
-        personName: data.person_name
-      };
-      updateLocalVisitor(visitorObj.id, result);
-      return result;
-    } else {
-      const { data, error } = await supabase
-        .from('master_visitor_names')
-        .insert({ lead_type_id: leadTypeId, person_name: visitorObj.personName })
-        .select('*, master_lead_types!lead_type_id(id, lead_type)')
-        .single();
-      if (error) {
-        console.error('Error saving visitor in Supabase, saving locally:', error);
-        return saveLocalVisitor(visitorObj);
-      }
-      const result = {
-        id: data.id,
-        leadTypeId: data.lead_type_id,
-        leadType: data.master_lead_types?.lead_type || visitorObj.leadType,
-        personName: data.person_name
-      };
-      saveLocalVisitor(result);
-      return result;
+      await supabase
+        .from('users')
+        .update({ position: 'Visitor', lead_type_id: leadTypeId })
+        .eq('id', visitorObj.id);
     }
+    return { ...visitorObj, leadTypeId };
   },
 
   async deleteVisitor(id) {
     if (!isSupabaseConfigured) return deleteLocalVisitor(id);
-    const { error } = await supabase.from('master_visitor_names').delete().eq('id', id);
-    if (error) {
-      console.warn('Error deleting visitor in Supabase, deleting locally:', error.message);
-    }
+    await supabase.from('users').update({ position: null }).eq('id', id);
     deleteLocalVisitor(id);
   },
 

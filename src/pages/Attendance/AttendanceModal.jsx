@@ -1,15 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Upload, Camera, CheckCircle2, RotateCcw, MapPin, Loader2, Trash2, X
+  Upload, Camera, CheckCircle2, RotateCcw, MapPin, Loader2, Trash2, X, AlertTriangle
 } from 'lucide-react';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { attendanceApi } from '../../api/attendanceApi';
 import { useAuthStore } from '../../store/authStore';
 
-export default function AttendanceModal({ isOpen, onClose, onSaved }) {
+export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs = [] }) {
   const { user } = useAuthStore();
+
+  const [attendanceStatus, setAttendanceStatus] = useState(() =>
+    attendanceApi.getUserTodayAttendanceStatus(existingLogs, user)
+  );
 
   const [userName, setUserName] = useState(user?.name || '');
   const [status, setStatus] = useState('In');
@@ -58,21 +62,24 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
 
   useEffect(() => {
     if (isOpen) {
+      const statusInfo = attendanceApi.getUserTodayAttendanceStatus(existingLogs, user);
+      setAttendanceStatus(statusInfo);
+
       try {
         const savedSessionStr = sessionStorage.getItem('attendance_camera_session');
         if (savedSessionStr) {
           const savedSession = JSON.parse(savedSessionStr);
           const isFresh = (Date.now() - (savedSession.timestamp || 0)) < 10 * 60 * 1000;
-          if (isFresh && savedSession.status) {
+          if (isFresh && savedSession.status && statusInfo.allowedStatuses.includes(savedSession.status)) {
             setStatus(savedSession.status);
           } else {
-            setStatus('In');
+            setStatus(statusInfo.defaultStatus);
           }
         } else {
-          setStatus('In');
+          setStatus(statusInfo.defaultStatus);
         }
       } catch (e) {
-        setStatus('In');
+        setStatus(statusInfo.defaultStatus);
       }
 
       setUserName(user?.name || '');
@@ -84,7 +91,7 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
     } else {
       stopWebcam();
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, existingLogs]);
 
   useEffect(() => {
     return () => {
@@ -92,11 +99,10 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
     };
   }, []);
 
-  const statusOptions = [
-    { value: 'In', label: 'In' },
-    { value: 'Out', label: 'Out' },
-    { value: 'Half Day', label: 'Half Day' }
-  ];
+  const statusOptions = attendanceStatus.allowedStatuses.map(s => ({
+    value: s,
+    label: s
+  }));
 
   const savePendingSession = (selectedStatus) => {
     try {
@@ -274,13 +280,28 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
   const handleCloseModal = () => {
     try {
       sessionStorage.removeItem('attendance_camera_session');
-    } catch (e) {}
+    } catch (e) { }
     onClose();
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (saving) return;
+
+    if (attendanceStatus.isLocked) {
+      toast.error('You have already marked OUT for today. Next check-in opens tomorrow after 12:00 AM IST.');
+      return;
+    }
+
+    if (status === 'In' && attendanceStatus.hasMarkedIn) {
+      toast.error('You have already marked IN today. You can only mark Half Day or OUT.');
+      return;
+    }
+
+    if (status === 'Out' && !attendanceStatus.hasMarkedIn && !attendanceStatus.hasMarkedHalfDay) {
+      toast.error('You cannot mark OUT without marking IN first.');
+      return;
+    }
 
     const currentUserName = user?.name || userName;
 
@@ -306,9 +327,10 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
       const dateStr = `${day}/${month}/${year}`;
       const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
       const fullTimestamp = `${dateStr} ${timeStr}`;
+      const userUuid = await attendanceApi.getUserIdUuid(user);
 
       await attendanceApi.saveAttendanceLog({
-        userId: user?.id || '',
+        userId: userUuid || user?.dbId || (typeof user?.id === 'string' && user.id.includes('-') ? user.id : null),
         userName: currentUserName,
         date: dateStr,
         timestamp: fullTimestamp,
@@ -322,7 +344,7 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
 
       try {
         sessionStorage.removeItem('attendance_camera_session');
-      } catch (e) {}
+      } catch (e) { }
 
       toast.success(`Attendance (${status}) recorded successfully!`);
       onSaved?.();
@@ -343,11 +365,32 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
       onClose={handleCloseModal}
       title="ATTENDANCE"
       onSubmit={handleSubmit}
-      submitText={saving ? 'Saving...' : 'SAVE'}
+      submitText={attendanceStatus.isLocked ? 'COMPLETED FOR TODAY' : (saving ? 'Saving...' : 'SAVE')}
+      disabled={attendanceStatus.isLocked}
       loading={saving}
       maxWidth="max-w-md"
     >
       <div className="space-y-3 sm:space-y-4">
+        {/* Banner: If marked OUT, locked until 12:00 AM IST */}
+        {attendanceStatus.isLocked && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-amber-900 text-xs shadow-2xs">
+            <AlertTriangle size={17} className="text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="font-bold text-amber-950">Attendance Completed for Today</p>
+              <p className="text-amber-800 leading-relaxed">
+                You have already marked <span className="font-bold text-amber-950">OUT</span> for today ({attendanceStatus.todayDate}). No further attendance can be marked today. You will be able to mark <span className="font-bold text-amber-950">IN</span> tomorrow after 12:00 AM IST.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Banner: If already marked IN, show guidance */}
+        {!attendanceStatus.isLocked && attendanceStatus.hasMarkedIn && (
+          <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-blue-900 text-xs">
+            <CheckCircle2 size={15} className="text-blue-600 flex-shrink-0" />
+            <span>Already marked <strong>IN</strong> today. You can now mark <strong>Half Day</strong> or <strong>OUT</strong>.</span>
+          </div>
+        )}
 
         {/* NAME * (Pre-filled with logged-in user name & Not Editable) */}
         <div className="space-y-1">
@@ -368,15 +411,25 @@ export default function AttendanceModal({ isOpen, onClose, onSaved }) {
           <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-medium">
             STATUS *
           </label>
-          <SearchableDropdown
-            options={statusOptions}
-            value={status}
-            onChange={(val) => {
-              setStatus(val);
-              savePendingSession(val);
-            }}
-            placeholder="Select status"
-          />
+          {attendanceStatus.isLocked ? (
+            <input
+              type="text"
+              readOnly
+              disabled
+              value="OUT (Completed for Today)"
+              className="w-full px-3 py-2 text-xs md:text-sm bg-gray-100/90 border border-gray-300 rounded-lg text-gray-500 font-semibold cursor-not-allowed select-none focus:outline-none h-[38px]"
+            />
+          ) : (
+            <SearchableDropdown
+              options={statusOptions}
+              value={status}
+              onChange={(val) => {
+                setStatus(val);
+                savePendingSession(val);
+              }}
+              placeholder="Select status"
+            />
+          )}
         </div>
 
         {/* IMAGE FIELD (Click Photo on Mobile / Upload Image on Desktop) */}

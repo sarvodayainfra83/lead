@@ -168,19 +168,15 @@ export const leadApi = {
       if (data && data[0]) lead_type_id = data[0].id;
     }
 
-    // 2. Resolve lead_receiver_id
+    // 2. Resolve lead_receiver_id from users table
     if (!lead_receiver_id && lead.leadReceiver) {
-      let query = supabase.from('master_lead_receivers').select('id').eq('person_name', lead.leadReceiver);
-      if (lead_type_id) {
-        query = query.eq('lead_type_id', lead_type_id);
-      }
-      const { data } = await query.limit(1);
-      if (data && data[0]) {
-        lead_receiver_id = data[0].id;
-      } else {
-        const { data: fallback } = await supabase.from('master_lead_receivers').select('id').eq('person_name', lead.leadReceiver).limit(1);
-        if (fallback && fallback[0]) lead_receiver_id = fallback[0].id;
-      }
+      const receiverName = String(lead.leadReceiver).trim();
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .or(`name.eq."${receiverName}",username.eq."${receiverName}"`)
+        .limit(1);
+      if (data && data[0]) lead_receiver_id = data[0].id;
     }
 
     // 3. Resolve lead_source_id
@@ -193,36 +189,15 @@ export const leadApi = {
       if (data && data[0]) lead_source_id = data[0].id;
     }
 
-    // 4. Resolve caller_assigned_id
+    // 4. Resolve caller_assigned_id from users table
     if (!caller_assigned_id && lead.callerAssigned) {
-      let query = supabase.from('master_caller_names').select('id').eq('person_name', lead.callerAssigned);
-      if (lead_type_id) {
-        query = query.eq('lead_type_id', lead_type_id);
-      }
-      const { data } = await query.limit(1);
-      if (data && data[0]) {
-        caller_assigned_id = data[0].id;
-      } else {
-        const { data: fallback } = await supabase.from('master_caller_names').select('id').eq('person_name', lead.callerAssigned).limit(1);
-        if (fallback && fallback[0]) {
-          caller_assigned_id = fallback[0].id;
-        } else if (isSupabaseConfigured) {
-          // Auto-register caller name so caller_assigned_id FK is preserved
-          try {
-            const { data: newCaller } = await supabase
-              .from('master_caller_names')
-              .insert({
-                lead_type_id: lead_type_id || null,
-                person_name: String(lead.callerAssigned).trim()
-              })
-              .select('id')
-              .single();
-            if (newCaller?.id) caller_assigned_id = newCaller.id;
-          } catch (e) {
-            console.warn('Auto-registering caller name failed:', e);
-          }
-        }
-      }
+      const callerName = String(lead.callerAssigned).trim();
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .or(`name.eq."${callerName}",username.eq."${callerName}"`)
+        .limit(1);
+      if (data && data[0]) caller_assigned_id = data[0].id;
     }
 
     // 5. Resolve investment_budget_id
@@ -235,7 +210,45 @@ export const leadApi = {
       if (data && data[0]) investment_budget_id = data[0].id;
     }
 
-    return { lead_type_id, lead_receiver_id, lead_source_id, caller_assigned_id, investment_budget_id };
+    const result = {
+      lead_receiver_id: lead_receiver_id || null,
+      lead_source_id: lead_source_id || null,
+      caller_assigned_id: caller_assigned_id || null,
+      investment_budget_id: investment_budget_id || null,
+      lead_type_id: lead_type_id || null,
+      product_type_id: this.cleanUuid(lead.productTypeId),
+      requirement_id: this.cleanUuid(lead.requirementId),
+      sub_product_type_id: this.cleanUuid(lead.subProductTypeId)
+    };
+
+    // Lead type specific FK lookups
+    const typeClean = String(lead.leadType || '').trim().toLowerCase();
+    if (typeClean === 'real estate' || (!lead.leadType && lead.leadNo && lead.leadNo.startsWith('LR'))) {
+      if (!result.product_type_id && lead.productType) {
+        const { data } = await supabase.from('master_real_estate_products').select('id').eq('product_type', lead.productType).limit(1);
+        if (data && data[0]) result.product_type_id = data[0].id;
+      }
+      if (!result.requirement_id && lead.requirement) {
+        const { data } = await supabase.from('master_real_estate_requirements').select('id').eq('requirement', lead.requirement).limit(1);
+        if (data && data[0]) result.requirement_id = data[0].id;
+      }
+    } else if (typeClean === 'mutual fund' || (!lead.leadType && lead.leadNo && lead.leadNo.startsWith('LM'))) {
+      if (!result.product_type_id && lead.productType) {
+        const { data } = await supabase.from('master_mutual_fund_products').select('id').eq('product_type', lead.productType).limit(1);
+        if (data && data[0]) result.product_type_id = data[0].id;
+      }
+    } else if (typeClean.includes('insurance') || (!lead.leadType && lead.leadNo && lead.leadNo.startsWith('LI'))) {
+      if (!result.product_type_id && lead.insuranceType) {
+        const { data } = await supabase.from('master_insurance_products').select('id').eq('product_type', lead.insuranceType).limit(1);
+        if (data && data[0]) result.product_type_id = data[0].id;
+      }
+      if (!result.sub_product_type_id && lead.insuranceSubType) {
+        const { data } = await supabase.from('master_insurance_sub_products').select('id').eq('sub_product_type', lead.insuranceSubType).limit(1);
+        if (data && data[0]) result.sub_product_type_id = data[0].id;
+      }
+    }
+
+    return result;
   },
 
   // Resolve Product Type / Requirement / Sub Product Type names to the FK ids the detail
@@ -307,9 +320,9 @@ export const leadApi = {
           insurance_id,
           mutual_fund_id,
           master_lead_types!lead_type_id (id, lead_type),
-          real_state!real_estate_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name), master_real_estate_products(product_type)),
-          insurance!insurance_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name)),
-          mutual_fund!mutual_fund_id (*, master_lead_receivers(person_name), master_lead_sources(lead_source), master_caller_names(person_name), master_mutual_fund_products(product_type))
+          real_state!real_estate_id (*),
+          insurance!insurance_id (*),
+          mutual_fund!mutual_fund_id (*)
         `)
         .order('created_at', { ascending: false });
 
@@ -323,10 +336,10 @@ export const leadApi = {
             lead_no: l.lead_no,
             lead_type_id: l.lead_type_id,
             lead_type: l.master_lead_types?.lead_type,
-            lead_receiver: detail.master_lead_receivers?.person_name,
-            lead_source: detail.master_lead_sources?.lead_source,
-            caller_assigned: detail.master_caller_names?.person_name,
-            product_type: detail.master_real_estate_products?.product_type || detail.master_mutual_fund_products?.product_type
+            lead_receiver: detail.lead_receiver,
+            lead_source: detail.lead_source,
+            caller_assigned: detail.caller_assigned,
+            product_type: detail.product_type
           });
         });
       }

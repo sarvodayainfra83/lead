@@ -15,7 +15,8 @@ import {
   UserCheck,
   UserSearch,
   Fingerprint,
-  ClipboardCheck
+  ClipboardCheck,
+  Layers
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
@@ -57,13 +58,18 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
     { path: '/attendance', icon: Fingerprint, label: 'Attendance', pageKey: 'attendance' },
     { path: '/attendance-report', icon: ClipboardCheck, label: 'Attendance Report', pageKey: 'attendanceReport' },
-    { path: '/master', icon: Database, label: 'Master', pageKey: 'master' },
-    { path: '/setting', icon: Settings, label: 'Setting', pageKey: 'setting' },
+    { path: '/products', icon: Layers, label: 'Products', pageKey: 'products' },
+    { path: '/master', icon: Database, label: 'Master / Setting', pageKey: 'master' },
   ];
 
   // Admins see everything; Users only see pages their access level isn't 'none' for
   const menuItems = allMenuItems.filter((item) => {
     if (user?.role === 'ADMIN') return true;
+    if (item.pageKey === 'master') {
+      const masterAccess = user?.accessPages?.master ?? DEFAULT_USER_ACCESS.master ?? 'none';
+      const settingAccess = user?.accessPages?.setting ?? DEFAULT_USER_ACCESS.setting ?? 'none';
+      return masterAccess !== 'none' || settingAccess !== 'none';
+    }
     const accessLevel = user?.accessPages?.[item.pageKey] !== undefined
       ? user.accessPages[item.pageKey]
       : (DEFAULT_USER_ACCESS[item.pageKey] || 'none');

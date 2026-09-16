@@ -59,5 +59,8 @@ export const matchesUserReceiver = (lead, user) => {
 export const hasFullAccess = (user, pageKey) => {
   if (!user) return false;
   if (isUserAdmin(user)) return true;
+  if (pageKey === 'master' || pageKey === 'setting') {
+    return user.accessPages?.master === 'full' || user.accessPages?.setting === 'full';
+  }
   return user.accessPages?.[pageKey] === 'full';
 };

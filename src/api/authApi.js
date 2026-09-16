@@ -13,7 +13,7 @@ export const authApi = {
 
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
       .eq('username', userIdCode)
       .eq('password', password)
       .maybeSingle();
@@ -30,6 +30,9 @@ export const authApi = {
       gmail: data.gmail,
       password: data.password,
       role: data.role,
+      position: data.position || '',
+      leadTypeId: data.lead_type_id || null,
+      leadType: data.master_lead_types?.lead_type || '',
       accessPages: data.access_pages || {}
     };
   },
@@ -42,12 +45,35 @@ export const authApi = {
 
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.error('Error fetching users from Supabase:', error);
-      return getLocalUsers();
+      // Fallback query without relation if column/fk is being created
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (fallbackError) {
+        console.error('Error fetching users from Supabase:', fallbackError);
+        return getLocalUsers();
+      }
+
+      return fallbackData.map((u, index) => ({
+        id: u.username,
+        dbId: u.id,
+        serialNo: index + 1,
+        name: u.name,
+        number: u.number,
+        gmail: u.gmail,
+        password: u.password,
+        role: u.role,
+        position: u.position || '',
+        leadTypeId: u.lead_type_id || null,
+        leadType: '',
+        accessPages: u.access_pages || {}
+      }));
     }
 
     return data.map((u, index) => ({
@@ -59,6 +85,9 @@ export const authApi = {
       gmail: u.gmail,
       password: u.password,
       role: u.role,
+      position: u.position || '',
+      leadTypeId: u.lead_type_id || null,
+      leadType: u.master_lead_types?.lead_type || '',
       accessPages: u.access_pages || {}
     }));
   },
@@ -76,6 +105,8 @@ export const authApi = {
       gmail: userData.gmail || '',
       password: userData.password,
       role: userData.role,
+      position: userData.position || null,
+      lead_type_id: userData.leadTypeId || null,
       access_pages: userData.accessPages || {}
     };
 

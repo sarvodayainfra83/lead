@@ -85,16 +85,42 @@ export const attendanceApi = {
     }
   },
 
+  // Resolve user UUID from user object or Supabase
+  async getUserIdUuid(user) {
+    if (!user) return null;
+    if (user.dbId) return user.dbId;
+    if (user.uuid) return user.uuid;
+    const isUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+    if (isUuid(user.id)) return user.id;
+
+    if (isSupabaseConfigured) {
+      try {
+        if (user.id) {
+          const { data } = await supabase.from('users').select('id').eq('username', user.id).maybeSingle();
+          if (data?.id) return data.id;
+        }
+        if (user.name) {
+          const { data } = await supabase.from('users').select('id').eq('name', user.name).maybeSingle();
+          if (data?.id) return data.id;
+        }
+      } catch (e) {
+        console.warn('Could not resolve user UUID from Supabase:', e);
+      }
+    }
+    return null;
+  },
+
   // Map DB row -> Frontend Attendance model
   mapFromDb(row) {
+    const joinedUser = row.users || {};
     return {
       id: row.id,
       serialNo: row.serial_no || row.serialNo,
-      userId: row.user_id || row.userId || '',
-      userName: row.user_name || row.userName || row.name || '',
+      userId: row.user_id || joinedUser.id || row.userId || '',
+      userName: joinedUser.name || row.user_name || row.userName || row.name || '',
       date: row.date || '',
       timestamp: row.timestamp || '',
-      timestampMs: Number(row.timestamp_ms || row.timestampMs || Date.now()),
+      timestampMs: row.timestamp_ms ? Number(row.timestamp_ms) : (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
       status: row.status || 'In',
       photoUrl: row.photo_url || row.photoUrl || '',
       latitude: row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null,
@@ -104,14 +130,12 @@ export const attendanceApi = {
     };
   },
 
-  // Map Frontend Attendance model -> DB row
+  // Map Frontend Attendance model -> DB row (user_name and timestamp_ms removed from table)
   mapToDb(entry) {
     return {
       user_id: entry.userId || null,
-      user_name: entry.userName || entry.name || '',
       date: entry.date || '',
       timestamp: entry.timestamp || '',
-      timestamp_ms: entry.timestampMs || Date.now(),
       status: entry.status || 'In',
       photo_url: entry.photoUrl || '',
       latitude: entry.latitude !== null && entry.latitude !== undefined ? Number(entry.latitude) : null,
@@ -120,7 +144,7 @@ export const attendanceApi = {
     };
   },
 
-  // Fetch all attendance logs
+  // Fetch all attendance logs (joins users table for user_name)
   async getAttendanceLogs() {
     if (!isSupabaseConfigured) {
       return getLocalAttendanceLogs().map(this.mapFromDb);
@@ -129,12 +153,24 @@ export const attendanceApi = {
     try {
       const { data, error } = await supabase
         .from('attendance_logs')
-        .select('*')
-        .order('timestamp_ms', { ascending: true });
+        .select('*, users(id, name, username)')
+        .order('created_at', { ascending: true });
 
       if (error) {
-        console.warn('Error fetching attendance logs from Supabase, falling back locally:', error);
-        return getLocalAttendanceLogs().map(this.mapFromDb);
+        console.warn('Error fetching attendance logs with users join, trying fallback:', error);
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('attendance_logs')
+          .select('*')
+          .order('created_at', { ascending: true });
+
+        if (fallbackError) {
+          console.warn('Fallback error fetching attendance logs from Supabase:', fallbackError);
+          return getLocalAttendanceLogs().map(this.mapFromDb);
+        }
+        return (fallbackData || []).map((row, idx) => ({
+          ...this.mapFromDb(row),
+          serialNo: idx + 1
+        }));
       }
 
       return (data || []).map((row, idx) => ({
@@ -175,7 +211,7 @@ export const attendanceApi = {
       const { data, error } = await supabase
         .from('attendance_logs')
         .insert(payload)
-        .select()
+        .select('*, users(id, name, username)')
         .single();
 
       if (error) {
@@ -238,6 +274,128 @@ export const attendanceApi = {
       console.warn('Reverse geocode error:', e);
       return `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
     }
+  },
+
+  // Get current date in IST (Asia/Kolkata) formatted as DD/MM/YYYY
+  getTodayDateIST() {
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    }).format(new Date());
+  },
+
+  // Check if an attendance record was marked today in IST
+  isLogFromTodayIST(log) {
+    if (!log) return false;
+    const todayIST = this.getTodayDateIST();
+    if (log.date && log.date.replace(/-/g, '/') === todayIST.replace(/-/g, '/')) {
+      return true;
+    }
+    const ts = log.timestampMs || log.createdAt;
+    if (ts) {
+      try {
+        const logDate = new Intl.DateTimeFormat('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        }).format(new Date(ts));
+        if (logDate === todayIST) return true;
+      } catch (e) { }
+    }
+    return false;
+  },
+
+  // Evaluate user's punches today (IST) and return allowed options and locked state
+  getUserTodayAttendanceStatus(logs, user) {
+    const todayDate = this.getTodayDateIST();
+    if (!user || !Array.isArray(logs)) {
+      return {
+        todayDate,
+        hasMarkedIn: false,
+        hasMarkedOut: false,
+        hasMarkedHalfDay: false,
+        isLocked: false,
+        allowedStatuses: ['In', 'Half Day'],
+        defaultStatus: 'In',
+        message: ''
+      };
+    }
+
+    const currentUserId = user.dbId || user.id;
+    const currentUserName = (user.name || '').trim().toLowerCase();
+
+    // Filter logs for this user recorded today in IST
+    const userTodayLogs = logs.filter(l => {
+      const matchId = (
+        (user.dbId && l.userId === user.dbId) ||
+        (user.id && l.userId === user.id) ||
+        (currentUserId && l.userId === currentUserId)
+      );
+      const matchName = currentUserName && l.userName && l.userName.trim().toLowerCase() === currentUserName;
+      return (matchId || matchName) && this.isLogFromTodayIST(l);
+    });
+
+    const hasMarkedOut = userTodayLogs.some(l => (l.status || '').toUpperCase() === 'OUT');
+    const hasMarkedIn = userTodayLogs.some(l => (l.status || '').toUpperCase() === 'IN');
+    const hasMarkedHalfDay = userTodayLogs.some(l => (l.status || '').toUpperCase() === 'HALF DAY');
+
+    // Rule 1: If already marked OUT today, no further In/Out/Half Day punches are permitted today
+    if (hasMarkedOut) {
+      return {
+        todayDate,
+        hasMarkedIn,
+        hasMarkedOut: true,
+        hasMarkedHalfDay,
+        isLocked: true,
+        allowedStatuses: [],
+        defaultStatus: '',
+        message: 'You have already marked OUT today. Next check-in opens tomorrow after 12:00 AM IST.'
+      };
+    }
+
+    // Rule 2: If already marked IN today, cannot mark IN again; only Half Day or OUT is permitted
+    if (hasMarkedIn) {
+      const allowedStatuses = hasMarkedHalfDay ? ['Out'] : ['Out', 'Half Day'];
+      return {
+        todayDate,
+        hasMarkedIn: true,
+        hasMarkedOut: false,
+        hasMarkedHalfDay,
+        isLocked: false,
+        allowedStatuses,
+        defaultStatus: 'Out',
+        message: 'You have already marked IN today. You can mark Half Day or OUT.'
+      };
+    }
+
+    // If marked Half Day directly without IN, they can mark OUT when leaving
+    if (hasMarkedHalfDay) {
+      return {
+        todayDate,
+        hasMarkedIn: false,
+        hasMarkedOut: false,
+        hasMarkedHalfDay: true,
+        isLocked: false,
+        allowedStatuses: ['Out'],
+        defaultStatus: 'Out',
+        message: 'You have marked Half Day today. You can mark OUT when leaving.'
+      };
+    }
+
+    // Default: fresh day, can mark IN or Half Day
+    return {
+      todayDate,
+      hasMarkedIn: false,
+      hasMarkedOut: false,
+      hasMarkedHalfDay: false,
+      isLocked: false,
+      allowedStatuses: ['In', 'Half Day'],
+      defaultStatus: 'In',
+      message: ''
+    };
   }
 };
 

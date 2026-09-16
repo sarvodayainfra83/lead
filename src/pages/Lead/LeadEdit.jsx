@@ -79,10 +79,19 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
+  const selectedLeadTypeObj = leadTypesMaster.find(t => 
+    t.leadType?.toLowerCase().trim() === formData.leadType?.toLowerCase().trim()
+  );
+  const selectedLeadTypeId = selectedLeadTypeObj?.id;
+
   const receiverOptions = Array.from(
     new Set(
       leadReceiversMaster
-        .filter(r => !formData.leadType || r.leadType === formData.leadType)
+        .filter(r => {
+          if (!formData.leadType) return true;
+          if (!selectedLeadTypeId) return false;
+          return r.leadTypeId === selectedLeadTypeId;
+        })
         .map(r => r.personName)
         .filter(Boolean)
     )
@@ -91,7 +100,11 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
   const callerOptions = Array.from(
     new Set(
       callerNamesMaster
-        .filter(c => !formData.leadType || c.leadType === formData.leadType)
+        .filter(c => {
+          if (!formData.leadType) return true;
+          if (!selectedLeadTypeId) return false;
+          return c.leadTypeId === selectedLeadTypeId;
+        })
         .map(c => c.personName)
         .filter(Boolean)
     )

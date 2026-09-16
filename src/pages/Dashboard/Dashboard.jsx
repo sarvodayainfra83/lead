@@ -230,8 +230,8 @@ export default function Dashboard() {
             <h3 className="text-xs md:text-sm font-bold text-gray-800 uppercase tracking-wide mb-3">Caller Performance</h3>
             {callerStats.length > 0 ? (
               <div className="space-y-3">
-                {callerStats.map(c => (
-                  <div key={c.name} className="space-y-1">
+                {callerStats.map((c, idx) => (
+                  <div key={c.id ? `${c.id}-${c.name}` : `${c.name}-${idx}`} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-gray-800">{c.name}</span>
                       <span className="text-gray-500">{c.converted}/{c.total} converted · {c.rate}%</span>
@@ -259,8 +259,8 @@ export default function Dashboard() {
             </div>
             {upcomingFollowUps.length > 0 ? (
               <div className="divide-y divide-gray-100">
-                {upcomingFollowUps.map(l => (
-                  <div key={l.leadNo} className="flex items-center justify-between py-2 text-xs">
+                {upcomingFollowUps.map((l, idx) => (
+                  <div key={l.id ? `${l.id}-${idx}` : `${l.leadNo}-${idx}`} className="flex items-center justify-between py-2 text-xs">
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-800 truncate">{l.personName} <span className="text-indigo-600">· {l.leadNo}</span></p>
                       <p className="text-gray-500 truncate">{l.callerAssigned}</p>
@@ -302,11 +302,11 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentLeads.map(l => {
+                  {recentLeads.map((l, idx) => {
                     const status = l.status || 'Never Contacted';
                     const tone = STATUS_COLORS[status] || STATUS_COLORS['Never Contacted'];
                     return (
-                      <tr key={l.leadNo} className="border-b border-gray-50 last:border-0">
+                      <tr key={l.id ? `${l.id}-${idx}` : `${l.leadNo}-${idx}`} className="border-b border-gray-50 last:border-0">
                         <td className="py-2 pr-3 font-bold text-indigo-600 whitespace-nowrap">{l.leadNo}</td>
                         <td className="py-2 pr-3 text-gray-800 whitespace-nowrap">{l.personName}</td>
                         <td className={`py-2 pr-3 font-semibold whitespace-nowrap ${getLeadTypeTextClass(l.leadType)}`}>{l.leadType}</td>
