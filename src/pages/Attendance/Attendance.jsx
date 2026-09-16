@@ -26,31 +26,43 @@ export default function Attendance() {
 
   const todayStatus = attendanceApi.getUserTodayAttendanceStatus(logs, user);
 
-  const formatInTime = (item) => {
-    if (!item) return '-';
-    if (item.timestamp && typeof item.timestamp === 'string') {
-      const parts = item.timestamp.trim().split(' ');
-      if (parts.length >= 2) {
-        const timePart = parts[1];
-        const [h, m, s] = timePart.split(':');
-        if (h !== undefined && m !== undefined) {
-          const hourNum = parseInt(h, 10);
-          if (!isNaN(hourNum)) {
-            const ampm = hourNum >= 12 ? 'PM' : 'AM';
-            const hour12 = hourNum % 12 || 12;
-            return `${String(hour12).padStart(2, '0')}:${m}${s ? `:${s}` : ''} ${ampm}`;
-          }
-        }
-        return timePart;
+  const formatTimeDisplay = (rawTime, fallbackTimestamp = null) => {
+    if (!rawTime && !fallbackTimestamp) return '-';
+    const val = rawTime || fallbackTimestamp;
+    if (!val || val === '-') return '-';
+
+    const str = String(val).trim();
+    if (/^\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i.test(str)) {
+      return str;
+    }
+
+    let timePart = str;
+    if (str.includes(' ')) {
+      const parts = str.split(' ');
+      timePart = parts[1] || parts[0];
+    }
+
+    const timeMatch = timePart.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (timeMatch) {
+      const h = parseInt(timeMatch[1], 10);
+      const m = timeMatch[2];
+      const s = timeMatch[3];
+      if (!isNaN(h)) {
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        return `${String(h12).padStart(2, '0')}:${m}${s ? `:${s}` : ''} ${ampm}`;
       }
     }
-    if (item.timestampMs) {
-      const d = new Date(item.timestampMs);
+
+    const num = Number(val);
+    if (!isNaN(num) && num > 1000000000000) {
+      const d = new Date(num);
       if (!isNaN(d.getTime())) {
         return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
       }
     }
-    return '-';
+
+    return str || '-';
   };
 
   const loadLogs = async () => {
@@ -98,6 +110,8 @@ export default function Attendance() {
       (item.userName || '').toLowerCase().includes(q) ||
       (item.date || '').toLowerCase().includes(q) ||
       (item.status || '').toLowerCase().includes(q) ||
+      (item.inTime || '').toLowerCase().includes(q) ||
+      (item.outTime || '').toLowerCase().includes(q) ||
       (item.locationName || '').toLowerCase().includes(q)
     );
   }).reverse();
@@ -109,7 +123,7 @@ export default function Attendance() {
   );
 
   const tableHeaders = [
-    "SERIAL NO", "DATE", "NAME", "PHOTO", "STATUS", "IN TIME", "LOCATION"
+    "SERIAL NO", "DATE", "NAME", "PHOTO", "STATUS", "IN TIME", "OUT TIME", "LOCATION"
   ];
 
   const renderRow = (item, index) => {
@@ -122,7 +136,8 @@ export default function Attendance() {
       const s = (status || '').toUpperCase();
       if (s === 'IN') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       if (s === 'HALF DAY') return 'bg-amber-50 text-amber-700 border-amber-200';
-      return 'bg-blue-50 text-blue-700 border-blue-200';
+      if (s === 'OUT') return 'bg-blue-50 text-blue-700 border-blue-200';
+      return 'bg-gray-50 text-gray-700 border-gray-200';
     };
 
     return (
@@ -137,10 +152,10 @@ export default function Attendance() {
           {item.userName}
         </td>
         <td className="px-4 py-3 text-center whitespace-nowrap">
-          {item.photoUrl ? (
+          {item.photoUrl || item.outPhotoUrl ? (
             <button
               onClick={() => setViewLog(item)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 text-xs font-semibold transition shadow-2xs cursor-pointer"
             >
               <ImageIcon size={13} /> View Image
             </button>
@@ -153,13 +168,29 @@ export default function Attendance() {
             {item.status}
           </span>
         </td>
+        {/* IN TIME */}
         <td className="px-4 py-3 text-center whitespace-nowrap">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-mono font-semibold">
-            <Clock size={12} className="text-emerald-600" />
-            {formatInTime(item)}
-          </span>
+          {item.inTime && item.inTime !== '-' ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-mono font-semibold">
+              <Clock size={12} className="text-emerald-600" />
+              {formatTimeDisplay(item.inTime, item.timestamp)}
+            </span>
+          ) : (
+            <span className="text-gray-400 font-mono text-xs">-</span>
+          )}
         </td>
-        <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[360px] truncate" title={item.locationName}>
+        {/* OUT TIME */}
+        <td className="px-4 py-3 text-center whitespace-nowrap">
+          {item.outTime && item.outTime !== '-' ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-50 text-rose-700 border border-rose-200 text-xs font-mono font-semibold">
+              <Clock size={12} className="text-rose-600" />
+              {formatTimeDisplay(item.outTime)}
+            </span>
+          ) : (
+            <span className="text-gray-400 font-mono text-xs">-</span>
+          )}
+        </td>
+        <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[340px] truncate" title={item.locationName}>
           {mapsUrl ? (
             <a
               href={mapsUrl}
@@ -187,7 +218,8 @@ export default function Attendance() {
       const s = (status || '').toUpperCase();
       if (s === 'IN') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       if (s === 'HALF DAY') return 'bg-amber-50 text-amber-700 border-amber-200';
-      return 'bg-blue-50 text-blue-700 border-blue-200';
+      if (s === 'OUT') return 'bg-blue-50 text-blue-700 border-blue-200';
+      return 'bg-gray-50 text-gray-700 border-gray-200';
     };
 
     return (
@@ -203,22 +235,30 @@ export default function Attendance() {
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${getStatusBadgeClass(item.status)}`}>
               {item.status}
             </span>
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200">
-              <Clock size={10} className="text-emerald-600" />
-              {formatInTime(item)}
-            </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-2 text-[10px]">
+        {/* IN TIME & OUT TIME (Mobile Card Grid) */}
+        <div className="grid grid-cols-2 gap-2 text-[10px] py-1.5 bg-slate-50 rounded-lg px-2 border border-slate-100">
           <div>
-            <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Time</p>
-            <p className="text-gray-700 font-medium truncate">{item.timestamp?.split(' ')[1] || item.date}</p>
+            <p className="text-gray-400 uppercase tracking-tight text-[8px] font-bold">IN TIME</p>
+            <p className="text-emerald-700 font-mono font-bold flex items-center gap-1 mt-0.5">
+              <Clock size={10} className="text-emerald-600" />
+              {item.inTime && item.inTime !== '-' ? formatTimeDisplay(item.inTime, item.timestamp) : '-'}
+            </p>
           </div>
           <div>
-            <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Location</p>
-            <p className="text-gray-700 leading-tight">{item.locationName || '-'}</p>
+            <p className="text-gray-400 uppercase tracking-tight text-[8px] font-bold">OUT TIME</p>
+            <p className="text-rose-700 font-mono font-bold flex items-center gap-1 mt-0.5">
+              <Clock size={10} className="text-rose-600" />
+              {item.outTime && item.outTime !== '-' ? formatTimeDisplay(item.outTime) : '-'}
+            </p>
           </div>
+        </div>
+
+        <div className="text-[10px]">
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Location</p>
+          <p className="text-gray-700 leading-tight truncate">{item.locationName || '-'}</p>
         </div>
 
         <div className="flex items-center gap-2 pt-1 border-t border-gray-50">

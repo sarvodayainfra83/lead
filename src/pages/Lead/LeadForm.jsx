@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
+import { useAuthStore } from '../../store/authStore';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo } from './leadConstants';
@@ -37,8 +38,8 @@ const initialFormData = {
 };
 
 export default function LeadForm({ isOpen, onClose, onSaved }) {
+  const user = useAuthStore(state => state.user);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ ...initialFormData });
 
   const [leadTypesMaster, setLeadTypesMaster] = useState([]);
   const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
@@ -50,8 +51,28 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
   const [insuranceSubProductsMaster, setInsuranceSubProductsMaster] = useState([]);
   const [investmentBudgetsMaster, setInvestmentBudgetsMaster] = useState([]);
 
+  const resolveUserLeadType = (typesList = leadTypesMaster) => {
+    if (user?.leadType) return user.leadType;
+    if (user?.leadTypeId && typesList?.length > 0) {
+      const found = typesList.find(lt => String(lt.id) === String(user.leadTypeId));
+      if (found) return found.leadType;
+    }
+    return 'Real Estate';
+  };
+
+  const [formData, setFormData] = useState(() => ({
+    ...initialFormData,
+    leadType: user?.leadType || 'Real Estate'
+  }));
+
   useEffect(() => {
     if (isOpen) {
+      const initialDefaultType = resolveUserLeadType();
+      setFormData(prev => ({
+        ...initialFormData,
+        leadType: prev.leadType && prev.leadType !== 'Real Estate' ? prev.leadType : initialDefaultType
+      }));
+
       Promise.all([
         masterApi.getLeadTypes(),
         masterApi.getLeadSources(),
@@ -63,18 +84,26 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
         masterApi.getInsuranceSubProducts(),
         masterApi.getInvestmentBudgets()
       ]).then(([types, sources, receivers, reProducts, reRequirements, mfProducts, insProducts, insSubProducts, budgets]) => {
-        setLeadTypesMaster(types);
-        setLeadSourcesMaster(sources);
-        setLeadReceiversMaster(receivers);
-        setRealEstateProductsMaster(reProducts);
-        setRealEstateRequirementsMaster(reRequirements);
-        setMutualFundProductsMaster(mfProducts);
-        setInsuranceProductsMaster(insProducts);
-        setInsuranceSubProductsMaster(insSubProducts);
-        setInvestmentBudgetsMaster(budgets);
+        setLeadTypesMaster(types || []);
+        setLeadSourcesMaster(sources || []);
+        setLeadReceiversMaster(receivers || []);
+        setRealEstateProductsMaster(reProducts || []);
+        setRealEstateRequirementsMaster(reRequirements || []);
+        setMutualFundProductsMaster(mfProducts || []);
+        setInsuranceProductsMaster(insProducts || []);
+        setInsuranceSubProductsMaster(insSubProducts || []);
+        setInvestmentBudgetsMaster(budgets || []);
+
+        const resolvedType = resolveUserLeadType(types || []);
+        if (resolvedType) {
+          setFormData(prev => ({
+            ...prev,
+            leadType: resolvedType
+          }));
+        }
       });
     }
-  }, [isOpen]);
+  }, [isOpen, user]);
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
@@ -149,7 +178,7 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
   };
 
   const handleClose = () => {
-    setFormData({ ...initialFormData });
+    setFormData({ ...initialFormData, leadType: resolveUserLeadType() });
     onClose();
   };
 
@@ -189,7 +218,7 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
       await leadApi.saveLead(newLead);
 
       toast.success(`Lead ${leadNo} has been successfully created.`);
-      setFormData({ ...initialFormData });
+      setFormData({ ...initialFormData, leadType: resolveUserLeadType() });
       setLoading(false);
       onSaved?.();
       onClose();

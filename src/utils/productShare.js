@@ -16,6 +16,30 @@ export const WhatsAppIcon = ({ className = 'w-4 h-4', size = 16 }) =>
     })
   );
 
+export const GmailIcon = ({ className = 'w-4 h-4', size = 16 }) =>
+  React.createElement(
+    'svg',
+    {
+      viewBox: '0 0 24 24',
+      width: size,
+      height: size,
+      className,
+      fill: 'currentColor'
+    },
+    React.createElement('path', {
+      d: 'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z'
+    })
+  );
+
+export const isMobileDevice = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+export const canNativeShare = () => {
+  return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+};
+
 const formatSharePrice = (val) => {
   if (val === null || val === undefined || val === '') return 'Price on Request';
   const strVal = String(val).trim();
@@ -90,10 +114,46 @@ export const formatProductShareData = (item, category = 'real-estate') => {
     lines.push(item.description);
   }
 
-  const thumbUrl = item.imagesList?.[0] || item.cover_image;
-  if (thumbUrl && (thumbUrl.startsWith('http://') || thumbUrl.startsWith('https://'))) {
+  // Collect all valid image links
+  const allImageUrls = [];
+  const rawCandidateImages = [];
+
+  if (Array.isArray(item.imagesList)) {
+    rawCandidateImages.push(...item.imagesList);
+  }
+  if (Array.isArray(item.images)) {
+    rawCandidateImages.push(...item.images);
+  } else if (typeof item.images === 'string' && item.images.trim()) {
+    try {
+      const parsed = JSON.parse(item.images);
+      if (Array.isArray(parsed)) rawCandidateImages.push(...parsed);
+      else if (typeof parsed === 'string') rawCandidateImages.push(parsed);
+    } catch {
+      rawCandidateImages.push(...item.images.split(',').map(s => s.trim()));
+    }
+  }
+  if (item.cover_image && typeof item.cover_image === 'string') {
+    rawCandidateImages.push(item.cover_image);
+  }
+
+  rawCandidateImages.forEach(img => {
+    if (img && typeof img === 'string') {
+      const trimmed = img.trim();
+      if ((trimmed.startsWith('http://') || trimmed.startsWith('https://')) && !allImageUrls.includes(trimmed)) {
+        allImageUrls.push(trimmed);
+      }
+    }
+  });
+
+  if (allImageUrls.length === 1) {
     lines.push('');
-    lines.push(`🖼️ *Image Gallery / Preview:* ${thumbUrl}`);
+    lines.push(`🖼️ *Image Link:* ${allImageUrls[0]}`);
+  } else if (allImageUrls.length > 1) {
+    lines.push('');
+    lines.push(`🖼️ *Image Links (${allImageUrls.length} Photos):*`);
+    allImageUrls.forEach((imgUrl, idx) => {
+      lines.push(`• Photo ${idx + 1}: ${imgUrl}`);
+    });
   }
 
   lines.push('');
@@ -105,16 +165,103 @@ export const formatProductShareData = (item, category = 'real-estate') => {
   };
 };
 
+/**
+ * Opens WhatsApp on phone (mobile app) or laptop (WhatsApp Web or Desktop app).
+ * Leaves recipient empty so the user can select their desired contacts or groups.
+ */
 export const shareOnWhatsApp = (item, category) => {
   const { text } = formatProductShareData(item, category);
-  const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+  const encodedText = encodeURIComponent(text);
+  const isMobile = isMobileDevice();
+
+  // On mobile phone: opens native WhatsApp app with pre-filled text & contact chooser
+  // On laptop/desktop: opens WhatsApp Web directly with contact chooser
+  const url = isMobile
+    ? `https://api.whatsapp.com/send?text=${encodedText}`
+    : `https://web.whatsapp.com/send?text=${encodedText}`;
+
   window.open(url, '_blank');
-  toast.success('Opening WhatsApp...');
+  toast.success('Opening WhatsApp to select contacts...');
 };
 
+/**
+ * Specifically opens Gmail.
+ * On laptop/desktop: opens Gmail Web compose with blank 'To' field ready for contact selection.
+ * On mobile phone: opens Gmail app / mailto with blank 'To' field.
+ */
+export const shareViaGmail = (item, category) => {
+  const { subject, text } = formatProductShareData(item, category);
+  const isMobile = isMobileDevice();
+
+  if (isMobile) {
+    // Mobile: mailto with subject & body triggers phone's Gmail app / mail picker
+    const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+    window.location.href = mailtoUrl;
+  } else {
+    // Desktop / Laptop: direct Gmail Web compose URL with prefilled subject & body
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&tf=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+    window.open(gmailUrl, '_blank');
+  }
+  toast.success('Opening Gmail to select recipients...');
+};
+
+/**
+ * Default mailto link for Outlook, Apple Mail or system default email client.
+ */
 export const shareViaEmail = (item, category) => {
   const { subject, text } = formatProductShareData(item, category);
   const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
   window.location.href = mailtoUrl;
-  toast.success('Opening Email client...');
+  toast.success('Opening default Email client...');
+};
+
+/**
+ * Native OS Share Sheet (supported on phones and modern laptops).
+ * Opens the native share dialog where user can choose WhatsApp, Gmail, Telegram, etc.
+ */
+export const shareOnDevice = async (item, category) => {
+  const { subject, text } = formatProductShareData(item, category);
+  if (canNativeShare()) {
+    try {
+      await navigator.share({
+        title: subject,
+        text: text
+      });
+      toast.success('Shared successfully');
+      return true;
+    } catch (err) {
+      if (err && err.name !== 'AbortError') {
+        toast.error('Share cancelled or not available');
+      }
+      return false;
+    }
+  } else {
+    // Fallback if not available
+    shareOnWhatsApp(item, category);
+    return false;
+  }
+};
+
+/**
+ * Copy formatted product specifications to clipboard.
+ */
+export const copyProductDetails = async (item, category) => {
+  const { text } = formatProductShareData(item, category);
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    toast.success('Product details copied to clipboard!');
+    return true;
+  } catch (e) {
+    toast.error('Failed to copy to clipboard');
+    return false;
+  }
 };

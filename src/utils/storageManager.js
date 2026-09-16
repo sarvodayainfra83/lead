@@ -2887,18 +2887,42 @@ export const saveAttendanceLogs = (data) => saveToStorage(STORAGE_KEYS.ATTENDANC
 
 export const saveAttendanceLog = (entry) => {
   const logs = getAttendanceLogs();
-  const index = logs.findIndex(l => l.id === entry.id);
+  
+  // Find by explicit ID or by user + date (manage record in a single row per user per day)
+  let index = -1;
+  if (entry.id) {
+    index = logs.findIndex(l => l.id === entry.id);
+  }
+  if (index === -1 && entry.date) {
+    const entryUser = (entry.userId || entry.userName || '').trim().toLowerCase();
+    index = logs.findIndex(l => {
+      const matchDate = (l.date || '').replace(/-/g, '/') === (entry.date || '').replace(/-/g, '/');
+      const lUser = (l.userId || l.userName || '').trim().toLowerCase();
+      return matchDate && lUser && lUser === entryUser;
+    });
+  }
+
   if (index >= 0) {
-    logs[index] = { ...logs[index], ...entry };
+    logs[index] = {
+      ...logs[index],
+      ...entry,
+      inTime: entry.inTime || logs[index].inTime,
+      outTime: entry.outTime || logs[index].outTime,
+      outPhotoUrl: entry.outPhotoUrl || logs[index].outPhotoUrl,
+      outLocationName: entry.outLocationName || logs[index].outLocationName
+    };
+    saveAttendanceLogs(logs);
+    return logs[index];
   } else {
-    logs.push({
+    const newEntry = {
       ...entry,
       id: entry.id || `att_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       serialNo: logs.length + 1
-    });
+    };
+    logs.push(newEntry);
+    saveAttendanceLogs(logs);
+    return newEntry;
   }
-  saveAttendanceLogs(logs);
-  return entry;
 };
 
 export const deleteAttendanceLog = (id) => {

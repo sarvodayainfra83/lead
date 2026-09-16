@@ -27,17 +27,77 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { productApi } from '../../api/productApi';
+import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
 import ModalAlert from '../../components/ModalAlert';
 import ProductFormModal from './ProductFormModal';
 import ProductDetailModal from './ProductDetailModal';
-import { WhatsAppIcon, shareOnWhatsApp, shareViaEmail } from '../../utils/productShare';
+import { WhatsAppIcon, GmailIcon, shareOnWhatsApp, shareViaGmail, shareViaEmail } from '../../utils/productShare';
+
+const mapLeadTypeToTab = (leadTypeName) => {
+  if (!leadTypeName || typeof leadTypeName !== 'string') return null;
+  const lower = leadTypeName.trim().toLowerCase();
+  if (lower.includes('real') || lower.includes('estate') || lower.includes('property')) return 'real-estate';
+  if (lower.includes('insur')) return 'insurance';
+  if (lower.includes('mutual') || lower.includes('fund')) return 'mutual-funds';
+  return null;
+};
 
 export default function Products() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
 
-  const [activeTab, setActiveTab] = useState('real-estate'); // 'real-estate' | 'insurance' | 'mutual-funds'
+  const [leadTypes, setLeadTypes] = useState([]);
+
+  // Load master lead types to resolve user.lead_type_id from users table
+  useEffect(() => {
+    let isMounted = true;
+    masterApi.getLeadTypes()
+      .then((data) => {
+        if (isMounted) setLeadTypes(data || []);
+      })
+      .catch((err) => console.warn('Error loading lead types in products:', err));
+    return () => { isMounted = false; };
+  }, []);
+
+  const userLeadTypeName = useMemo(() => {
+    if (user?.leadType) return user.leadType;
+    if (user?.leadTypeId && leadTypes.length > 0) {
+      const found = leadTypes.find(lt => String(lt.id) === String(user.leadTypeId));
+      if (found) return found.leadType;
+    }
+    return '';
+  }, [user, leadTypes]);
+
+  const userAssignedCategory = useMemo(() => {
+    return mapLeadTypeToTab(userLeadTypeName);
+  }, [userLeadTypeName]);
+
+  // Allowed categories based on users table lead_type_id:
+  // - Admins can view and manage all product tabs
+  // - Regular users are strictly filtered to their assigned lead_type_id tab
+  const allowedTabs = useMemo(() => {
+    if (isAdmin) {
+      return ['real-estate', 'insurance', 'mutual-funds'];
+    }
+    if (userAssignedCategory) {
+      return [userAssignedCategory];
+    }
+    return ['real-estate', 'insurance', 'mutual-funds'];
+  }, [isAdmin, userAssignedCategory]);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (!isAdmin && userAssignedCategory) return userAssignedCategory;
+    return 'real-estate';
+  });
+
+  // Keep activeTab locked to allowedTabs for non-admins
+  useEffect(() => {
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0] || 'real-estate');
+      setCurrentPage(1);
+    }
+  }, [allowedTabs, activeTab]);
   const [viewMode, setViewMode] = useState('grid'); // 'grid' (card view) | 'table'
   const [loading, setLoading] = useState(true);
 
@@ -179,6 +239,7 @@ export default function Products() {
   }, [currentList, currentPage, itemsPerPage]);
 
   const handleTabChange = (tabId) => {
+    if (!allowedTabs.includes(tabId)) return;
     setActiveTab(tabId);
     setCurrentPage(1);
     setSearchQuery('');
@@ -413,12 +474,12 @@ export default function Products() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                shareViaEmail(item, activeTab);
+                shareViaGmail(item, activeTab);
               }}
-              title="Share via Email"
-              className="p-1.5 rounded-lg text-sky-600 hover:bg-sky-50 border border-transparent hover:border-sky-100 transition"
+              title="Share via Gmail"
+              className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition"
             >
-              <Mail size={15} />
+              <GmailIcon className="w-4 h-4" />
             </button>
             {isAdmin && (
               <>
@@ -583,51 +644,67 @@ export default function Products() {
         </div>
 
         {/* Category Tabs */}
-        <div className="flex gap-2 overflow-x-auto pt-2 border-t border-gray-100 scrollbar-hide">
-          <button
-            onClick={() => handleTabChange('real-estate')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'real-estate'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-              : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
-              }`}
-          >
-            <Building2 size={16} />
-            <span>Real Estate</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'real-estate' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-              }`}>
-              {realEstateProducts.length}
-            </span>
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
+          <div className="flex gap-2 items-center overflow-x-auto scrollbar-hide py-0.5">
+            {allowedTabs.includes('real-estate') && (
+              <button
+                onClick={() => handleTabChange('real-estate')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'real-estate'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                  : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
+                  }`}
+              >
+                <Building2 size={16} />
+                <span>Real Estate</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'real-estate' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                  {realEstateProducts.length}
+                </span>
+              </button>
+            )}
 
-          <button
-            onClick={() => handleTabChange('insurance')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'insurance'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-              : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
-              }`}
-          >
-            <Shield size={16} />
-            <span>Insurance</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'insurance' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-              }`}>
-              {insuranceProducts.length}
-            </span>
-          </button>
+            {allowedTabs.includes('insurance') && (
+              <button
+                onClick={() => handleTabChange('insurance')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'insurance'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                  : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
+                  }`}
+              >
+                <Shield size={16} />
+                <span>Insurance</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'insurance' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                  {insuranceProducts.length}
+                </span>
+              </button>
+            )}
 
-          <button
-            onClick={() => handleTabChange('mutual-funds')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'mutual-funds'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-              : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
-              }`}
-          >
-            <TrendingUp size={16} />
-            <span>Mutual Funds</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'mutual-funds' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-              }`}>
-              {mutualFundProducts.length}
-            </span>
-          </button>
+            {allowedTabs.includes('mutual-funds') && (
+              <button
+                onClick={() => handleTabChange('mutual-funds')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'mutual-funds'
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                  : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
+                  }`}
+              >
+                <TrendingUp size={16} />
+                <span>Mutual Funds</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'mutual-funds' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}>
+                  {mutualFundProducts.length}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {!isAdmin && userLeadTypeName && (
+            <div className="flex-shrink-0">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-3 py-1 rounded-xl shadow-2xs">
+                Assigned Category: <strong className="font-bold text-indigo-900">{userLeadTypeName}</strong>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -873,22 +950,22 @@ export default function Products() {
                               e.stopPropagation();
                               shareOnWhatsApp(item, activeTab);
                             }}
-                            title="Share on WhatsApp"
+                            title="Share on WhatsApp (Web/App)"
                             className="p-1.5 rounded-xl text-emerald-600 hover:bg-emerald-50 border border-emerald-200 transition hover:scale-105 active:scale-95 flex items-center justify-center bg-white"
                           >
                             <WhatsAppIcon className="w-4 h-4 text-emerald-600" />
                           </button>
 
-                          {/* Share via Email */}
+                          {/* Share via Gmail */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              shareViaEmail(item, activeTab);
+                              shareViaGmail(item, activeTab);
                             }}
-                            title="Share via Email"
-                            className="p-1.5 rounded-xl text-sky-600 hover:bg-sky-50 border border-sky-200 transition hover:scale-105 active:scale-95 flex items-center justify-center bg-white"
+                            title="Share via Gmail (Web/App)"
+                            className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-rose-200 transition hover:scale-105 active:scale-95 flex items-center justify-center bg-white"
                           >
-                            <Mail size={15} />
+                            <GmailIcon className="w-4 h-4 text-rose-600" />
                           </button>
 
                           {/* Admin Action Buttons */}

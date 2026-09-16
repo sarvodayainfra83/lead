@@ -890,19 +890,29 @@ CREATE TABLE IF NOT EXISTS attendance_logs (
     date TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     timestamp_ms BIGINT NOT NULL,
+    in_time TEXT,
+    out_time TEXT,
     status TEXT NOT NULL CHECK (status IN ('In', 'Out', 'Half Day', 'IN', 'OUT', 'HALF DAY')),
     photo_url TEXT NOT NULL,
+    out_photo_url TEXT,
     latitude DOUBLE PRECISION,
     longitude DOUBLE PRECISION,
     location_name TEXT,
+    out_location_name TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Backward compatibility: add in_time & out_time columns if table already exists
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS in_time TEXT;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_time TEXT;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_photo_url TEXT;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_location_name TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_attendance_logs_user_name ON attendance_logs(user_name);
 CREATE INDEX IF NOT EXISTS idx_attendance_logs_date ON attendance_logs(date);
 CREATE INDEX IF NOT EXISTS idx_attendance_logs_timestamp_ms ON attendance_logs(timestamp_ms DESC);
 
-ALTER TABLE attendance_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attendance_logs ENABLE ROW LEVEL SECURITY; 
 CREATE POLICY "Allow all operations for anon on attendance_logs"
 ON attendance_logs FOR ALL USING (true) WITH CHECK (true);
 
@@ -1034,7 +1044,7 @@ ALTER TABLE master_insurance_products
     ADD COLUMN IF NOT EXISTS entry_age_min SMALLINT,
     ADD COLUMN IF NOT EXISTS entry_age_max SMALLINT,
     ADD COLUMN IF NOT EXISTS claim_settlement_ratio NUMERIC(5,2),
-    ADD COLUMN IF NOT EXISTS benefits JSONB DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS benefits JSONB DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS features JSONB DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS exclusions JSONB DEFAULT '[]'::jsonb,
     ADD COLUMN IF NOT EXISTS documents JSONB DEFAULT '[]'::jsonb,

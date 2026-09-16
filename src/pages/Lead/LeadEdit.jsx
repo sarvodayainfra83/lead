@@ -6,10 +6,12 @@ import {
 } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
+import { useAuthStore } from '../../store/authStore';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 
 export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
+  const user = useAuthStore(state => state.user);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     leadType: '',
@@ -123,7 +125,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
   useEffect(() => {
     if (lead) {
       setFormData({
-        leadType: lead.leadType || '',
+        leadType: lead.leadType || user?.leadType || '',
         leadReceiver: lead.leadReceiver || '',
         leadSource: lead.leadSource || '',
         referencerName: lead.referencerName || '',

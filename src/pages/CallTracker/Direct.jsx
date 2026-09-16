@@ -44,10 +44,6 @@ export default function Direct({ isOpen, onClose, onSaved }) {
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ 
-    ...initialFormData,
-    callerAssigned: user?.name || ''
-  });
 
   const [leadTypesMaster, setLeadTypesMaster] = useState([]);
   const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
@@ -60,9 +56,29 @@ export default function Direct({ isOpen, onClose, onSaved }) {
   const [insuranceSubProductsMaster, setInsuranceSubProductsMaster] = useState([]);
   const [investmentBudgetsMaster, setInvestmentBudgetsMaster] = useState([]);
 
+  const resolveUserLeadType = (typesList = leadTypesMaster) => {
+    if (user?.leadType) return user.leadType;
+    if (user?.leadTypeId && typesList?.length > 0) {
+      const found = typesList.find(lt => String(lt.id) === String(user.leadTypeId));
+      if (found) return found.leadType;
+    }
+    return 'Real Estate';
+  };
+
+  const [formData, setFormData] = useState(() => ({ 
+    ...initialFormData,
+    leadType: user?.leadType || 'Real Estate',
+    callerAssigned: user?.name || ''
+  }));
+
   useEffect(() => {
     if (isOpen) {
-      setFormData(prev => ({ ...prev, callerAssigned: user?.name || user?.id || '' }));
+      const initialDefaultType = resolveUserLeadType();
+      setFormData(prev => ({
+        ...prev,
+        callerAssigned: user?.name || user?.id || '',
+        leadType: prev.leadType && prev.leadType !== 'Real Estate' ? prev.leadType : initialDefaultType
+      }));
       Promise.all([
         masterApi.getLeadTypes(),
         masterApi.getLeadSources(),
@@ -75,16 +91,24 @@ export default function Direct({ isOpen, onClose, onSaved }) {
         masterApi.getInsuranceSubProducts(),
         masterApi.getInvestmentBudgets()
       ]).then(([types, sources, receivers, callers, reProducts, reRequirements, mfProducts, insProducts, insSubProducts, budgets]) => {
-        setLeadTypesMaster(types);
-        setLeadSourcesMaster(sources);
-        setLeadReceiversMaster(receivers);
-        setCallerNamesMaster(callers);
-        setRealEstateProductsMaster(reProducts);
-        setRealEstateRequirementsMaster(reRequirements);
-        setMutualFundProductsMaster(mfProducts);
-        setInsuranceProductsMaster(insProducts);
-        setInsuranceSubProductsMaster(insSubProducts);
-        setInvestmentBudgetsMaster(budgets);
+        setLeadTypesMaster(types || []);
+        setLeadSourcesMaster(sources || []);
+        setLeadReceiversMaster(receivers || []);
+        setCallerNamesMaster(callers || []);
+        setRealEstateProductsMaster(reProducts || []);
+        setRealEstateRequirementsMaster(reRequirements || []);
+        setMutualFundProductsMaster(mfProducts || []);
+        setInsuranceProductsMaster(insProducts || []);
+        setInsuranceSubProductsMaster(insSubProducts || []);
+        setInvestmentBudgetsMaster(budgets || []);
+
+        const resolvedType = resolveUserLeadType(types || []);
+        if (resolvedType) {
+          setFormData(prev => ({
+            ...prev,
+            leadType: resolvedType
+          }));
+        }
       });
     }
   }, [isOpen, isAdmin, user]);
@@ -167,7 +191,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
   };
 
   const handleClose = () => {
-    setFormData({ ...initialFormData, callerAssigned: user?.name || '' });
+    setFormData({ ...initialFormData, leadType: resolveUserLeadType(), callerAssigned: user?.name || '' });
     onClose();
   };
 
@@ -242,7 +266,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       toast.success(`Lead ${leadNo} added (${formData.status}) — it's in Pending.`);
     }
 
-    setFormData({ ...initialFormData, callerAssigned: user?.name || '' });
+    setFormData({ ...initialFormData, leadType: resolveUserLeadType(), callerAssigned: user?.name || '' });
     setLoading(false);
     onSaved?.();
     onClose();

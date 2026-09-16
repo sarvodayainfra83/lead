@@ -17,7 +17,7 @@ import {
   ImageIcon,
   Mail
 } from 'lucide-react';
-import { WhatsAppIcon, shareOnWhatsApp, shareViaEmail } from '../../utils/productShare';
+import { WhatsAppIcon, GmailIcon, shareOnWhatsApp, shareViaGmail, shareViaEmail } from '../../utils/productShare';
 
 export default function ProductDetailModal({ isOpen, onClose, product, category }) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -86,19 +86,19 @@ export default function ProductDetailModal({ isOpen, onClose, product, category 
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => shareOnWhatsApp(product, category)}
-              title="Share on WhatsApp"
+              title="Share on WhatsApp (Web/App)"
               className="p-2 rounded-xl text-emerald-600 hover:bg-emerald-50 border border-emerald-200 transition active:scale-95 flex items-center gap-1.5 text-xs font-semibold"
             >
               <WhatsAppIcon size={16} />
               <span className="hidden sm:inline">WhatsApp</span>
             </button>
             <button
-              onClick={() => shareViaEmail(product, category)}
-              title="Share via Email"
-              className="p-2 rounded-xl text-sky-600 hover:bg-sky-50 border border-sky-200 transition active:scale-95 flex items-center gap-1.5 text-xs font-semibold"
+              onClick={() => shareViaGmail(product, category)}
+              title="Share via Gmail (Web/App)"
+              className="p-2 rounded-xl text-rose-600 hover:bg-rose-50 border border-rose-200 transition active:scale-95 flex items-center gap-1.5 text-xs font-semibold"
             >
-              <Mail size={16} />
-              <span className="hidden sm:inline">Email</span>
+              <GmailIcon size={16} />
+              <span className="hidden sm:inline">Gmail</span>
             </button>
             <button
               onClick={onClose}
@@ -420,11 +420,11 @@ export default function ProductDetailModal({ isOpen, onClose, product, category 
               <span>WhatsApp</span>
             </button>
             <button
-              onClick={() => shareViaEmail(product, category)}
-              className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs rounded-xl border border-sky-200 transition flex items-center gap-1.5 shadow-sm active:scale-95"
+              onClick={() => shareViaGmail(product, category)}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl border border-rose-200 transition flex items-center gap-1.5 shadow-sm active:scale-95"
             >
-              <Mail size={14} />
-              <span>Email</span>
+              <GmailIcon size={14} />
+              <span>Gmail</span>
             </button>
           </div>
           <button

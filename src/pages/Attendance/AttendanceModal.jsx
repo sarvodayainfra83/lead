@@ -325,8 +325,16 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const year = now.getFullYear();
       const dateStr = `${day}/${month}/${year}`;
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      const hours = now.getHours();
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const timeStr = `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
       const fullTimestamp = `${dateStr} ${timeStr}`;
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      const hour12 = hours % 12 || 12;
+      const formatted12hTime = `${String(hour12).padStart(2, '0')}:${minutes}:${seconds} ${ampm}`;
+
+      const isMarkingOut = status === 'Out';
       const userUuid = await attendanceApi.getUserIdUuid(user);
 
       await attendanceApi.saveAttendanceLog({
@@ -335,6 +343,8 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         date: dateStr,
         timestamp: fullTimestamp,
         timestampMs: now.getTime(),
+        inTime: !isMarkingOut ? formatted12hTime : null,
+        outTime: isMarkingOut ? formatted12hTime : null,
         status: status,
         photoUrl: photoData,
         latitude: location?.latitude || null,

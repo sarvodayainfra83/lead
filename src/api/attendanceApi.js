@@ -110,9 +110,62 @@ export const attendanceApi = {
     return null;
   },
 
+  // Helper to consolidate multiple entries for the same user on the same date into a single row
+  consolidateSingleDayRows(logs) {
+    if (!Array.isArray(logs)) return [];
+    const grouped = new Map();
+
+    logs.forEach(log => {
+      const dateKey = (log.date || '').replace(/-/g, '/');
+      const userKey = (log.userId || log.userName || '').trim().toLowerCase();
+      // If either userKey or dateKey is missing, keep separate
+      if (!userKey || !dateKey) {
+        grouped.set(log.id || Math.random().toString(), { ...log });
+        return;
+      }
+      const groupKey = `${userKey}__${dateKey}`;
+
+      if (!grouped.has(groupKey)) {
+        grouped.set(groupKey, { ...log });
+      } else {
+        const existing = grouped.get(groupKey);
+        const statusUpper = (log.status || '').toUpperCase();
+
+        const inTime = existing.inTime || (statusUpper !== 'OUT' ? log.inTime : null);
+        const outTime = existing.outTime || (statusUpper === 'OUT' ? (log.outTime || log.inTime) : log.outTime);
+
+        let finalStatus = existing.status;
+        if (statusUpper === 'OUT') {
+          finalStatus = 'Out';
+        } else if (statusUpper === 'HALF DAY') {
+          finalStatus = 'Half Day';
+        }
+
+        grouped.set(groupKey, {
+          ...existing,
+          inTime: inTime || existing.inTime || '',
+          outTime: outTime || existing.outTime || '',
+          outPhotoUrl: existing.outPhotoUrl || (statusUpper === 'OUT' ? log.photoUrl : ''),
+          outLocationName: existing.outLocationName || (statusUpper === 'OUT' ? log.locationName : ''),
+          status: finalStatus
+        });
+      }
+    });
+
+    return Array.from(grouped.values()).map((row, idx) => ({
+      ...row,
+      serialNo: idx + 1
+    }));
+  },
+
   // Map DB row -> Frontend Attendance model
   mapFromDb(row) {
     const joinedUser = row.users || {};
+    const fallbackTime = row.timestamp ? (row.timestamp.includes(' ') ? row.timestamp.split(' ')[1] : row.timestamp) : '';
+    const statusUpper = (row.status || '').toUpperCase();
+    const inTime = row.in_time || row.inTime || (statusUpper === 'IN' || statusUpper === 'HALF DAY' ? fallbackTime : (statusUpper === 'OUT' ? null : fallbackTime));
+    const outTime = row.out_time || row.outTime || (statusUpper === 'OUT' ? fallbackTime : null);
+
     return {
       id: row.id,
       serialNo: row.serial_no || row.serialNo,
@@ -121,33 +174,42 @@ export const attendanceApi = {
       date: row.date || '',
       timestamp: row.timestamp || '',
       timestampMs: row.timestamp_ms ? Number(row.timestamp_ms) : (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+      inTime: inTime || '',
+      outTime: outTime || '',
       status: row.status || 'In',
       photoUrl: row.photo_url || row.photoUrl || '',
+      outPhotoUrl: row.out_photo_url || row.outPhotoUrl || '',
       latitude: row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null,
       longitude: row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null,
       locationName: row.location_name || row.locationName || row.location || '',
+      outLocationName: row.out_location_name || row.outLocationName || '',
       createdAt: row.created_at || row.createdAt
     };
   },
 
-  // Map Frontend Attendance model -> DB row (user_name and timestamp_ms removed from table)
+  // Map Frontend Attendance model -> DB row
   mapToDb(entry) {
     return {
       user_id: entry.userId || null,
       date: entry.date || '',
       timestamp: entry.timestamp || '',
+      in_time: entry.inTime || null,
+      out_time: entry.outTime || null,
       status: entry.status || 'In',
       photo_url: entry.photoUrl || '',
+      out_photo_url: entry.outPhotoUrl || null,
       latitude: entry.latitude !== null && entry.latitude !== undefined ? Number(entry.latitude) : null,
       longitude: entry.longitude !== null && entry.longitude !== undefined ? Number(entry.longitude) : null,
-      location_name: entry.locationName || entry.location || ''
+      location_name: entry.locationName || entry.location || '',
+      out_location_name: entry.outLocationName || null
     };
   },
 
-  // Fetch all attendance logs (joins users table for user_name)
+  // Fetch all attendance logs (joins users table for user_name, consolidates single-row per user per date)
   async getAttendanceLogs() {
     if (!isSupabaseConfigured) {
-      return getLocalAttendanceLogs().map(this.mapFromDb);
+      const localLogs = getLocalAttendanceLogs().map(this.mapFromDb);
+      return this.consolidateSingleDayRows(localLogs);
     }
 
     try {
@@ -165,25 +227,23 @@ export const attendanceApi = {
 
         if (fallbackError) {
           console.warn('Fallback error fetching attendance logs from Supabase:', fallbackError);
-          return getLocalAttendanceLogs().map(this.mapFromDb);
+          const localLogs = getLocalAttendanceLogs().map(this.mapFromDb);
+          return this.consolidateSingleDayRows(localLogs);
         }
-        return (fallbackData || []).map((row, idx) => ({
-          ...this.mapFromDb(row),
-          serialNo: idx + 1
-        }));
+        const mapped = (fallbackData || []).map(this.mapFromDb);
+        return this.consolidateSingleDayRows(mapped);
       }
 
-      return (data || []).map((row, idx) => ({
-        ...this.mapFromDb(row),
-        serialNo: idx + 1
-      }));
+      const mapped = (data || []).map(this.mapFromDb);
+      return this.consolidateSingleDayRows(mapped);
     } catch (err) {
       console.warn('Supabase attendance logs fetch error:', err);
-      return getLocalAttendanceLogs().map(this.mapFromDb);
+      const localLogs = getLocalAttendanceLogs().map(this.mapFromDb);
+      return this.consolidateSingleDayRows(localLogs);
     }
   },
 
-  // Save attendance entry (with photo upload to bucket & coordinates)
+  // Save attendance entry (manages record in a single row per user per date)
   async saveAttendanceLog(entry) {
     let finalPhotoUrl = entry.photoUrl || '';
 
@@ -196,33 +256,91 @@ export const attendanceApi = {
       }
     }
 
+    const isMarkingOut = (entry.status || '').toUpperCase() === 'OUT';
+
+    // Find if user already has an existing attendance log for today
+    const allLogs = await this.getAttendanceLogs();
+    const entryUserKey = (entry.userId || entry.userName || '').trim().toLowerCase();
+    const entryDate = (entry.date || this.getTodayDateIST()).replace(/-/g, '/');
+
+    const existingTodayLog = allLogs.find(l => {
+      const logDate = (l.date || '').replace(/-/g, '/');
+      const logUserKey = (l.userId || l.userName || '').trim().toLowerCase();
+      return logDate === entryDate && logUserKey && logUserKey === entryUserKey;
+    });
+
     const payloadWithPhoto = {
       ...entry,
-      photoUrl: finalPhotoUrl
+      photoUrl: isMarkingOut ? (existingTodayLog?.photoUrl || finalPhotoUrl) : finalPhotoUrl,
+      outPhotoUrl: isMarkingOut ? finalPhotoUrl : (existingTodayLog?.outPhotoUrl || null),
+      inTime: isMarkingOut ? (existingTodayLog?.inTime || entry.inTime || '') : (entry.inTime || entry.timestamp?.split(' ')[1] || ''),
+      outTime: isMarkingOut ? (entry.outTime || entry.timestamp?.split(' ')[1] || '') : (existingTodayLog?.outTime || null),
+      locationName: isMarkingOut ? (existingTodayLog?.locationName || entry.locationName) : entry.locationName,
+      outLocationName: isMarkingOut ? entry.locationName : (existingTodayLog?.outLocationName || null)
     };
 
+    if (existingTodayLog) {
+      payloadWithPhoto.id = existingTodayLog.id;
+    }
+
     if (!isSupabaseConfigured) {
-      const created = saveLocalAttendanceLog(payloadWithPhoto);
-      return this.mapFromDb(created);
+      const saved = saveLocalAttendanceLog(payloadWithPhoto);
+      return this.mapFromDb(saved);
     }
 
     try {
-      const payload = this.mapToDb(payloadWithPhoto);
-      const { data, error } = await supabase
-        .from('attendance_logs')
-        .insert(payload)
-        .select('*, users(id, name, username)')
-        .single();
+      if (existingTodayLog && existingTodayLog.id) {
+        // UPDATE EXISTING ROW (Keep in a SINGLE ROW)
+        const updatePayload = {
+          status: entry.status || (isMarkingOut ? 'Out' : existingTodayLog.status),
+          in_time: payloadWithPhoto.inTime || null,
+          out_time: payloadWithPhoto.outTime || null,
+          out_photo_url: payloadWithPhoto.outPhotoUrl || null,
+          out_location_name: payloadWithPhoto.outLocationName || null
+        };
+        // If re-marking IN / Half Day, update primary photo & location
+        if (!isMarkingOut) {
+          if (finalPhotoUrl) updatePayload.photo_url = finalPhotoUrl;
+          if (entry.locationName) updatePayload.location_name = entry.locationName;
+          if (entry.latitude != null) updatePayload.latitude = Number(entry.latitude);
+          if (entry.longitude != null) updatePayload.longitude = Number(entry.longitude);
+        }
 
-      if (error) {
-        console.warn('Error inserting attendance log to Supabase, saving locally:', error);
-        const createdLocal = saveLocalAttendanceLog(payloadWithPhoto);
-        return this.mapFromDb(createdLocal);
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .update(updatePayload)
+          .eq('id', existingTodayLog.id)
+          .select('*, users(id, name, username)')
+          .single();
+
+        if (error) {
+          console.warn('Error updating existing attendance log on Supabase, falling back to local:', error);
+          const savedLocal = saveLocalAttendanceLog(payloadWithPhoto);
+          return this.mapFromDb(savedLocal);
+        }
+
+        const updated = this.mapFromDb(data);
+        saveLocalAttendanceLog(updated);
+        return updated;
+      } else {
+        // INSERT NEW ROW (for IN punch)
+        const payload = this.mapToDb(payloadWithPhoto);
+        const { data, error } = await supabase
+          .from('attendance_logs')
+          .insert(payload)
+          .select('*, users(id, name, username)')
+          .single();
+
+        if (error) {
+          console.warn('Error inserting attendance log to Supabase, saving locally:', error);
+          const createdLocal = saveLocalAttendanceLog(payloadWithPhoto);
+          return this.mapFromDb(createdLocal);
+        }
+
+        const created = this.mapFromDb(data);
+        saveLocalAttendanceLog(created);
+        return created;
       }
-
-      const created = this.mapFromDb(data);
-      saveLocalAttendanceLog(created);
-      return created;
     } catch (err) {
       console.warn('Attendance save failed on Supabase:', err);
       const createdLocal = saveLocalAttendanceLog(payloadWithPhoto);
@@ -338,9 +456,15 @@ export const attendanceApi = {
       return (matchId || matchName) && this.isLogFromTodayIST(l);
     });
 
-    const hasMarkedOut = userTodayLogs.some(l => (l.status || '').toUpperCase() === 'OUT');
-    const hasMarkedIn = userTodayLogs.some(l => (l.status || '').toUpperCase() === 'IN');
-    const hasMarkedHalfDay = userTodayLogs.some(l => (l.status || '').toUpperCase() === 'HALF DAY');
+    const hasMarkedOut = userTodayLogs.some(l => 
+      (l.status || '').toUpperCase() === 'OUT' || (l.outTime && l.outTime !== '-' && l.outTime !== '')
+    );
+    const hasMarkedIn = userTodayLogs.some(l => 
+      (l.status || '').toUpperCase() === 'IN' || (l.inTime && l.inTime !== '-' && l.inTime !== '')
+    );
+    const hasMarkedHalfDay = userTodayLogs.some(l => 
+      (l.status || '').toUpperCase() === 'HALF DAY'
+    );
 
     // Rule 1: If already marked OUT today, no further In/Out/Half Day punches are permitted today
     if (hasMarkedOut) {

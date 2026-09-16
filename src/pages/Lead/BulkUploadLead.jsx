@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { Download } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
+import { useAuthStore } from '../../store/authStore';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo } from './leadConstants';
@@ -87,12 +88,7 @@ const parseDobForDb = (value) => {
 };
 
 export default function BulkUploadLead({ isOpen, onClose, onImported }) {
-  const [leadType, setLeadType] = useState('');
-  const [leadReceiver, setLeadReceiver] = useState('');
-  const [leadSource, setLeadSource] = useState('');
-  const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const fileInputRef = useRef(null);
+  const user = useAuthStore(state => state.user);
 
   const [leadTypesMaster, setLeadTypesMaster] = useState([]);
   const [leadSourcesMaster, setLeadSourcesMaster] = useState([]);
@@ -101,8 +97,27 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
   const [mutualFundProductsMaster, setMutualFundProductsMaster] = useState([]);
   const [insuranceProductsMaster, setInsuranceProductsMaster] = useState([]);
 
+  const resolveUserLeadType = (typesList = leadTypesMaster) => {
+    if (user?.leadType) return user.leadType;
+    if (user?.leadTypeId && typesList?.length > 0) {
+      const found = typesList.find(lt => String(lt.id) === String(user.leadTypeId));
+      if (found) return found.leadType;
+    }
+    return '';
+  };
+
+  const [leadType, setLeadType] = useState(() => user?.leadType || '');
+  const [leadReceiver, setLeadReceiver] = useState('');
+  const [leadSource, setLeadSource] = useState('');
+  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef(null);
+
   useEffect(() => {
     if (isOpen) {
+      const defaultType = resolveUserLeadType();
+      if (defaultType) setLeadType(defaultType);
+
       Promise.all([
         masterApi.getLeadTypes(),
         masterApi.getLeadSources(),
@@ -111,15 +126,18 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
         masterApi.getMutualFundProducts(),
         masterApi.getInsuranceProducts()
       ]).then(([types, sources, receivers, reProducts, mfProducts, insProducts]) => {
-        setLeadTypesMaster(types);
-        setLeadSourcesMaster(sources);
-        setLeadReceiversMaster(receivers);
-        setRealEstateProductsMaster(reProducts);
-        setMutualFundProductsMaster(mfProducts);
-        setInsuranceProductsMaster(insProducts);
+        setLeadTypesMaster(types || []);
+        setLeadSourcesMaster(sources || []);
+        setLeadReceiversMaster(receivers || []);
+        setRealEstateProductsMaster(reProducts || []);
+        setMutualFundProductsMaster(mfProducts || []);
+        setInsuranceProductsMaster(insProducts || []);
+
+        const resolved = resolveUserLeadType(types || []);
+        if (resolved) setLeadType(resolved);
       });
     }
-  }, [isOpen]);
+  }, [isOpen, user]);
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
@@ -140,7 +158,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
   };
 
   const resetState = () => {
-    setLeadType('');
+    setLeadType(resolveUserLeadType());
     setLeadReceiver('');
     setLeadSource('');
     setFile(null);
