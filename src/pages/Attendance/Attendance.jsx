@@ -1,35 +1,61 @@
-import React, { useState, useEffect } from 'react';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect } from "react";
+import toast from "react-hot-toast";
 import {
-  Plus, Search, Image as ImageIcon, ExternalLink, RotateCcw, MapPin, Calendar, UserCheck, Clock, CheckCircle2
-} from 'lucide-react';
-import { attendanceApi } from '../../api/attendanceApi';
-import DataTable from '../../components/DataTable';
-import AttendanceModal from './AttendanceModal';
-import PhotoViewModal from './PhotoViewModal';
-import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, hasFullAccess } from '../../utils/authUtils';
+  Plus,
+  Search,
+  Image as ImageIcon,
+  ExternalLink,
+  RotateCcw,
+  MapPin,
+  Calendar,
+  UserCheck,
+  Clock,
+  CheckCircle2,
+} from "lucide-react";
+import { attendanceApi } from "../../api/attendanceApi";
+import DataTable from "../../components/DataTable";
+import AttendanceModal from "./AttendanceModal";
+import PhotoViewModal from "./PhotoViewModal";
+import AttendanceEdit from "./AttendanceEdit";
+import { useAuthStore } from "../../store/authStore";
+import { isUserAdmin, hasFullAccess } from "../../utils/authUtils";
 
 export default function Attendance() {
   const { user } = useAuthStore();
   const isAdmin = isUserAdmin(user);
-  const canEdit = hasFullAccess(user, 'attendance');
+  const canEdit = hasFullAccess(user, "attendance");
 
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [viewLog, setViewLog] = useState(null);
+  const [editLog, setEditLog] = useState(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
   const todayStatus = attendanceApi.getUserTodayAttendanceStatus(logs, user);
 
+  const formatUpdatedTime = (value) => {
+    if (!value) return "-";
+
+    const date = new Date(value);
+
+    if (isNaN(date.getTime())) return "-";
+
+    return date.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  };
+
   const formatTimeDisplay = (rawTime, fallbackTimestamp = null) => {
-    if (!rawTime && !fallbackTimestamp) return '-';
+    if (!rawTime && !fallbackTimestamp) return "-";
     const val = rawTime || fallbackTimestamp;
-    if (!val || val === '-') return '-';
+    if (!val || val === "-") return "-";
 
     const str = String(val).trim();
     if (/^\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i.test(str)) {
@@ -37,8 +63,8 @@ export default function Attendance() {
     }
 
     let timePart = str;
-    if (str.includes(' ')) {
-      const parts = str.split(' ');
+    if (str.includes(" ")) {
+      const parts = str.split(" ");
       timePart = parts[1] || parts[0];
     }
 
@@ -48,9 +74,9 @@ export default function Attendance() {
       const m = timeMatch[2];
       const s = timeMatch[3];
       if (!isNaN(h)) {
-        const ampm = h >= 12 ? 'PM' : 'AM';
+        const ampm = h >= 12 ? "PM" : "AM";
         const h12 = h % 12 || 12;
-        return `${String(h12).padStart(2, '0')}:${m}${s ? `:${s}` : ''} ${ampm}`;
+        return `${String(h12).padStart(2, "0")}:${m}${s ? `:${s}` : ""} ${ampm}`;
       }
     }
 
@@ -58,11 +84,16 @@ export default function Attendance() {
     if (!isNaN(num) && num > 1000000000000) {
       const d = new Date(num);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        return d.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: true,
+        });
       }
     }
 
-    return str || '-';
+    return str || "-";
   };
 
   const loadLogs = async () => {
@@ -71,11 +102,16 @@ export default function Attendance() {
       const allLogs = await attendanceApi.getAttendanceLogs();
       const userLogs = isAdmin
         ? allLogs
-        : allLogs.filter(l => l.userName === user?.name || l.userId === user?.id || l.userId === user?.dbId);
+        : allLogs.filter(
+            (l) =>
+              l.userName === user?.name ||
+              l.userId === user?.id ||
+              l.userId === user?.dbId,
+          );
       setLogs(userLogs);
     } catch (err) {
-      console.error('Failed to load attendance logs:', err);
-      toast.error('Failed to load attendance logs');
+      console.error("Failed to load attendance logs:", err);
+      toast.error("Failed to load attendance logs");
     } finally {
       setLoading(false);
     }
@@ -88,65 +124,85 @@ export default function Attendance() {
   // Check for restored attendance session on mount (survives Android low-memory tab reload)
   useEffect(() => {
     try {
-      const savedSessionStr = sessionStorage.getItem('attendance_camera_session');
+      const savedSessionStr = sessionStorage.getItem(
+        "attendance_camera_session",
+      );
       if (savedSessionStr) {
         const savedSession = JSON.parse(savedSessionStr);
-        const isFresh = (Date.now() - (savedSession.timestamp || 0)) < 10 * 60 * 1000;
+        const isFresh =
+          Date.now() - (savedSession.timestamp || 0) < 10 * 60 * 1000;
         if (isFresh) {
           setShowModal(true);
         } else {
-          sessionStorage.removeItem('attendance_camera_session');
+          sessionStorage.removeItem("attendance_camera_session");
         }
       }
     } catch (e) {
-      console.warn('Error reading saved attendance session:', e);
+      console.warn("Error reading saved attendance session:", e);
     }
   }, []);
 
-  const filteredLogs = logs.filter(item => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (item.userName || '').toLowerCase().includes(q) ||
-      (item.date || '').toLowerCase().includes(q) ||
-      (item.status || '').toLowerCase().includes(q) ||
-      (item.inTime || '').toLowerCase().includes(q) ||
-      (item.outTime || '').toLowerCase().includes(q) ||
-      (item.locationName || '').toLowerCase().includes(q)
-    );
-  }).reverse();
+  const filteredLogs = logs
+    .filter((item) => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        (item.userName || "").toLowerCase().includes(q) ||
+        (item.date || "").toLowerCase().includes(q) ||
+        (item.status || "").toLowerCase().includes(q) ||
+        (item.inTime || "").toLowerCase().includes(q) ||
+        (item.outTime || "").toLowerCase().includes(q) ||
+        (item.locationName || "").toLowerCase().includes(q)
+      );
+    })
+    .reverse();
 
   const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
   const paginatedLogs = filteredLogs.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
 
   const tableHeaders = [
-    "SERIAL NO", "DATE", "NAME", "PHOTO", "STATUS", "IN TIME", "OUT TIME", "LOCATION"
+    "SERIAL NO",
+    "DATE",
+    "NAME",
+    "PHOTO",
+    "STATUS",
+    "IN TIME",
+    "OUT TIME",
+    "LOCATION",
+    "UPDATED AT",
+    "ACTIONS",
   ];
 
   const renderRow = (item, index) => {
     const serialNo = (currentPage - 1) * itemsPerPage + index + 1;
-    const mapsUrl = item.latitude && item.longitude
-      ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
-      : null;
+    const mapsUrl =
+      item.latitude && item.longitude
+        ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
+        : null;
 
     const getStatusBadgeClass = (status) => {
-      const s = (status || '').toUpperCase();
-      if (s === 'IN') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      if (s === 'HALF DAY') return 'bg-amber-50 text-amber-700 border-amber-200';
-      if (s === 'OUT') return 'bg-blue-50 text-blue-700 border-blue-200';
-      return 'bg-gray-50 text-gray-700 border-gray-200';
+      const s = (status || "").toUpperCase();
+      if (s === "IN")
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      if (s === "HALF DAY")
+        return "bg-amber-50 text-amber-700 border-amber-200";
+      if (s === "OUT") return "bg-blue-50 text-blue-700 border-blue-200";
+      return "bg-gray-50 text-gray-700 border-gray-200";
     };
 
     return (
-      <tr key={item.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
+      <tr
+        key={item.id}
+        className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100"
+      >
         <td className="px-4 py-3 text-center text-[13px] font-bold text-gray-700 whitespace-nowrap">
           {serialNo}
         </td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">
-          {item.date || item.timestamp?.split(' ')[0] || '-'}
+          {item.date || item.timestamp?.split(" ")[0] || "-"}
         </td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-semibold whitespace-nowrap">
           {item.userName}
@@ -164,13 +220,15 @@ export default function Attendance() {
           )}
         </td>
         <td className="px-4 py-3 text-center whitespace-nowrap">
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${getStatusBadgeClass(item.status)}`}>
+          <span
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${getStatusBadgeClass(item.status)}`}
+          >
             {item.status}
           </span>
         </td>
         {/* IN TIME */}
         <td className="px-4 py-3 text-center whitespace-nowrap">
-          {item.inTime && item.inTime !== '-' ? (
+          {item.inTime && item.inTime !== "-" ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-mono font-semibold">
               <Clock size={12} className="text-emerald-600" />
               {formatTimeDisplay(item.inTime, item.timestamp)}
@@ -181,7 +239,7 @@ export default function Attendance() {
         </td>
         {/* OUT TIME */}
         <td className="px-4 py-3 text-center whitespace-nowrap">
-          {item.outTime && item.outTime !== '-' ? (
+          {item.outTime && item.outTime !== "-" ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-50 text-rose-700 border border-rose-200 text-xs font-mono font-semibold">
               <Clock size={12} className="text-rose-600" />
               {formatTimeDisplay(item.outTime)}
@@ -190,7 +248,10 @@ export default function Attendance() {
             <span className="text-gray-400 font-mono text-xs">-</span>
           )}
         </td>
-        <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[340px] truncate" title={item.locationName}>
+        <td
+          className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[340px] truncate"
+          title={item.locationName}
+        >
           {mapsUrl ? (
             <a
               href={mapsUrl}
@@ -198,11 +259,44 @@ export default function Attendance() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-gray-800 hover:text-indigo-600 transition group"
             >
-              <span className="truncate">{item.locationName || 'View Map'}</span>
-              <ExternalLink size={12} className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0" />
+              <span className="truncate">
+                {item.locationName || "View Map"}
+              </span>
+              <ExternalLink
+                size={12}
+                className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0"
+              />
             </a>
           ) : (
-            <span>{item.locationName || '-'}</span>
+            <span>{item.locationName || "-"}</span>
+          )}
+        </td>
+        {/* Updated At */}
+        <td className="px-4 py-3 text-center whitespace-nowrap">
+          {item.updatedAt ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-gray-50 text-gray-600 border border-gray-200 text-xs font-mono font-semibold">
+              <Clock size={12} />
+              {formatUpdatedTime(item.updatedAt)}
+            </span>
+          ) : (
+            <span className="text-gray-400 font-mono text-xs">-</span>
+          )}
+        </td>
+
+        {/* ACTIONS */}
+        <td className="px-4 py-3 text-center whitespace-nowrap">
+          {canEdit && (
+            <button
+              onClick={() => setEditLog(item)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1
+                 rounded-md bg-indigo-50 text-indigo-600
+                 hover:bg-indigo-100 border border-indigo-200
+                 text-xs font-semibold transition"
+              title="Edit Attendance"
+            >
+              <RotateCcw size={13} />
+              Edit
+            </button>
           )}
         </td>
       </tr>
@@ -211,28 +305,38 @@ export default function Attendance() {
 
   const renderCard = (item, index) => {
     const serialNo = (currentPage - 1) * itemsPerPage + index + 1;
-    const mapsUrl = item.latitude && item.longitude
-      ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
-      : null;
+    const mapsUrl =
+      item.latitude && item.longitude
+        ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
+        : null;
     const getStatusBadgeClass = (status) => {
-      const s = (status || '').toUpperCase();
-      if (s === 'IN') return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      if (s === 'HALF DAY') return 'bg-amber-50 text-amber-700 border-amber-200';
-      if (s === 'OUT') return 'bg-blue-50 text-blue-700 border-blue-200';
-      return 'bg-gray-50 text-gray-700 border-gray-200';
+      const s = (status || "").toUpperCase();
+      if (s === "IN")
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
+      if (s === "HALF DAY")
+        return "bg-amber-50 text-amber-700 border-amber-200";
+      if (s === "OUT") return "bg-blue-50 text-blue-700 border-blue-200";
+      return "bg-gray-50 text-gray-700 border-gray-200";
     };
 
     return (
-      <div key={item.id} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
+      <div
+        key={item.id}
+        className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2"
+      >
         <div className="flex justify-between items-start border-b border-gray-100 pb-2">
           <div>
             <span className="text-[9px] uppercase tracking-widest text-indigo-500 font-bold block mb-0.5">
               Log #{serialNo} · {item.date}
             </span>
-            <h4 className="text-sm font-bold text-gray-900 leading-tight">{item.userName}</h4>
+            <h4 className="text-sm font-bold text-gray-900 leading-tight">
+              {item.userName}
+            </h4>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${getStatusBadgeClass(item.status)}`}>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${getStatusBadgeClass(item.status)}`}
+            >
               {item.status}
             </span>
           </div>
@@ -241,24 +345,36 @@ export default function Attendance() {
         {/* IN TIME & OUT TIME (Mobile Card Grid) */}
         <div className="grid grid-cols-2 gap-2 text-[10px] py-1.5 bg-slate-50 rounded-lg px-2 border border-slate-100">
           <div>
-            <p className="text-gray-400 uppercase tracking-tight text-[8px] font-bold">IN TIME</p>
+            <p className="text-gray-400 uppercase tracking-tight text-[8px] font-bold">
+              IN TIME
+            </p>
             <p className="text-emerald-700 font-mono font-bold flex items-center gap-1 mt-0.5">
               <Clock size={10} className="text-emerald-600" />
-              {item.inTime && item.inTime !== '-' ? formatTimeDisplay(item.inTime, item.timestamp) : '-'}
+              {item.inTime && item.inTime !== "-"
+                ? formatTimeDisplay(item.inTime, item.timestamp)
+                : "-"}
             </p>
           </div>
           <div>
-            <p className="text-gray-400 uppercase tracking-tight text-[8px] font-bold">OUT TIME</p>
+            <p className="text-gray-400 uppercase tracking-tight text-[8px] font-bold">
+              OUT TIME
+            </p>
             <p className="text-rose-700 font-mono font-bold flex items-center gap-1 mt-0.5">
               <Clock size={10} className="text-rose-600" />
-              {item.outTime && item.outTime !== '-' ? formatTimeDisplay(item.outTime) : '-'}
+              {item.outTime && item.outTime !== "-"
+                ? formatTimeDisplay(item.outTime)
+                : "-"}
             </p>
           </div>
         </div>
 
         <div className="text-[10px]">
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Location</p>
-          <p className="text-gray-700 leading-tight truncate">{item.locationName || '-'}</p>
+          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">
+            Location
+          </p>
+          <p className="text-gray-700 leading-tight truncate">
+            {item.locationName || "-"}
+          </p>
         </div>
 
         <div className="flex items-center gap-2 pt-1 border-t border-gray-50">
@@ -290,12 +406,18 @@ export default function Attendance() {
       {/* Top Header Row */}
       <div className="flex items-center justify-between gap-3 w-full flex-shrink-0">
         <div className="flex-1 max-w-sm relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={15} />
+          <Search
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+            size={15}
+          />
           <input
             type="text"
             placeholder="Search attendance logs..."
             value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[38px] shadow-2xs transition-colors"
           />
         </div>
@@ -305,10 +427,10 @@ export default function Attendance() {
             onClick={() => setShowModal(true)}
             className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[38px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer ${
               todayStatus.isLocked
-                ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                ? "bg-emerald-700 hover:bg-emerald-800 text-white"
                 : todayStatus.hasMarkedIn
-                ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                : 'bg-slate-900 hover:bg-slate-800 text-white'
+                  ? "bg-amber-600 hover:bg-amber-700 text-white"
+                  : "bg-slate-900 hover:bg-slate-800 text-white"
             }`}
           >
             {todayStatus.isLocked ? (
@@ -340,7 +462,10 @@ export default function Attendance() {
           totalPages={totalPages}
           itemsPerPage={itemsPerPage}
           onPageChange={setCurrentPage}
-          onItemsPerPageChange={(val) => { setItemsPerPage(val); setCurrentPage(1); }}
+          onItemsPerPageChange={(val) => {
+            setItemsPerPage(val);
+            setCurrentPage(1);
+          }}
           totalResults={filteredLogs.length}
         />
       </div>
@@ -350,8 +475,8 @@ export default function Attendance() {
         isOpen={showModal}
         onClose={() => {
           try {
-            sessionStorage.removeItem('attendance_camera_session');
-          } catch (e) { }
+            sessionStorage.removeItem("attendance_camera_session");
+          } catch (e) {}
           setShowModal(false);
         }}
         onSaved={loadLogs}
@@ -363,6 +488,13 @@ export default function Attendance() {
         isOpen={!!viewLog}
         onClose={() => setViewLog(null)}
         log={viewLog}
+      />
+
+      <AttendanceEdit
+        isOpen={!!editLog}
+        onClose={() => setEditLog(null)}
+        attendance={editLog}
+        onUpdated={loadLogs}
       />
     </div>
   );

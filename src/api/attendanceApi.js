@@ -183,7 +183,8 @@ export const attendanceApi = {
       longitude: row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null,
       locationName: row.location_name || row.locationName || row.location || '',
       outLocationName: row.out_location_name || row.outLocationName || '',
-      createdAt: row.created_at || row.createdAt
+      createdAt: row.created_at || row.createdAt,
+      updatedAt: row.updated_at || row.updatedAt
     };
   },
 
@@ -347,6 +348,77 @@ export const attendanceApi = {
       return this.mapFromDb(createdLocal);
     }
   },
+
+  // Update attendance IN / OUT time
+async updateAttendanceLog(id, updatedFields) {
+  if (!id) {
+    throw new Error('Attendance ID is required');
+  }
+
+  const updatePayload = {};
+
+  if (updatedFields.inTime !== undefined) {
+    updatePayload.in_time = updatedFields.inTime || null;
+  }
+
+  if (updatedFields.outTime !== undefined) {
+    updatePayload.out_time = updatedFields.outTime || null;
+  }
+
+  // Automatically track when attendance was edited
+  updatePayload.updated_at = new Date().toISOString();
+
+  // Local storage fallback
+  if (!isSupabaseConfigured) {
+    const localLogs = getLocalAttendanceLogs();
+
+    const existing = localLogs.find(
+      log => String(log.id) === String(id)
+    );
+
+    if (!existing) {
+      throw new Error('Attendance record not found');
+    }
+
+    const updated = {
+      ...existing,
+      in_time: updatePayload.in_time ?? existing.in_time,
+      out_time: updatePayload.out_time ?? existing.out_time,
+      updated_at: updatePayload.updated_at
+    };
+    console.log(`Attendance log with ID ${id} updated locally:`, updated);
+
+    saveLocalAttendanceLog(updated);
+
+
+    return this.mapFromDb(updated);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('attendance_logs')
+      .update(updatePayload)
+      .eq('id', id)
+      .select('*, users(id, name, username)')
+      .single();
+
+    if (error) {
+      console.error('Error updating attendance:', error);
+      throw error;
+    }
+
+    const updated = this.mapFromDb(data);
+
+    // Keep local cache in sync
+    saveLocalAttendanceLog(updated);
+
+    return updated;
+
+  } catch (err) {
+    console.error('Attendance update failed:', err);
+    throw err;
+  }
+},
 
   // Delete attendance entry
   async deleteAttendanceLog(id) {
@@ -521,5 +593,7 @@ export const attendanceApi = {
       message: ''
     };
   }
+
+
 };
 

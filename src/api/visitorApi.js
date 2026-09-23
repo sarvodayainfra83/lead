@@ -1,12 +1,12 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { leadApi } from './leadApi';
 import { callTrackerApi } from './callTrackerApi';
-import {
-  getAssignedVisitors as getLocalAssignedVisitors,
-  saveAssignedVisitor as saveLocalAssignedVisitor,
-  updateAssignedVisitor as updateLocalAssignedVisitor,
-  deleteAssignedVisitor as deleteLocalAssignedVisitor
-} from '../utils/storageManager';
+// import {
+//   getAssignedVisitors as getLocalAssignedVisitors,
+//   saveAssignedVisitor as saveLocalAssignedVisitor,
+//   updateAssignedVisitor as updateLocalAssignedVisitor,
+//   deleteAssignedVisitor as deleteLocalAssignedVisitor
+// } from '../utils/storageManager';
 import { refreshBadgeCounts } from '../store/badgeCountStore';
 import { getLatestTrackerForLead } from '../pages/CallTracker/callTrackerConstants';
 
