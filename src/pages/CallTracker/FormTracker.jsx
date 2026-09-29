@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { MessageSquare, ClipboardList, Clock } from 'lucide-react';
+import { MessageSquare, ClipboardList, Clock, Share2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { buildShareClient } from '../../utils/productShare';
 import { callTrackerApi } from '../../api/callTrackerApi';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { ENQUIRY_STATUSES, TERMINAL_STATUSES, DATE_STATUSES } from './callTrackerConstants';
+import { ENQUIRY_STATUSES, TERMINAL_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES } from './callTrackerConstants';
 import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 
 /**
@@ -24,6 +26,7 @@ import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
  */
 const initialFormState = {
   status: '',
+  customerStatus: '',
   customerSaid: '',
   nextDate: '',
   requirement: '',
@@ -37,6 +40,7 @@ const initialFormState = {
 };
 
 export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({ ...initialFormState });
   const [requirementsList, setRequirementsList] = useState([]);
@@ -75,6 +79,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       );
       setFormData({
         status: '',
+        // Pre-fill with the lead's latest Hot/Warm/Cold so the caller only changes it when it moved
+        customerStatus: lead.customerStatus || '',
         customerSaid: '',
         nextDate: '',
         requirement: req,
@@ -161,11 +167,18 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     onClose();
   };
 
+  const handleShareProducts = () => {
+    const shareClient = buildShareClient(lead);
+    handleClose();
+    navigate('/products', { state: { shareClient } });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
 
     if (!formData.status) { toast.error('Enquiry Received Status is required'); return; }
+    if (!formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
 
     setLoading(true);
@@ -198,6 +211,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         leadId: lead.id,
         leadNo: lead.leadNo,
         status: formData.status,
+        customerStatus: formData.customerStatus,
         customerSaid: formData.customerSaid,
         nextDate: DATE_STATUSES.includes(formData.status) ? formData.nextDate : '',
         timestamp,
@@ -230,12 +244,25 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     <ModalForm
       isOpen={isOpen}
       onClose={handleClose}
-      title={`Call Now - ${lead.personName || lead.customerName || 'Lead'} (${lead.leadNo})`}
+      title={`Followup Call - ${lead.personName || lead.customerName || 'Lead'}${lead.leadNo ? ` (${lead.leadNo})` : ''}`}
       onSubmit={handleSubmit}
-      submitText={loading ? 'Saving...' : 'Save Call Log'}
+      submitText={loading ? 'Saving...' : 'Save Followup'}
       loading={loading}
       maxWidth="max-w-2xl"
     >
+      {/* Share Products — opens the Products page filtered to this client's lead type */}
+      <div className="flex justify-end -mt-1 mb-1">
+        <button
+          type="button"
+          onClick={handleShareProducts}
+          title={`Share ${lead.leadType || ''} products with ${lead.personName || lead.customerName || 'this client'}`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white transition active:scale-95"
+        >
+          <Share2 size={13} />
+          <span>Share Products</span>
+        </button>
+      </div>
+
       {/* Lead Details Read-Only Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 border border-gray-200 rounded p-3 text-xs mb-2">
         {infoFields.map(f => (
@@ -360,6 +387,17 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
             value={formData.status}
             onChange={(val) => handleChange('status', val)}
             placeholder="Select status"
+          />
+        </div>
+
+        {/* Customer Status (Hot / Warm / Cold) */}
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Status *</label>
+          <SearchableDropdown
+            options={CUSTOMER_STATUSES.map(v => ({ value: v, label: v }))}
+            value={formData.customerStatus}
+            onChange={(val) => handleChange('customerStatus', val)}
+            placeholder="Select Hot / Warm / Cold"
           />
         </div>
 

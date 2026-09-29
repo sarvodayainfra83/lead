@@ -1,21 +1,17 @@
 import React, { useState } from 'react';
+import NotificationBell from './NotificationBell';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, User, Menu, Settings, X, Phone, Mail, IdCard, ShieldCheck } from 'lucide-react';
+import { User, Menu, X, Phone, Mail, IdCard, ShieldCheck } from 'lucide-react';
 
 const Header = ({ sidebarOpen, onMenuClick, user }) => {
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(false);
 
-  // The Settings gear is the admin user-management screen — only show it to someone who
-  // can actually open it, same rule Sidebar/AccessGuard use, so it doesn't dead-end into
-  // "Access Restricted" for every other employee.
-  const canOpenSettings = user?.role === 'ADMIN' || (user?.accessPages?.setting && user.accessPages.setting !== 'none');
-
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-indigo-200">
       <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
 
-        {/* Left Section: Mobile Menu & Search */}
+        {/* Left Section: Mobile Menu */}
         <div className="flex items-center gap-4 flex-1">
           <button
             onClick={onMenuClick}
@@ -29,15 +25,8 @@ const Header = ({ sidebarOpen, onMenuClick, user }) => {
         {/* Right Section: Actions & Profile */}
         <div className="flex items-center gap-2 sm:gap-4">
 
-          {canOpenSettings && (
-            <button
-              onClick={() => navigate('/setting')}
-              title="Setting"
-              className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-all"
-            >
-              <Settings size={20} />
-            </button>
-          )}
+          {/* Remark notifications (admin remarks for users / user replies for admin) */}
+          <NotificationBell user={user} />
 
           <div className="h-8 w-px bg-indigo-200 mx-1 hidden sm:block"></div>
 

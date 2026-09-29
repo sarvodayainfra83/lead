@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { leadApi } from '../api/leadApi';
 import { callTrackerApi } from '../api/callTrackerApi';
-import { visitorApi } from '../api/visitorApi';
-import { visitorFollowUpApi } from '../api/visitorFollowUpApi';
-import { isLeadPending, getLeadStatus, CONVERTED_STATUSES } from '../pages/CallTracker/callTrackerConstants';
+import { siteVisitApi } from '../api/siteVisitApi';
+import { siteVisitFollowUpApi } from '../api/siteVisitFollowUpApi';
+import {
+  isLeadPending, getLeadStatus, getLatestCustomerStatus, isFollowUpRejected, CUSTOMER_MASTER_STATUSES
+} from '../pages/CallTracker/callTrackerConstants';
 import { useAuthStore } from './authStore';
 import { isUserAdmin, matchesUserAssignment, matchesUserReceiver } from '../utils/authUtils';
 
@@ -18,6 +20,7 @@ export const useBadgeCountStore = create((set) => ({
   pendingTrackerCount: 0,
   pendingVisitorCount: 0,
   pendingVisitorFollowUpCount: 0,
+  pendingSiteVisitMeetingCount: 0,
   customerCount: 0,
   callerReportCount: 0,
   loaded: false,
@@ -30,8 +33,8 @@ export const useBadgeCountStore = create((set) => ({
       const [allLeads, allTrackers, allVisitors, allFollowUps] = await Promise.all([
         leadApi.getLeads(),
         callTrackerApi.getCallTrackers(),
-        visitorApi.getAssignedVisitors(),
-        visitorFollowUpApi.getVisitorFollowUps()
+        siteVisitApi.getAssignedVisitors(),
+        siteVisitFollowUpApi.getVisitorFollowUps()
       ]);
 
       // Leads assigned to the user (or all if admin)
@@ -66,8 +69,13 @@ export const useBadgeCountStore = create((set) => ({
         followUpsByLead[key].push(f);
       });
 
+      // allLeads is already scoped to the user's lead type — hide visits of other lead types
+      const visibleLeadKeys = new Set(allLeads.flatMap(l => [String(l.id), String(l.leadNo)]));
+      const leadTypeRestricted = leadApi.isLeadTypeRestricted();
+
       const pendingVisitorFollowUpCount = allVisitors.filter(a => {
         if (a.status === 'Cancelled') return false;
+        if (leadTypeRestricted && !visibleLeadKeys.has(String(a.leadId)) && !visibleLeadKeys.has(String(a.leadNo))) return false;
         if (!isAdmin) {
           const isAssigned = a.visitorName === user?.name || a.visitorId === user?.id;
           const isReceiver = userLeads.some(l => String(l.id) === String(a.leadId) || l.leadNo === a.leadNo);
@@ -79,26 +87,13 @@ export const useBadgeCountStore = create((set) => ({
         return !latestFollowUp || latestFollowUp.status === 'Future Plan';
       }).length;
 
-      // Converted customers (Won/Interested, excluding rejected visitor follow-ups)
+      // Customer Master: latest Customer Status is Hot/Warm, excluding lost visitor follow-ups
       const customerCount = userLeads.filter(l => {
         const leadFollowUps = (followUpsByLead[String(l.id)] || followUpsByLead[String(l.leadNo)] || [])
           .sort((x, y) => (x.timestampMs || 0) - (y.timestampMs || 0));
         const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
-        const callStatus = getLeadStatus(allTrackers, l.id, l.leadNo);
-
-        if (latestFollowUp) {
-          const isRejected =
-            latestFollowUp.dealOutcome === 'Rejected (Lost)' ||
-            latestFollowUp.status === 'Not Interested' ||
-            Boolean(latestFollowUp.rejectionReason);
-
-          if (isRejected) return false;
-          if (latestFollowUp.dealOutcome === 'Closed (Won)' || latestFollowUp.status === 'Interested') {
-            return true;
-          }
-          return false;
-        }
-        return callStatus === 'Interested';
+        if (isFollowUpRejected(latestFollowUp)) return false;
+        return CUSTOMER_MASTER_STATUSES.includes(getLatestCustomerStatus(allTrackers, l.id, l.leadNo));
       }).length;
 
       // Distinct leads with call activity in caller report
@@ -109,6 +104,7 @@ export const useBadgeCountStore = create((set) => ({
         pendingTrackerCount,
         pendingVisitorCount,
         pendingVisitorFollowUpCount,
+        pendingSiteVisitMeetingCount: pendingVisitorCount + pendingVisitorFollowUpCount,
         customerCount,
         callerReportCount,
         loaded: true

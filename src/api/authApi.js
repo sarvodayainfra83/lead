@@ -37,6 +37,41 @@ export const authApi = {
     };
   },
 
+  // Load the CURRENT user fresh from the database (role, lead type, page access) — used on every
+  // app start / focus so permission changes made by the admin apply immediately. Returns null if
+  // the user no longer exists.
+  async getUserByUsername(userIdCode) {
+    if (!userIdCode) return null;
+    if (!isSupabaseConfigured) {
+      const u = getLocalUsers().find(x => x.id === userIdCode);
+      if (!u) return null;
+      const { password, ...rest } = u;
+      return { ...rest, accessPages: u.accessPages || {} };
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('*, master_lead_types!lead_type_id(id, lead_type)')
+      .eq('username', userIdCode)
+      .maybeSingle();
+
+    if (error) throw error; // network / server problem — caller keeps the session and retries
+    if (!data) return null;
+
+    return {
+      id: data.username,
+      dbId: data.id,
+      name: data.name,
+      number: data.number,
+      gmail: data.gmail,
+      role: data.role,
+      position: data.position || '',
+      leadTypeId: data.lead_type_id || null,
+      leadType: data.master_lead_types?.lead_type || '',
+      accessPages: data.access_pages || {}
+    };
+  },
+
   // Get all registered users
   async getUsers() {
     if (!isSupabaseConfigured) {
@@ -60,6 +95,16 @@ export const authApi = {
         return getLocalUsers();
       }
 
+      let typeMap = {};
+      try {
+        const { data: ltData } = await supabase.from('master_lead_types').select('id, lead_type');
+        if (ltData) {
+          ltData.forEach(t => { typeMap[t.id] = t.lead_type; });
+        }
+      } catch (e) {
+        console.warn('Could not fetch lead types for user fallback:', e);
+      }
+
       return fallbackData.map((u, index) => ({
         id: u.username,
         dbId: u.id,
@@ -71,7 +116,7 @@ export const authApi = {
         role: u.role,
         position: u.position || '',
         leadTypeId: u.lead_type_id || null,
-        leadType: '',
+        leadType: (u.lead_type_id && typeMap[u.lead_type_id]) || '',
         accessPages: u.access_pages || {}
       }));
     }

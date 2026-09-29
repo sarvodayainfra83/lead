@@ -37,7 +37,7 @@ const initialFormData = {
   remarks: ''
 };
 
-export default function LeadForm({ isOpen, onClose, onSaved }) {
+export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) {
   const user = useAuthStore(state => state.user);
   const [loading, setLoading] = useState(false);
 
@@ -52,6 +52,7 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
   const [investmentBudgetsMaster, setInvestmentBudgetsMaster] = useState([]);
 
   const resolveUserLeadType = (typesList = leadTypesMaster) => {
+    if (defaultLeadType) return defaultLeadType;
     if (user?.leadType) return user.leadType;
     if (user?.leadTypeId && typesList?.length > 0) {
       const found = typesList.find(lt => String(lt.id) === String(user.leadTypeId));
@@ -62,15 +63,15 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
 
   const [formData, setFormData] = useState(() => ({
     ...initialFormData,
-    leadType: user?.leadType || 'Real Estate'
+    leadType: defaultLeadType || user?.leadType || 'Real Estate'
   }));
 
   useEffect(() => {
     if (isOpen) {
-      const initialDefaultType = resolveUserLeadType();
+      const initialDefaultType = defaultLeadType || resolveUserLeadType();
       setFormData(prev => ({
         ...initialFormData,
-        leadType: prev.leadType && prev.leadType !== 'Real Estate' ? prev.leadType : initialDefaultType
+        leadType: defaultLeadType || initialDefaultType
       }));
 
       Promise.all([
@@ -107,7 +108,7 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const selectedLeadTypeObj = leadTypesMaster.find(t => 
+  const selectedLeadTypeObj = leadTypesMaster.find(t =>
     t.leadType?.toLowerCase().trim() === formData.leadType?.toLowerCase().trim()
   );
   const selectedLeadTypeId = selectedLeadTypeObj?.id;
@@ -199,7 +200,7 @@ export default function LeadForm({ isOpen, onClose, onSaved }) {
     setLoading(true);
 
     try {
-      const existingLeads = await leadApi.getLeads();
+      const existingLeads = await leadApi.getAllLeads();
       const leadNo = generateLeadNo(formData.leadType, existingLeads);
       const timestamp = new Date().toISOString();
 

@@ -6,6 +6,54 @@ import {
   deleteLead as deleteLocalLead
 } from '../utils/storageManager';
 import { refreshBadgeCounts } from '../store/badgeCountStore';
+import { useAuthStore } from '../store/authStore';
+import { getUserLeadTypeScope, matchesUserLeadType, matchesUserAssignment, matchesUserReceiver } from '../utils/authUtils';
+
+// Current time as an ISO timestamp in Indian Standard Time, e.g. 2026-09-28T15:42:10+05:30
+export const nowIST = () => {
+  const ist = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  return ist.toISOString().replace(/\.\d{3}Z$/, '+05:30');
+};
+
+// Display any timestamp as DD/MM/YYYY, hh:mm AM/PM in IST
+export const formatIST = (val) => {
+  if (!val) return '';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: true
+  }).format(d).replace(/\bam\b/, 'AM').replace(/\bpm\b/, 'PM');
+};
+
+// Tell the navbar notification bell that remarks changed (sent / opened)
+export const REMARKS_CHANGED_EVENT = 'remarks-changed';
+const notifyRemarksChanged = () => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(REMARKS_CHANGED_EVENT));
+};
+
+// Browser copy of "seen" markers so the blink stops instantly, even before the DB round-trip
+const SEEN_KEY = 'remarkSeen';
+const readLocalSeen = (leadId) => {
+  try {
+    return (JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'))[String(leadId)] || {};
+  } catch {
+    return {};
+  }
+};
+const writeLocalSeen = (leadId, field, value) => {
+  try {
+    const all = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
+    all[String(leadId)] = { ...(all[String(leadId)] || {}), [field]: value };
+    localStorage.setItem(SEEN_KEY, JSON.stringify(all));
+  } catch { /* storage unavailable */ }
+};
+const latestOf = (a, b) => {
+  const ta = a ? new Date(a).getTime() : 0;
+  const tb = b ? new Date(b).getTime() : 0;
+  if (!ta && !tb) return null;
+  return ta >= tb ? a : b;
+};
 
 export const leadApi = {
   // Helper to map DB row -> Frontend Lead model
@@ -290,8 +338,218 @@ export const leadApi = {
     return result;
   },
 
-  // Fetch all leads across all 3 tables with unified structure
+  // Leads visible to the logged-in user: role USER only sees their own lead type
+  // (admins, and users without a lead type, see every lead). Every page reads leads through here.
   async getLeads() {
+    const leads = await this.getAllLeads();
+    const user = useAuthStore.getState().user;
+    if (!getUserLeadTypeScope(user)) return leads;
+    return leads.filter(l => matchesUserLeadType(l, user));
+  },
+
+  // True when the logged-in user only sees one lead type — records (trackers, visits, follow-ups)
+  // whose lead isn't in getLeads() must then be hidden instead of shown with blank lead details.
+  isLeadTypeRestricted() {
+    return Boolean(getUserLeadTypeScope(useAuthStore.getState().user));
+  },
+
+  // Fetch ALL leads across all 3 tables with unified structure, ignoring the user's lead type.
+  // Only for system logic that must see every lead (e.g. generating the next unique Lead No).
+  async getAllLeads() {
+    const leads = await this.fetchLeadRows();
+    if (!isSupabaseConfigured || leads.length === 0) return leads;
+
+    // Admin / user remark thread lives on the leads table (same id as call_trackers.lead_id)
+    let { data: remarkRows, error } = await supabase
+      .from('leads')
+      .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date, admin_remark_seen_at, user_remark_seen_at');
+    if (error) {
+      // Seen-marker columns not added yet — load the remarks without them
+      ({ data: remarkRows, error } = await supabase
+        .from('leads')
+        .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date'));
+    }
+    if (error || !remarkRows) {
+      if (error) console.warn('Could not load lead remarks:', error);
+      return leads;
+    }
+    const remarksById = Object.fromEntries(remarkRows.map(r => [String(r.id), r]));
+    return leads.map(l => {
+      const r = remarksById[String(l.id)];
+      return r ? { ...l, ...this.mapRemarksFromDb(r) } : l;
+    });
+  },
+
+  mapRemarksFromDb(row) {
+    const seen = readLocalSeen(row.id);
+    return {
+      adminRemark: row.admin_remark || '',
+      adminRemarkDate: row.admin_remark_date || null,
+      userRemark: row.user_remark || '',
+      userRemarkDate: row.user_remark_date || null,
+      // When the user last opened the admin's remark / the admin last opened the user's reply
+      adminRemarkSeenAt: latestOf(row.admin_remark_seen_at, seen.adminRemarkSeenAt),
+      userRemarkSeenAt: latestOf(row.user_remark_seen_at, seen.userRemarkSeenAt)
+    };
+  },
+
+  // Mark the other side's latest message as seen (stops the blink). viewerIsAdmin=true means the
+  // admin opened the conversation (marks the user's reply seen), false = the user opened it.
+  async markRemarksSeen(leadId, viewerIsAdmin) {
+    const field = viewerIsAdmin ? 'userRemarkSeenAt' : 'adminRemarkSeenAt';
+    const column = viewerIsAdmin ? 'user_remark_seen_at' : 'admin_remark_seen_at';
+    const seenAt = nowIST();
+    writeLocalSeen(leadId, field, seenAt); // instant + fallback when the column isn't created yet
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.from('leads').update({ [column]: seenAt }).eq('id', leadId);
+      if (error) console.warn('Could not save remark seen time (run the leads seen-columns SQL):', error.message);
+    } else {
+      const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
+      if (existing) updateLocalLead({ ...existing, [field]: seenAt });
+    }
+    notifyRemarksChanged();
+    return { [field]: seenAt };
+  },
+
+  // Navbar notifications: latest incoming remark per lead for the logged-in person.
+  //  - USER: admin remarks on the user's own leads (assigned to them / received by them)
+  //  - ADMIN: user replies on any lead
+  // "unread" = arrived after my own last message and after I last opened the conversation.
+  async getRemarkNotifications(user) {
+    if (!user) return [];
+    const isAdmin = String(user.role || '').toUpperCase() === 'ADMIN';
+    const leads = await this.getLeads();
+    const mine = isAdmin ? leads : leads.filter(l => matchesUserAssignment(l, user) || matchesUserReceiver(l, user));
+    const ms = (v) => (v ? new Date(v).getTime() || 0 : 0);
+
+    return mine
+      .map(l => {
+        const text = isAdmin ? l.userRemark : l.adminRemark;
+        const date = isAdmin ? l.userRemarkDate : l.adminRemarkDate;
+        if (!text || !date) return null;
+        const myLast = ms(isAdmin ? l.adminRemarkDate : l.userRemarkDate);
+        const seen = ms(isAdmin ? l.userRemarkSeenAt : l.adminRemarkSeenAt);
+        return {
+          leadId: l.id,
+          leadNo: l.leadNo,
+          personName: l.personName || l.customerName || 'Lead',
+          leadType: l.leadType || '',
+          callerAssigned: l.callerAssigned || '',
+          from: isAdmin ? (l.callerAssigned || 'User') : 'Admin',
+          text,
+          date,
+          unread: ms(date) > Math.max(myLast, seen)
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => ms(b.date) - ms(a.date))
+      .slice(0, 30);
+  },
+
+  // Admin writes / updates the remark on a lead (stamps admin_remark_date in IST)
+  async saveAdminRemark(leadId, remark) {
+    return this.saveLeadRemark(leadId, { admin_remark: String(remark || '').trim() || null, admin_remark_date: nowIST() });
+  },
+
+  // User replies to the admin remark on a lead (stamps user_remark_date in IST)
+  async saveUserRemark(leadId, remark) {
+    return this.saveLeadRemark(leadId, { user_remark: String(remark || '').trim() || null, user_remark_date: nowIST() });
+  },
+
+  async saveLeadRemark(leadId, payload) {
+    const local = {
+      ...(payload.admin_remark !== undefined ? { adminRemark: payload.admin_remark || '', adminRemarkDate: payload.admin_remark_date } : {}),
+      ...(payload.user_remark !== undefined ? { userRemark: payload.user_remark || '', userRemarkDate: payload.user_remark_date } : {})
+    };
+    if (!isSupabaseConfigured) {
+      const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
+      if (existing) updateLocalLead({ ...existing, ...local });
+      return local;
+    }
+    const { data, error } = await supabase
+      .from('leads')
+      .update({ ...payload, updated_at: nowIST() })
+      .eq('id', leadId)
+      .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date')
+      .single();
+    if (error) {
+      console.error('Error saving lead remark:', error);
+      throw error;
+    }
+    return this.mapRemarksFromDb(data);
+  },
+
+  // ---------------- Remark conversation (lead_remarks table, one row per message) ----------------
+
+  // Whole conversation of a lead, oldest first
+  async getLeadRemarkThread(leadId) {
+    if (!isSupabaseConfigured) {
+      const lead = getLocalLeads().find(l => String(l.id) === String(leadId));
+      return lead?.remarkThread || [];
+    }
+    const { data, error } = await supabase
+      .from('lead_remarks')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('Error loading remark conversation (is the lead_remarks table created?):', error);
+      throw error;
+    }
+    return (data || []).map(r => ({
+      id: r.id,
+      leadId: r.lead_id,
+      role: r.author_role,
+      authorName: r.author_name || '',
+      remark: r.remark,
+      createdAt: r.created_at
+    }));
+  },
+
+  // Add a new message to the conversation (never overwrites earlier ones) and keep the
+  // latest admin / user remark + IST date on the leads row for the list view & blinking.
+  async addLeadRemark(leadId, { role, authorName, remark }) {
+    const text = String(remark || '').trim();
+    const createdAt = nowIST();
+    const entry = { leadId, role, authorName: authorName || '', remark: text, createdAt };
+    const summary = role === 'ADMIN'
+      ? { admin_remark: text, admin_remark_date: createdAt }
+      : { user_remark: text, user_remark_date: createdAt };
+
+    if (!isSupabaseConfigured) {
+      const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
+      if (existing) {
+        const thread = [...(existing.remarkThread || []), { ...entry, id: `local-${Date.now()}` }];
+        const latestLocal = role === 'ADMIN'
+          ? { adminRemark: text, adminRemarkDate: createdAt }
+          : { userRemark: text, userRemarkDate: createdAt };
+        updateLocalLead({ ...existing, remarkThread: thread, ...latestLocal });
+      }
+      return {
+        entry,
+        summary: role === 'ADMIN' ? { adminRemark: text, adminRemarkDate: createdAt } : { userRemark: text, userRemarkDate: createdAt }
+      };
+    }
+
+    const { data, error } = await supabase
+      .from('lead_remarks')
+      .insert({ lead_id: leadId, author_role: role, author_name: authorName || null, remark: text, created_at: createdAt })
+      .select()
+      .single();
+    if (error) {
+      console.error('Error adding remark:', error);
+      throw error;
+    }
+    const latest = await this.saveLeadRemark(leadId, summary);
+    notifyRemarksChanged();
+    return {
+      entry: { ...entry, id: data.id, createdAt: data.created_at || createdAt },
+      summary: latest
+    };
+  },
+
+  // Raw lead rows from the unified view (falls back to the leads table join, then local storage)
+  async fetchLeadRows() {
     if (!isSupabaseConfigured) {
       return getLocalLeads();
     }

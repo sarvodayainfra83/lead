@@ -265,3 +265,83 @@ export const copyProductDetails = async (item, category) => {
     return false;
   }
 };
+
+// ---------------------------------------------------------------------------
+// Share several selected products with one client (Customer Master / Call Tracker)
+// ---------------------------------------------------------------------------
+
+// Map a lead type name ('Real Estate' / 'Insurance' / 'Mutual Fund') to its Products tab key
+export const leadTypeToProductCategory = (leadTypeName) => {
+  const lower = String(leadTypeName || '').trim().toLowerCase();
+  if (lower.includes('real') || lower.includes('estate') || lower.includes('property')) return 'real-estate';
+  if (lower.includes('insur')) return 'insurance';
+  if (lower.includes('mutual') || lower.includes('fund')) return 'mutual-funds';
+  return null;
+};
+
+// Client details handed to the Products page (via router state) when "Share Products" is clicked
+export const buildShareClient = (lead) => ({
+  leadId: lead?.id || lead?.leadId || null,
+  leadNo: lead?.leadNo || '',
+  name: lead?.personName || lead?.customerName || '',
+  phone: lead?.number || lead?.customerNumber || '',
+  email: lead?.email || lead?.customerEmail || '',
+  leadType: lead?.leadType || ''
+});
+
+// WhatsApp needs the country code: 10-digit Indian numbers get 91 prefixed
+const toWhatsAppPhone = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.length === 10 ? `91${digits}` : digits;
+};
+
+export const formatMultiProductShareData = (items, category, clientName = '') => {
+  const greeting = clientName ? `Hello ${clientName},` : 'Hello,';
+  const intro = items.length === 1
+    ? 'Please find the product details below:'
+    : `Please find the details of ${items.length} products below:`;
+
+  const blocks = items.map((item, idx) => {
+    // Reuse the single-product message without its per-product footer
+    const { text } = formatProductShareData(item, category);
+    const body = text.replace(/\n*— Shared from Sarvodaya Infracon —\s*$/, '');
+    return items.length > 1 ? `*${idx + 1}.* ${body}` : body;
+  });
+
+  const firstTitle = items[0]?.title?.trim() || items[0]?.project_name || items[0]?.scheme_name || items[0]?.insurer_name || 'Product Details';
+  return {
+    subject: items.length === 1
+      ? `${firstTitle} - Sarvodaya Infracon`
+      : `${items.length} Products for you - Sarvodaya Infracon`,
+    text: [greeting, '', intro, '', blocks.join('\n\n━━━━━━━━━━━━━━\n\n'), '', '— Shared from Sarvodaya Infracon —'].join('\n')
+  };
+};
+
+// Send the selected products to the client's WhatsApp number (or open the contact picker if no number)
+export const shareProductsOnWhatsApp = (items, category, client = {}) => {
+  if (!items?.length) return;
+  const { text } = formatMultiProductShareData(items, category, client.name);
+  const encodedText = encodeURIComponent(text);
+  const phone = toWhatsAppPhone(client.phone);
+  const base = isMobileDevice() ? 'https://api.whatsapp.com/send' : 'https://web.whatsapp.com/send';
+  const url = phone ? `${base}?phone=${phone}&text=${encodedText}` : `${base}?text=${encodedText}`;
+  window.open(url, '_blank');
+  toast.success(phone ? `Opening WhatsApp chat with ${client.name || phone}...` : 'Opening WhatsApp to select contacts...');
+};
+
+// Email the selected products to the client (Gmail compose on desktop, mail app on mobile)
+export const shareProductsViaEmail = (items, category, client = {}) => {
+  if (!items?.length) return;
+  const { subject, text } = formatMultiProductShareData(items, category, client.name);
+  const to = String(client.email || '').trim();
+  if (isMobileDevice()) {
+    window.location.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`;
+  } else {
+    window.open(
+      `https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`,
+      '_blank'
+    );
+  }
+  toast.success(to ? `Opening email to ${to}...` : 'Opening email to select recipients...');
+};

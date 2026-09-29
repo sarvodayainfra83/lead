@@ -52,7 +52,7 @@ export default function SimpleTextMaster({
         canEdit ? (
           <button
             onClick={openAdd}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 px-4 h-[32px] lg:h-[38px] text-sm font-semibold shadow-sm transition"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1.5 px-3 h-[34px] text-xs sm:text-sm font-semibold whitespace-nowrap shadow-sm transition"
           >
             <Plus size={16} /> Add {entityLabel}
           </button>
@@ -141,7 +141,7 @@ export default function SimpleTextMaster({
   };
 
   return (
-    <div className="p-2 sm:p-4 md:p-6 space-y-3 flex flex-col h-full min-h-0">
+    <div className="p-2 sm:p-3 space-y-2 flex flex-col h-full min-h-0">
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
         <DataTable
           headers={tableHeaders}
@@ -176,7 +176,7 @@ export default function SimpleTextMaster({
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder={placeholder}
-              className={`w-full border border-gray-300 rounded ${Icon ? 'pl-8' : 'pl-3'} pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]`}
+              className={`w-full border border-gray-300 rounded ${Icon ? 'pl-8' : 'pl-3'} pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[34px]`}
             />
           </div>
         </div>

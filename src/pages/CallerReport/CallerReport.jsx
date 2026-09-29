@@ -7,7 +7,7 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import CallerReportDetailModal from './CallerReportDetailModal';
 import { LEAD_TYPES } from '../Lead/leadConstants';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin } from '../../utils/authUtils';
+import { isUserAdmin, getUserLeadTypeScope } from '../../utils/authUtils';
 import { getLeadTypeTextClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
 const LEAD_TYPE_OPTIONS = [
@@ -56,6 +56,12 @@ export default function CallerReport() {
   const isAdmin = isUserAdmin(user);
 
   const [activeLeadType, setActiveLeadType] = useState('All');
+
+  // Role USER only gets their own lead type in the Lead Type filter
+  const userLeadCategory = getUserLeadTypeScope(user)?.category;
+  const leadTypeOptions = userLeadCategory
+    ? LEAD_TYPE_OPTIONS.filter(o => o.value === 'All' || o.value === userLeadCategory)
+    : LEAD_TYPE_OPTIONS;
   const [activeCaller, setActiveCaller] = useState(isAdmin ? 'Complete' : (user?.name || user?.id || 'Complete'));
   const [activeMonth, setActiveMonth] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -352,7 +358,7 @@ export default function CallerReport() {
         {/* Mobile Collapsible Filters */}
         <div className={`${showMobileFilters ? 'grid' : 'hidden'} xl:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full`}>
           <SearchableDropdown
-            options={LEAD_TYPE_OPTIONS}
+            options={leadTypeOptions}
             value={activeLeadType}
             onChange={setActiveLeadType}
             placeholder="All Lead Type"
@@ -391,7 +397,7 @@ export default function CallerReport() {
           {/* Lead Type Dropdown */}
           <div className="w-48 flex-shrink-0">
             <SearchableDropdown
-              options={LEAD_TYPE_OPTIONS}
+              options={leadTypeOptions}
               value={activeLeadType}
               onChange={setActiveLeadType}
               placeholder="All Lead Type"

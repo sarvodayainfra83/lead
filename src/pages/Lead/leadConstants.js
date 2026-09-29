@@ -43,4 +43,80 @@ export const generateLeadNo = (leadType, existingLeads) => {
 // table (see masterApi.getRealEstateRequirements / the Real Estate Requirement Master page) —
 // editable at runtime instead of hardcoded here.
 
+/**
+ * Formats a lead's timestamp into DD/MM/YYYY (date only, no time).
+ * Correctly handles DB values like "2026-08-09 16:37:10+00" (where 08 = Day, 09 = Month) -> "08/09/2026"
+ * As well as standard formats like "DD/MM/YYYY HH:MM:SS" -> "DD/MM/YYYY"
+ */
+export const formatLeadDate = (val) => {
+  if (!val) return '-';
+  const str = String(val).trim();
+
+  // If already in DD/MM/YYYY or DD/MM/YYYY HH:mm:ss format
+  if (str.includes('/')) {
+    const datePart = str.split(' ')[0];
+    const parts = datePart.split('/');
+    if (parts.length === 3) {
+      const [d, m, y] = parts;
+      const fullYear = y.length === 2 ? `20${y}` : y;
+      return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${fullYear}`;
+    }
+  }
+
+  // If in DB format e.g. "2026-09-14 16:37:10+00" or "2026-09-14T..."
+  if (str.includes('-')) {
+    const datePart = str.split('T')[0].split(' ')[0];
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        const year = parts[0];
+        const month = String(parts[1]).padStart(2, '0');
+        const day = String(parts[2]).padStart(2, '0');
+        return `${day}/${month}/${year}`;
+      } else {
+        const day = String(parts[0]).padStart(2, '0');
+        const month = String(parts[1]).padStart(2, '0');
+        const year = parts[2];
+        return `${day}/${month}/${year}`;
+      }
+    }
+  }
+
+  return str.split(' ')[0] || '-';
+};
+
+/**
+ * Returns a Date object set to midnight for the lead based on its DD/MM/YYYY date.
+ */
+export const parseLeadDate = (item) => {
+  const val = item?.timestamp || item?.date || item?.created_at;
+  if (!val) return null;
+  const formatted = formatLeadDate(val);
+  if (!formatted || formatted === '-') return null;
+  const parts = formatted.split('/').map(Number);
+  if (parts.length === 3) {
+    const [d, m, y] = parts;
+    if (d && m && y) return new Date(y, m - 1, d);
+  }
+  return null;
+};
+
+export const DATE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Dates' },
+  { value: 'today', label: "Today's Lead" },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'custom', label: 'Custom Date' },
+];
+
+export const getTodayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+
 

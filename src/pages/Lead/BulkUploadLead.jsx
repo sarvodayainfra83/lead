@@ -87,7 +87,7 @@ const parseDobForDb = (value) => {
   return '';
 };
 
-export default function BulkUploadLead({ isOpen, onClose, onImported }) {
+export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLeadType }) {
   const user = useAuthStore(state => state.user);
 
   const [leadTypesMaster, setLeadTypesMaster] = useState([]);
@@ -98,6 +98,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
   const [insuranceProductsMaster, setInsuranceProductsMaster] = useState([]);
 
   const resolveUserLeadType = (typesList = leadTypesMaster) => {
+    if (defaultLeadType) return defaultLeadType;
     if (user?.leadType) return user.leadType;
     if (user?.leadTypeId && typesList?.length > 0) {
       const found = typesList.find(lt => String(lt.id) === String(user.leadTypeId));
@@ -106,7 +107,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
     return '';
   };
 
-  const [leadType, setLeadType] = useState(() => user?.leadType || '');
+  const [leadType, setLeadType] = useState(() => defaultLeadType || user?.leadType || '');
   const [leadReceiver, setLeadReceiver] = useState('');
   const [leadSource, setLeadSource] = useState('');
   const [file, setFile] = useState(null);
@@ -115,7 +116,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
 
   useEffect(() => {
     if (isOpen) {
-      const defaultType = resolveUserLeadType();
+      const defaultType = defaultLeadType || resolveUserLeadType();
       if (defaultType) setLeadType(defaultType);
 
       Promise.all([
@@ -201,7 +202,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported }) {
         let skipped = 0;
         let unmatchedProductType = 0;
         const newLeadsToInsert = [];
-        const existingLeads = await leadApi.getLeads();
+        const existingLeads = await leadApi.getAllLeads();
         let runningLeads = [...existingLeads];
 
         rows.forEach((row) => {

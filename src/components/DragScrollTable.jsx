@@ -7,6 +7,8 @@ const DragScrollTable = ({ children, className = "" }) => {
   const containerRef = useRef(null);
 
   const handleMouseDown = (e) => {
+    // If clicking on an input, button, select, or interactive element, do not drag
+    if (e.target && e.target.closest('input, button, select, textarea, label, a')) return;
     setIsDragging(true);
     // pageX is the mouse position relative to the left edge of the document
     // offsetLeft is the container position relative to its offset parent

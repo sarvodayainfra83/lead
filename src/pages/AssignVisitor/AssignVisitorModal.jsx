@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { MapPin, MessageSquare, UserCheck, Calendar } from 'lucide-react';
-import { visitorApi } from '../../api/visitorApi';
+import { siteVisitApi } from '../../api/siteVisitApi';
 import { masterApi } from '../../api/masterApi';
 import { settingApi } from '../../api/settingApi';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -103,7 +103,7 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
         status: 'Assigned'
       };
 
-      await visitorApi.saveAssignedVisitor(entry);
+      await siteVisitApi.saveAssignedVisitor(entry);
       toast.success(`Visitor assigned successfully for Lead ${lead.leadNo}`);
       setLoading(false);
       onSaved?.();

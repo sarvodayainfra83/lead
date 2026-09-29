@@ -1,19 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { MessageSquare } from 'lucide-react';
-import { visitorFollowUpApi } from '../../api/visitorFollowUpApi';
+import { siteVisitFollowUpApi } from '../../api/siteVisitFollowUpApi';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import {
   VISITOR_STATUS_OPTIONS,
-  INTEREST_LEVEL_OPTIONS
+  CUSTOMER_STATUS_OPTIONS
 } from './visitorFollowUpConstants';
 import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
+
+const resolveInitialCustomerStatus = (lead) => {
+  const raw = lead?.customerStatus || lead?.customer_status || lead?.interestLevel || '';
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'hot' || s === 'high') return 'Hot';
+  if (s === 'warm' || s === 'medium') return 'Warm';
+  if (s === 'cold' || s === 'low') return 'Cold';
+  return 'Warm';
+};
 
 export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved }) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     status: '',
-    interestLevel: '',
+    customerStatus: 'Warm',
     whatHappened: '',
     nextVisitDate: ''
   });
@@ -22,7 +31,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     if (lead && isOpen) {
       setFormData({
         status: '',
-        interestLevel: lead.interestLevel || '',
+        customerStatus: resolveInitialCustomerStatus(lead),
         whatHappened: '',
         nextVisitDate: ''
       });
@@ -36,7 +45,6 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
   };
 
   const statusOptions = VISITOR_STATUS_OPTIONS.map(s => ({ value: s, label: s }));
-  const interestOptions = INTEREST_LEVEL_OPTIONS.map(i => ({ value: i, label: i }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -68,7 +76,9 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         visitorId: lead.visitorId || null,
         visitDate: lead.visitDate || null,
         status: formData.status,
-        interestLevel: formData.interestLevel || null,
+        customerStatus: formData.customerStatus || 'Warm',
+        customer_status: formData.customerStatus || 'Warm',
+        interestLevel: formData.customerStatus || 'Warm',
         whatHappened: formData.whatHappened.trim(),
         nextVisitDate: (formData.status === 'Future Plan' || formData.status === 'Did Not Show') ? formData.nextVisitDate : null,
         dealOutcome: formData.status === 'Not Interested' ? 'Rejected (Lost)' : null,
@@ -81,7 +91,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         timestampMs: Date.now()
       };
 
-      await visitorFollowUpApi.saveVisitorFollowUp(entry);
+      await siteVisitFollowUpApi.saveVisitorFollowUp(entry);
       toast.success(`Follow-up saved successfully for Lead ${lead.leadNo}`);
       setLoading(false);
       onSaved?.();
@@ -177,13 +187,13 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
 
               <div className="space-y-1">
                 <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
-                  INTEREST LEVEL
+                  CUSTOMER STATUS (HOT / WARM / COLD)
                 </label>
                 <SearchableDropdown
-                  options={interestOptions}
-                  value={formData.interestLevel}
-                  onChange={(val) => handleChange('interestLevel', val)}
-                  placeholder="Select interest level"
+                  options={CUSTOMER_STATUS_OPTIONS}
+                  value={formData.customerStatus}
+                  onChange={(val) => handleChange('customerStatus', val)}
+                  placeholder="Select Hot / Warm / Cold"
                   height="h-[38px]"
                 />
               </div>

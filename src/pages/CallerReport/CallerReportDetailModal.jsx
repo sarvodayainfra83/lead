@@ -1,5 +1,5 @@
 import React from 'react';
-import { X } from 'lucide-react';
+import { X, Phone } from 'lucide-react';
 import { getLeadTypeTextClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
 const STATUS_STYLES = {
@@ -44,7 +44,7 @@ const leadFields = [
   { label: 'Latest Status', key: 'latestStatus' }
 ];
 
-export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
+export default function CallerReportDetailModal({ isOpen, onClose, lead, onCallNow }) {
   if (!isOpen || !lead) return null;
 
   const trackers = lead.trackers || [];
@@ -194,10 +194,22 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead }) {
         </div>
 
         {/* Footer */}
-        <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-t border-gray-100 bg-white flex-shrink-0">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-t border-gray-100 bg-white flex-shrink-0 flex items-center gap-2">
+          {onCallNow && (
+            <button
+              onClick={() => {
+                onClose();
+                onCallNow(lead);
+              }}
+              className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-sm flex items-center justify-center gap-1.5 active:scale-95"
+            >
+              <Phone size={13} />
+              Call Now
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="w-full py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition font-bold uppercase tracking-wider active:scale-95"
+            className={`${onCallNow ? 'px-6' : 'w-full'} py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition font-bold uppercase tracking-wider active:scale-95`}
           >
             Close
           </button>

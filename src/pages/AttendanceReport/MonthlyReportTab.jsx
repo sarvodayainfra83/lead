@@ -295,7 +295,7 @@ export default function MonthlyReportTab({ tabBar }) {
           {tabBar && <div className="flex-shrink-0">{tabBar}</div>}
 
           {/* Month Picker Box */}
-          <div className="flex items-center bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-xs sm:text-sm font-semibold text-gray-700 shadow-2xs h-[38px] flex-shrink-0">
+          <div className="flex items-center bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-xs sm:text-sm font-semibold text-gray-700 shadow-2xs h-[34px] flex-shrink-0">
             <button
               onClick={handlePrevMonth}
               className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded transition"
@@ -324,14 +324,14 @@ export default function MonthlyReportTab({ tabBar }) {
               placeholder="Search employee, designation..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[38px] shadow-2xs transition-colors"
+              className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[34px] shadow-2xs transition-colors"
             />
           </div>
 
           {searchQuery && (
             <button
               onClick={() => { setSearchQuery(''); setCurrentPage(1); }}
-              className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[38px] h-[38px] hover:bg-gray-100 transition-colors shadow-2xs flex-shrink-0"
+              className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[34px] h-[34px] hover:bg-gray-100 transition-colors shadow-2xs flex-shrink-0"
               title="Clear Search"
             >
               <RotateCcw size={15} />
@@ -340,7 +340,7 @@ export default function MonthlyReportTab({ tabBar }) {
         </div>
 
         {/* Working days indicator */}
-        <div className="text-xs text-gray-500 font-medium whitespace-nowrap self-end lg:self-center bg-gray-50/80 border border-gray-200/80 px-3 py-1.5 rounded-lg h-[38px] flex items-center shadow-2xs">
+        <div className="text-xs text-gray-500 font-medium whitespace-nowrap self-end lg:self-center bg-gray-50/80 border border-gray-200/80 px-3 py-1.5 rounded-lg h-[34px] flex items-center shadow-2xs">
           <span><strong className="text-gray-900 font-bold">{workingDaysCount}</strong> working days this month</span>
         </div>
       </div>
@@ -348,6 +348,7 @@ export default function MonthlyReportTab({ tabBar }) {
       {/* Main Table */}
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
         <DataTable
+          loading={loading}
           headers={tableHeaders}
           data={paginatedRows}
           renderRow={renderRow}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import {
   User, Phone, Mail,
@@ -10,7 +10,7 @@ import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo } from '../Lead/leadConstants';
-import { ENQUIRY_STATUSES, DATE_STATUSES } from './callTrackerConstants';
+import { ENQUIRY_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES } from './callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin } from '../../utils/authUtils';
 
@@ -36,11 +36,12 @@ const initialFormData = {
   insuranceSubType: '',
   anyDesease: '',
   status: '',
+  customerStatus: '',
   customerSaid: '',
   nextCallDate: ''
 };
 
-export default function Direct({ isOpen, onClose, onSaved }) {
+export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
   const [loading, setLoading] = useState(false);
@@ -57,6 +58,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
   const [investmentBudgetsMaster, setInvestmentBudgetsMaster] = useState([]);
 
   const resolveUserLeadType = (typesList = leadTypesMaster) => {
+    if (defaultLeadType) return defaultLeadType;
     if (user?.leadType) return user.leadType;
     if (user?.leadTypeId && typesList?.length > 0) {
       const found = typesList.find(lt => String(lt.id) === String(user.leadTypeId));
@@ -65,20 +67,21 @@ export default function Direct({ isOpen, onClose, onSaved }) {
     return 'Real Estate';
   };
 
-  const [formData, setFormData] = useState(() => ({ 
+  const [formData, setFormData] = useState(() => ({
     ...initialFormData,
-    leadType: user?.leadType || 'Real Estate',
+    leadType: defaultLeadType || user?.leadType || 'Real Estate',
     callerAssigned: user?.name || ''
   }));
 
   useEffect(() => {
     if (isOpen) {
-      const initialDefaultType = resolveUserLeadType();
+      const targetType = defaultLeadType || resolveUserLeadType();
       setFormData(prev => ({
-        ...prev,
-        callerAssigned: user?.name || user?.id || '',
-        leadType: prev.leadType && prev.leadType !== 'Real Estate' ? prev.leadType : initialDefaultType
+        ...initialFormData,
+        leadType: targetType,
+        callerAssigned: user?.name || user?.id || ''
       }));
+
       Promise.all([
         masterApi.getLeadTypes(),
         masterApi.getLeadSources(),
@@ -102,38 +105,98 @@ export default function Direct({ isOpen, onClose, onSaved }) {
         setInsuranceSubProductsMaster(insSubProducts || []);
         setInvestmentBudgetsMaster(budgets || []);
 
-        const resolvedType = resolveUserLeadType(types || []);
-        if (resolvedType) {
-          setFormData(prev => ({
-            ...prev,
-            leadType: resolvedType
-          }));
-        }
+        const finalType = defaultLeadType || resolveUserLeadType(types || []);
+        setFormData(prev => ({
+          ...prev,
+          leadType: finalType
+        }));
       });
     }
-  }, [isOpen, isAdmin, user]);
+  }, [isOpen, defaultLeadType, user]);
 
-  const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
+  const leadTypeOptions = useMemo(() => {
+    if (defaultLeadType) {
+      return [{ value: defaultLeadType, label: defaultLeadType }];
+    }
+    return leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
+  }, [defaultLeadType, leadTypesMaster]);
+
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
-  const receiverOptions = Array.from(
-    new Set(
-      leadReceiversMaster
-        .filter(r => !formData.leadType || r.leadType === formData.leadType)
-        .map(r => r.personName)
-        .filter(Boolean)
-    )
-  ).map(name => ({ value: name, label: name }));
 
-  const callerOptions = isAdmin
-    ? Array.from(
-        new Set(
-          callerNamesMaster
-            .filter(c => !formData.leadType || c.leadType === formData.leadType)
-            .map(c => c.personName)
-            .filter(Boolean)
-        )
-      ).map(name => ({ value: name, label: name }))
-    : [{ value: user?.name || user?.id || 'Assigned', label: user?.name || user?.id || 'Assigned' }];
+  const selectedLeadTypeObj = useMemo(() => {
+    return leadTypesMaster.find(t =>
+      t.leadType?.toLowerCase().trim() === formData.leadType?.toLowerCase().trim()
+    );
+  }, [leadTypesMaster, formData.leadType]);
+
+  const selectedLeadTypeId = selectedLeadTypeObj?.id;
+  const currentLeadTypeStr = (formData.leadType || '').toLowerCase().trim();
+
+  const receiverOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        leadReceiversMaster
+          .filter(r => {
+            if (!currentLeadTypeStr) return true;
+            const rType = String(r.leadType || '').toLowerCase().trim();
+            const rTypeId = String(r.leadTypeId || '').trim();
+            if (selectedLeadTypeId && rTypeId && String(selectedLeadTypeId) === rTypeId) return true;
+            if (rType && (rType === currentLeadTypeStr || currentLeadTypeStr.includes(rType) || rType.includes(currentLeadTypeStr))) return true;
+            return false;
+          })
+          .map(r => r.personName)
+          .filter(Boolean)
+      )
+    ).map(name => ({ value: name, label: name }));
+  }, [leadReceiversMaster, currentLeadTypeStr, selectedLeadTypeId]);
+
+  const callerOptions = useMemo(() => {
+    // Filter callers matching the selected lead type
+    const matching = (callerNamesMaster || []).filter(c => {
+      if (!currentLeadTypeStr) return true;
+      const cLeadType = String(c.leadType || '').toLowerCase().trim();
+      const cLeadTypeId = String(c.leadTypeId || c.lead_type_id || '').trim();
+
+      // Check ID match
+      if (selectedLeadTypeId && cLeadTypeId && String(selectedLeadTypeId) === cLeadTypeId) {
+        return true;
+      }
+      // Check Name match
+      if (cLeadType && (cLeadType === currentLeadTypeStr || currentLeadTypeStr.includes(cLeadType) || cLeadType.includes(currentLeadTypeStr))) {
+        return true;
+      }
+      return false;
+    });
+
+    const pool = matching.length > 0 ? matching : (callerNamesMaster || []);
+    const opts = Array.from(new Set(pool.map(c => c.personName || c.name).filter(Boolean)))
+      .map(name => ({ value: name, label: name }));
+
+    // Prepend logged in user if not in list and matches lead type or admin
+    if (user?.name && !opts.some(o => o.value === user.name)) {
+      const userType = String(user.leadType || '').toLowerCase().trim();
+      const userMatches = !userType || userType.includes(currentLeadTypeStr) || currentLeadTypeStr.includes(userType) || isAdmin;
+      if (userMatches) {
+        opts.unshift({ value: user.name, label: `${user.name} (You)` });
+      }
+    }
+
+    return opts;
+  }, [callerNamesMaster, formData.leadType, selectedLeadTypeId, currentLeadTypeStr, user, isAdmin]);
+
+  // Keep callerAssigned valid when lead type or callerOptions change
+  useEffect(() => {
+    if (callerOptions.length > 0) {
+      const isValid = callerOptions.some(o => o.value === formData.callerAssigned);
+      if (!isValid) {
+        const userOpt = callerOptions.find(o => o.value === user?.name || o.value === `${user?.name} (You)`);
+        setFormData(prev => ({
+          ...prev,
+          callerAssigned: userOpt ? user.name : callerOptions[0].value
+        }));
+      }
+    }
+  }, [callerOptions, user]);
 
   const isRealEstate = formData.leadType === 'Real Estate';
   const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');
@@ -147,6 +210,16 @@ export default function Direct({ isOpen, onClose, onSaved }) {
   const insuranceSubProductOptions = insuranceSubProductsMaster
     .filter(s => s.productType === formData.insuranceType)
     .map(s => ({ value: s.subProductType, label: s.subProductType }));
+
+  useEffect(() => {
+    if (isInsurance && insuranceProductOptions.length > 0) {
+      const exists = insuranceProductOptions.some(o => o.value === formData.insuranceType);
+      if (!exists) {
+        setFormData(prev => ({ ...prev, insuranceType: insuranceProductOptions[0].value }));
+      }
+    }
+  }, [isInsurance, insuranceProductOptions]);
+
   const investmentBudgetOptions = investmentBudgetsMaster.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
 
   const handleChange = (field, value) => {
@@ -191,7 +264,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
   };
 
   const handleClose = () => {
-    setFormData({ ...initialFormData, leadType: resolveUserLeadType(), callerAssigned: user?.name || '' });
+    setFormData({ ...initialFormData, leadType: defaultLeadType || resolveUserLeadType(), callerAssigned: user?.name || '' });
     onClose();
   };
 
@@ -206,13 +279,14 @@ export default function Direct({ isOpen, onClose, onSaved }) {
     if (!formData.number.trim()) { toast.error('Customer Number is required'); return; }
     if (formData.number.length !== 10) { toast.error('Number must be exactly 10 digits'); return; }
     if (!formData.callerAssigned) { toast.error('Caller Assigned to is required'); return; }
-    
+
     if (!formData.status) { toast.error('Status is required'); return; }
+    if (!formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!formData.customerSaid.trim()) { toast.error('What did Customer Said is required'); return; }
 
     setLoading(true);
 
-    const existingLeads = await leadApi.getLeads();
+    const existingLeads = await leadApi.getAllLeads();
     const leadNo = generateLeadNo(formData.leadType, existingLeads);
     const now = new Date();
     const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
@@ -250,6 +324,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       leadId: createdLead.id,
       leadNo: createdLead.leadNo,
       status: formData.status,
+      customerStatus: formData.customerStatus,
       customerSaid: formData.customerSaid,
       nextDate: DATE_STATUSES.includes(formData.status) ? formData.nextCallDate : '',
       timestamp,
@@ -266,7 +341,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
       toast.success(`Lead ${leadNo} added (${formData.status}) — it's in Pending.`);
     }
 
-    setFormData({ ...initialFormData, leadType: resolveUserLeadType(), callerAssigned: user?.name || '' });
+    setFormData({ ...initialFormData, leadType: defaultLeadType || resolveUserLeadType(), callerAssigned: user?.name || '' });
     setLoading(false);
     onSaved?.();
     onClose();
@@ -276,7 +351,7 @@ export default function Direct({ isOpen, onClose, onSaved }) {
     <ModalForm
       isOpen={isOpen}
       onClose={handleClose}
-      title="Add Direct Lead"
+      title={defaultLeadType ? `Add Direct Lead (${defaultLeadType})` : "Add Direct Lead"}
       onSubmit={handleSubmit}
       submitText={loading ? 'Saving...' : 'Save'}
       loading={loading}
@@ -443,6 +518,17 @@ export default function Direct({ isOpen, onClose, onSaved }) {
           </div>
         </div>
 
+        {/* Customer Status (Hot / Warm / Cold) */}
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Status *</label>
+          <SearchableDropdown
+            options={CUSTOMER_STATUSES.map(v => ({ value: v, label: v }))}
+            value={formData.customerStatus}
+            onChange={(val) => handleChange('customerStatus', val)}
+            placeholder="Select Hot / Warm / Cold"
+          />
+        </div>
+
         {/* Customer Email */}
         <div className="space-y-1 col-span-2 sm:col-span-1">
           <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Email</label>
@@ -554,6 +640,8 @@ export default function Direct({ isOpen, onClose, onSaved }) {
             placeholder="Select status"
           />
         </div>
+
+
 
         {formData.status && (
           <>

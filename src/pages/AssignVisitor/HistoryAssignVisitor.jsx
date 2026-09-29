@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Search, Filter, RotateCcw } from 'lucide-react';
-import { visitorApi } from '../../api/visitorApi';
+import { siteVisitApi } from '../../api/siteVisitApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -76,7 +76,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
     setLoading(true);
     try {
       const [historyData, types] = await Promise.all([
-        visitorApi.getHistoryVisitorsWithLeads(),
+        siteVisitApi.getHistoryVisitorsWithLeads(),
         masterApi.getLeadTypes()
       ]);
 
@@ -303,9 +303,9 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
   );
 
   return (
-    <div className="p-0 sm:p-2 md:p-6 space-y-2 md:space-y-6 flex flex-col h-full min-h-0">
+    <div className="space-y-2 flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 w-full px-2 sm:px-0">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 w-full flex-shrink-0">
         {tabBar && <div className="w-full lg:w-auto lg:flex-shrink-0">{tabBar}</div>}
 
         {/* Mobile Top Bar */}
@@ -317,18 +317,18 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
               placeholder="Search history..."
               value={filters.searchQuery}
               onChange={(e) => { setFilters({ ...filters, searchQuery: e.target.value }); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2 py-1.5 focus:outline-none focus:border-sky-500 text-xs h-[32px]"
+              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2 py-1.5 focus:outline-none focus:border-sky-500 text-xs h-[34px]"
             />
           </div>
           <button
             onClick={() => setShowMobileFilters(!showMobileFilters)}
-            className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+            className={`flex items-center justify-center rounded-lg shadow-sm h-[34px] w-[34px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
           >
             <Filter size={14} />
           </button>
           <button
             onClick={handleClearFilters}
-            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg h-[32px] w-[32px] flex-shrink-0 shadow-sm active:scale-95"
+            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg h-[34px] w-[34px] flex-shrink-0 shadow-sm active:scale-95"
             title="Clear Filters"
           >
             <RotateCcw size={14} className={loading ? 'animate-spin' : ''} />
@@ -349,7 +349,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
               setCurrentPage(1);
             }}
             placeholder="All Dates"
-            height="h-[32px]"
+            height="h-[34px]"
           />
           {filters.dateFilter === 'custom' && (
             <div className="col-span-1 sm:col-span-3">
@@ -357,7 +357,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
                 type="date"
                 value={filters.customDate || ''}
                 onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
-                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 text-xs h-[32px] text-gray-700 shadow-sm"
+                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 text-xs h-[34px] text-gray-700 shadow-sm"
                 title="Select custom date"
               />
             </div>
@@ -367,14 +367,14 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
             value={filters.leadType}
             onChange={(val) => { setFilters({ ...filters, leadType: val }); setCurrentPage(1); }}
             placeholder="All Lead Type"
-            height="h-[32px]"
+            height="h-[34px]"
           />
           <SearchableDropdown
             options={visitorsList.map(v => ({ value: v, label: v }))}
             value={filters.visitorName}
             onChange={(val) => { setFilters({ ...filters, visitorName: val }); setCurrentPage(1); }}
             placeholder="All Visitors"
-            height="h-[32px]"
+            height="h-[34px]"
           />
         </div>
 
@@ -387,7 +387,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
               placeholder="Search history..."
               value={filters.searchQuery}
               onChange={(e) => { setFilters({ ...filters, searchQuery: e.target.value }); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded pl-8 pr-2 py-1.5 focus:outline-none focus:border-sky-500 text-sm h-[38px]"
+              className="w-full bg-white border border-gray-300 rounded pl-8 pr-2 py-1.5 focus:outline-none focus:border-sky-500 text-sm h-[34px]"
             />
           </div>
           <div className="flex-1 min-w-0">
@@ -403,7 +403,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
                 setCurrentPage(1);
               }}
               placeholder="All Dates"
-              height="h-[38px]"
+              height="h-[34px]"
             />
           </div>
           {filters.dateFilter === 'custom' && (
@@ -412,7 +412,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
                 type="date"
                 value={filters.customDate || ''}
                 onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
-                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm h-[38px] text-gray-700 shadow-sm font-medium"
+                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm h-[34px] text-gray-700 shadow-sm font-medium"
                 title="Select custom date"
               />
             </div>
@@ -423,7 +423,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
               value={filters.leadType}
               onChange={(val) => { setFilters({ ...filters, leadType: val }); setCurrentPage(1); }}
               placeholder="All Lead Type"
-              height="h-[38px]"
+              height="h-[34px]"
             />
           </div>
           <div className="flex-1 min-w-0">
@@ -432,12 +432,12 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
               value={filters.visitorName}
               onChange={(val) => { setFilters({ ...filters, visitorName: val }); setCurrentPage(1); }}
               placeholder="All Visitors"
-              height="h-[38px]"
+              height="h-[34px]"
             />
           </div>
           <button
             onClick={handleClearFilters}
-            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded w-[38px] h-[38px] hover:bg-gray-100 transition-colors shadow-sm flex-shrink-0"
+            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded w-[34px] h-[34px] hover:bg-gray-100 transition-colors shadow-sm flex-shrink-0"
             title="Clear Filters"
           >
             <RotateCcw size={16} className={loading ? 'animate-spin' : ''} />
@@ -448,6 +448,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
       {/* Main Content */}
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
         <DataTable
+          loading={loading}
           headers={HISTORY_TABLE_HEADERS}
           data={paginatedLeads}
           renderRow={renderRow}

@@ -57,11 +57,13 @@ export const DEFAULT_USER_ACCESS = {
   dashboard: 'view',
   lead: 'edit',
   callTracker: 'edit',
+  siteVisitMeeting: 'edit',
   assignVisitor: 'edit',
   visitorFollowUp: 'edit',
   customerMaster: 'view',
   products: 'edit',
   callerReport: 'none',
+  misReport: 'view',
   attendance: 'edit',
   attendanceReport: 'view',
   master: 'none',
@@ -255,13 +257,13 @@ export const initializeStorage = () => {
 
     if (updated.role !== 'ADMIN') {
       if (!updated.accessPages || Array.isArray(updated.accessPages)) {
-        updated.accessPages = { ...DEFAULT_USER_ACCESS };
+        updated.accessPages = Object.fromEntries(Object.keys(DEFAULT_USER_ACCESS).map(k => [k, 'none']));
         usersChanged = true;
       } else {
         const missingKeys = Object.keys(DEFAULT_USER_ACCESS).filter(k => updated.accessPages[k] === undefined);
         if (missingKeys.length > 0) {
           updated.accessPages = { ...updated.accessPages };
-          missingKeys.forEach(k => { updated.accessPages[k] = DEFAULT_USER_ACCESS[k] || 'none'; });
+          missingKeys.forEach(k => { updated.accessPages[k] = 'none'; });
           usersChanged = true;
         }
       }
@@ -271,15 +273,6 @@ export const initializeStorage = () => {
 
   if (usersChanged) {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(migratedUsers));
-    // Keep the active session's cached profile (used for the header/sidebar) in sync too
-    const activeUserRaw = localStorage.getItem('user');
-    if (activeUserRaw) {
-      try {
-        const activeUser = JSON.parse(activeUserRaw);
-        const refreshed = migratedUsers.find(u => u.id === activeUser.id);
-        if (refreshed) localStorage.setItem('user', JSON.stringify(refreshed));
-      } catch (e) { /* ignore malformed cached session */ }
-    }
   }
 
   // --- DATA MIGRATION: Leads previously stored the prospect's name as personaName; renamed to personName ---

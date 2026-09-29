@@ -170,7 +170,25 @@ export const masterApi = {
       .order('name', { ascending: true });
 
     if (error) {
-      console.warn('Error fetching team members from users table:', error.message);
+      console.warn('Error fetching team members with relation, trying fallback:', error.message);
+      const { data: fallbackData } = await supabase.from('users').select('*').order('name', { ascending: true });
+      if (fallbackData) {
+        let typeMap = {};
+        try {
+          const { data: ltData } = await supabase.from('master_lead_types').select('id, lead_type');
+          if (ltData) ltData.forEach(t => { typeMap[t.id] = t.lead_type; });
+        } catch (e) {}
+        return fallbackData.map((d, idx) => ({
+          id: d.id,
+          userId: d.username,
+          serialNo: idx + 1,
+          leadTypeId: d.lead_type_id,
+          leadType: (d.lead_type_id && typeMap[d.lead_type_id]) || '',
+          personName: d.name,
+          role: d.role,
+          position: d.position
+        }));
+      }
       return getLocalReceivers();
     }
     return data.map((d, idx) => ({
@@ -222,7 +240,29 @@ export const masterApi = {
       .order('name', { ascending: true });
 
     if (error) {
-      console.warn('Error fetching caller names from users table:', error.message);
+      console.warn('Error fetching caller names with relation, trying fallback:', error.message);
+      const { data: fallbackUsers } = await supabase
+        .from('users')
+        .select('*')
+        .ilike('position', '%Caller%')
+        .order('name', { ascending: true });
+
+      if (fallbackUsers && fallbackUsers.length > 0) {
+        let typeMap = {};
+        try {
+          const { data: ltData } = await supabase.from('master_lead_types').select('id, lead_type');
+          if (ltData) ltData.forEach(t => { typeMap[t.id] = t.lead_type; });
+        } catch (e) {}
+
+        return fallbackUsers.map((d, idx) => ({
+          id: d.id,
+          userId: d.username,
+          serialNo: idx + 1,
+          leadTypeId: d.lead_type_id,
+          leadType: (d.lead_type_id && typeMap[d.lead_type_id]) || '',
+          personName: d.name
+        }));
+      }
       return getLocalCallers();
     }
     return data.map((d, idx) => ({

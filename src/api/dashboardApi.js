@@ -1,9 +1,14 @@
 import { leadApi } from './leadApi';
 import { callTrackerApi } from './callTrackerApi';
 import { authApi } from './authApi';
-import { getLeadStatus, isLeadPending, CONVERTED_STATUSES } from '../pages/CallTracker/callTrackerConstants';
-import { LEAD_TYPES, LEAD_SOURCES } from '../pages/Lead/leadConstants';
-import { isUserAdmin, matchesUserAssignment } from '../utils/authUtils';
+import { attendanceApi } from './attendanceApi';
+import { siteVisitApi } from './siteVisitApi';
+import { siteVisitFollowUpApi } from './siteVisitFollowUpApi';
+import {
+  getLeadStatus, isLeadPending, CONVERTED_STATUSES, getTrackersForLead, getLatestCustomerStatus
+} from '../pages/CallTracker/callTrackerConstants';
+import { LEAD_TYPES, LEAD_SOURCES, parseLeadDate } from '../pages/Lead/leadConstants';
+import { isUserAdmin, matchesUserAssignment, matchesUserReceiver, getLeadCategory } from '../utils/authUtils';
 
 const CATEGORICAL = ['#7c3aed', '#0891b2', '#c026d3', '#65a30d', '#ea580c', '#db2777', '#0d9488', '#6b7280'];
 
@@ -18,6 +23,105 @@ const parseLeadTimestamp = (ts) => {
 const dateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export const dashboardApi = {
+  // Everything the category-tab dashboard needs, loaded once and sliced per tab on the page.
+  // Leads come already scoped to the user's lead type (leadApi.getLeads); role USER is further
+  // limited to their own assigned leads and their own attendance.
+  async getDashboardData(user = null) {
+    const [allLeads, allTrackers, allUsers, attendanceLogs, allVisits, allVisitFollowUps] = await Promise.all([
+      leadApi.getLeads(),
+      callTrackerApi.getCallTrackers(),
+      authApi.getUsers().catch(() => []),
+      attendanceApi.getAttendanceLogs().catch(() => []),
+      siteVisitApi.getAssignedVisitors().catch(() => []),
+      siteVisitFollowUpApi.getVisitorFollowUps().catch(() => [])
+    ]);
+
+    const isAdmin = isUserAdmin(user);
+    // Role USER: only their own leads — assigned to them as caller or received by them (Team Member)
+    const leads = isAdmin ? allLeads : allLeads.filter(l => matchesUserAssignment(l, user) || matchesUserReceiver(l, user));
+
+    const enrichedLeads = leads.map(lead => {
+      const leadTrackers = getTrackersForLead(allTrackers, lead.id, lead.leadNo);
+      const latest = leadTrackers[leadTrackers.length - 1] || null;
+      return {
+        ...lead,
+        category: getLeadCategory(lead.leadType, lead.leadNo),
+        createdDate: parseLeadDate(lead),
+        trackers: leadTrackers,
+        latestTracker: latest,
+        status: latest?.status || null,
+        customerStatus: getLatestCustomerStatus(allTrackers, lead.id, lead.leadNo),
+        lastActivityMs: Number(latest?.timestampMs) || 0
+      };
+    });
+
+    // Every call entry, joined to its (visible) lead
+    const calls = enrichedLeads.flatMap(lead => lead.trackers.map(t => ({
+      ...t,
+      timestampMs: Number(t.timestampMs) || 0,
+      leadId: lead.id,
+      leadNo: lead.leadNo,
+      personName: lead.personName,
+      number: lead.number,
+      category: lead.category,
+      callerAssigned: lead.callerAssigned || ''
+    })));
+
+    const employees = (isAdmin ? allUsers : allUsers.filter(u => matchesUserAssignment(u.name, user) || matchesUserAssignment(u.id, user)))
+      .filter(u => u.name && u.name.trim())
+      .map(u => ({
+        id: u.id,
+        dbId: u.dbId,
+        name: u.name.trim(),
+        role: u.role,
+        position: u.position || '',
+        number: u.number || '',
+        email: u.gmail || '',
+        leadType: u.leadType || '',
+        category: getLeadCategory(u.leadType)
+      }));
+
+    const employeeKeys = new Set(employees.flatMap(e => [e.name.toLowerCase(), String(e.dbId || ''), String(e.id || '').toLowerCase()]));
+    const attendance = (attendanceLogs || []).filter(a => (
+      isAdmin ||
+      employeeKeys.has(String(a.userName || '').trim().toLowerCase()) ||
+      employeeKeys.has(String(a.userId || ''))
+    ));
+
+    // Site visits & visitor follow-ups, only for leads this user can see
+    const leadByKey = {};
+    enrichedLeads.forEach(l => {
+      leadByKey[String(l.id)] = l;
+      if (l.leadNo) leadByKey[String(l.leadNo)] = l;
+    });
+    const joinLead = (item) => leadByKey[String(item.leadId)] || leadByKey[String(item.leadNo)];
+    const toMs = (val) => {
+      if (!val) return 0;
+      const t = new Date(val).getTime();
+      return isNaN(t) ? 0 : t;
+    };
+    const visits = (allVisits || [])
+      .map(v => ({ v, lead: joinLead(v) }))
+      .filter(({ lead }) => lead)
+      .map(({ v, lead }) => ({
+        ...v,
+        category: lead.category,
+        personName: lead.personName,
+        visitMs: toMs(v.visitDate) || toMs(v.timestamp)
+      }));
+    const visitFollowUps = (allVisitFollowUps || [])
+      .map(f => ({ f, lead: joinLead(f) }))
+      .filter(({ lead }) => lead)
+      .map(({ f, lead }) => ({
+        ...f,
+        category: lead.category,
+        personName: lead.personName,
+        timestampMs: Number(f.timestampMs) || toMs(f.createdAt)
+      }));
+
+    return { leads: enrichedLeads, calls, employees, attendance, visits, visitFollowUps };
+  },
+
   async getDashboardMetrics(user = null) {
     const [allLeads, allTrackers, allUsers] = await Promise.all([
       leadApi.getLeads(),

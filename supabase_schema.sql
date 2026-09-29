@@ -515,6 +515,11 @@ ALTER TABLE call_trackers ADD CONSTRAINT call_trackers_status_check
     CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting'));
 ALTER TABLE call_trackers ALTER COLUMN next_date DROP NOT NULL;
 
+-- Customer temperature (Hot / Warm / Cold), admin remark per call row, and last-updated time
+ALTER TABLE call_trackers ADD COLUMN IF NOT EXISTS customer_status TEXT;
+ALTER TABLE call_trackers ADD COLUMN IF NOT EXISTS admin_remark TEXT;
+ALTER TABLE call_trackers ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
 -- 8. ASSIGNED VISITORS TABLE (Site Visit / Meeting stage)
 CREATE TABLE IF NOT EXISTS assigned_visitors (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -565,8 +570,16 @@ CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visitor_id ON visitor_follow_u
 CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visitor_name ON visitor_follow_ups(visitor_name);
 CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_status ON visitor_follow_ups(status);
 CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visit_date ON visitor_follow_ups(visit_date);
-CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_next_visit_date ON visitor_follow_ups(next_visit_date);
 CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_created_at ON visitor_follow_ups(created_at);
+
+-- Customer Status (Hot / Warm / Cold) & Deal Details captured on visitor follow-up
+ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS customer_status TEXT;
+ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS deal_outcome TEXT;
+ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS closing_amount TEXT;
+ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS sales_executive TEXT;
+ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS reference_no TEXT;
+ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS deal_remarks TEXT;
+ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
 
 -- 9. SYSTEM SETTINGS TABLE
 CREATE TABLE IF NOT EXISTS system_settings (
@@ -1090,4 +1103,99 @@ CREATE INDEX IF NOT EXISTS idx_mmfp_product_type ON master_mutual_fund_products(
 CREATE INDEX IF NOT EXISTS idx_mmfp_is_active ON master_mutual_fund_products(is_active);
 CREATE INDEX IF NOT EXISTS idx_mmfp_is_featured ON master_mutual_fund_products(is_featured);
 
+-- =============================================================================
+-- 13. ASSIGNED VISITORS & VISITOR FOLLOW UPS
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.assigned_visitors (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  lead_id uuid NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  lead_no text NOT NULL,
+  call_tracker_id uuid NULL,
+  visitor_name text NOT NULL,
+  visitor_id uuid NULL REFERENCES public.users(id) ON DELETE SET NULL,
+  visit_date date NULL,
+  location text NULL,
+  remarks text NULL,
+  status text NOT NULL DEFAULT 'Assigned',
+  assigned_by text NULL,
+  timestamp timestamp with time zone NULL DEFAULT now(),
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  CONSTRAINT assigned_visitors_pkey PRIMARY KEY (id)
+);
 
+CREATE TABLE IF NOT EXISTS public.visitor_follow_ups (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  lead_id uuid NOT NULL,
+  lead_no text NOT NULL,
+  assigned_visitor_id uuid NULL,
+  visitor_name text NOT NULL,
+  visitor_id uuid NULL,
+  visit_date date NULL,
+  status text NOT NULL,
+  interest_level text NULL,
+  what_happened text NULL,
+  next_visit_date date NULL,
+  follow_up_no integer NULL DEFAULT 1,
+  timestamp_ms bigint NULL,
+  created_at timestamp with time zone NULL DEFAULT now(),
+  updated_at timestamp with time zone NULL DEFAULT now(),
+  deal_outcome text NULL,
+  rejection_reason text NULL,
+  sales_executive text NULL,
+  closing_amount text NULL,
+  reference_no text NULL,
+  deal_remarks text NULL,
+  customer_status text NULL,
+  CONSTRAINT visitor_follow_ups_pkey PRIMARY KEY (id),
+  CONSTRAINT visitor_follow_ups_assigned_visitor_id_fkey FOREIGN KEY (assigned_visitor_id) REFERENCES assigned_visitors (id) ON DELETE SET NULL,
+  CONSTRAINT visitor_follow_ups_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE CASCADE,
+  CONSTRAINT visitor_follow_ups_visitor_id_fkey FOREIGN KEY (visitor_id) REFERENCES users (id) ON DELETE SET NULL,
+  CONSTRAINT visitor_follow_ups_interest_level_check CHECK (
+    (
+      interest_level = ANY (ARRAY['High'::text, 'Medium'::text, 'Low'::text])
+    )
+  ),
+  CONSTRAINT visitor_follow_ups_status_check CHECK (
+    (
+      status = ANY (
+        ARRAY[
+          'Interested'::text,
+          'Not Interested'::text,
+          'Future Plan'::text,
+          'Did Not Show'::text
+        ]
+      )
+    )
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_lead_id ON public.visitor_follow_ups USING btree (lead_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_lead_no ON public.visitor_follow_ups USING btree (lead_no);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_assigned_visitor_id ON public.visitor_follow_ups USING btree (assigned_visitor_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visitor_id ON public.visitor_follow_ups USING btree (visitor_id);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visitor_name ON public.visitor_follow_ups USING btree (visitor_name);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_status ON public.visitor_follow_ups USING btree (status);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_visit_date ON public.visitor_follow_ups USING btree (visit_date);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_next_visit_date ON public.visitor_follow_ups USING btree (next_visit_date);
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_created_at ON public.visitor_follow_ups USING btree (created_at); 
+-- ==========================================
+-- LEAD REMARKS: admin ↔ user conversation per lead (one row per message)
+-- leads.admin_remark / user_remark (+ _date) keep only the LATEST message of each side.
+-- ==========================================
+CREATE TABLE IF NOT EXISTS public.lead_remarks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+    author_role TEXT NOT NULL CHECK (author_role IN ('ADMIN', 'USER')),
+    author_name TEXT,
+    remark TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lead_remarks_lead_id ON public.lead_remarks(lead_id, created_at);
+ALTER TABLE public.lead_remarks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public all on lead_remarks" ON public.lead_remarks;
+CREATE POLICY "Allow public all on lead_remarks" ON public.lead_remarks FOR ALL USING (true) WITH CHECK (true);
+
+-- Remark "seen" markers: stop the blink once the other side has opened the conversation
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS admin_remark_seen_at TIMESTAMPTZ; -- user opened the admin's latest remark
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS user_remark_seen_at TIMESTAMPTZ;  -- admin opened the user's latest reply

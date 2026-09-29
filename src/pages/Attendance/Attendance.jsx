@@ -296,14 +296,14 @@ export default function Attendance() {
             placeholder="Search attendance logs..."
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[38px] shadow-2xs transition-colors"
+            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[34px] shadow-2xs transition-colors"
           />
         </div>
 
         {canEdit && (
           <button
             onClick={() => setShowModal(true)}
-            className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[38px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[34px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer ${
               todayStatus.isLocked
                 ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
                 : todayStatus.hasMarkedIn
@@ -331,6 +331,7 @@ export default function Attendance() {
       {/* Main Table */}
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
         <DataTable
+          loading={loading}
           headers={tableHeaders}
           data={paginatedLogs}
           renderRow={renderRow}

@@ -12,7 +12,17 @@ import { Search, ChevronDown, Check, Plus } from 'lucide-react';
  * @param {string} placeholder - Text to show when no value is selected.
  * @param {string} className - Additional CSS classes for the container.
  */
-const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Select option...", className = "", height = "h-[30px] md:h-[34px]" }) => {
+const SearchableDropdown = ({
+  options,
+  value,
+  onChange,
+  onAdd,
+  placeholder = "Select option...",
+  className = "",
+  height = "h-[30px] md:h-[34px]",
+  searchable = true,
+  icon: Icon = null
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [openUp, setOpenUp] = useState(false);
@@ -20,9 +30,9 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
   const dropdownRef = useRef(null);
 
   // Filter options based on search term
-  const filteredOptions = options.filter(opt =>
-    opt.label.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredOptions = searchable && searchTerm
+    ? options.filter(opt => opt.label.toLowerCase().includes(searchTerm.toLowerCase()))
+    : options;
 
   // Find the label for the current value
   const selectedOption = options.find(opt => opt.value === value);
@@ -120,20 +130,22 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
       }}
     >
       {/* Search Box */}
-      <div className="p-1.5 border-b border-gray-100 bg-gray-50 flex gap-1.5 items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-[7px] text-gray-400" size={10} />
-          <input
-            autoFocus
-            type="text"
-            placeholder="Filter..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full bg-white border border-gray-200 rounded pl-7 pr-2 py-1 text-[12px] md:text-[13px] focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 shadow-inner"
-          />
+      {searchable && (
+        <div className="p-1.5 border-b border-gray-100 bg-gray-50 flex gap-1.5 items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-[7px] text-gray-400" size={10} />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Filter..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-white border border-gray-200 rounded pl-7 pr-2 py-1 text-[12px] md:text-[13px] focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 shadow-inner"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Options List */}
       <div className="max-h-52 overflow-y-auto py-1 scrollbar-hide">
@@ -199,12 +211,15 @@ const SearchableDropdown = ({ options, value, onChange, onAdd, placeholder = "Se
         onClick={handleToggle}
         className={`w-full bg-white border border-gray-300 rounded px-2 py-1 flex justify-between items-center cursor-pointer hover:border-indigo-500 transition-all ${height} shadow-sm group outline-none focus:ring-1 focus:ring-indigo-500/30 active:scale-[0.98]`}
       >
-        <span className={`text-[11px] md:text-[13px] truncate ${selectedOption || value ? 'text-gray-900' : 'text-gray-400'}`}>
-          {selectedOption ? selectedOption.label : (value || placeholder)}
+        <span className="flex items-center gap-1.5 min-w-0">
+          {Icon && <Icon size={13} className="text-gray-400 group-hover:text-indigo-500 shrink-0" />}
+          <span className={`text-[11px] md:text-[13px] truncate ${selectedOption || value ? 'text-gray-900' : 'text-gray-400'}`}>
+            {selectedOption ? selectedOption.label : (value || placeholder)}
+          </span>
         </span>
         <ChevronDown
           size={14}
-          className={`text-gray-400 transition-transform duration-200 group-hover:text-indigo-500 ${isOpen ? 'rotate-180' : ''}`}
+          className={`text-gray-400 transition-transform duration-200 group-hover:text-indigo-500 shrink-0 ml-1.5 ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
 

@@ -6,6 +6,7 @@ import { masterApi } from '../../api/masterApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import DataTable from '../../components/DataTable';
+import PageTabs from '../../components/PageTabs';
 import { useAuthStore } from '../../store/authStore';
 import { hasFullAccess } from '../../utils/authUtils';
 
@@ -13,12 +14,12 @@ import { hasFullAccess } from '../../utils/authUtils';
 const APP_PAGES = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'lead', label: 'Lead' },
-  { key: 'callTracker', label: 'Call Tracker' },
-  { key: 'assignVisitor', label: 'Assign Visitor' },
-  { key: 'visitorFollowUp', label: 'Visitor Follow Up' },
+  { key: 'callTracker', label: 'Call Followup' },
+  { key: 'siteVisitMeeting', label: 'Site Visit / Meeting' },
   { key: 'customerMaster', label: 'Customer Master' },
   { key: 'products', label: 'Products' },
-  { key: 'callerReport', label: 'Caller Report' },
+  // { key: 'callerReport', label: 'Caller Report' },
+  { key: 'misReport', label: 'MIS Report' },
   { key: 'attendance', label: 'Attendance' },
   { key: 'attendanceReport', label: 'Attendance Report' },
   { key: 'master', label: 'Master / Setting' }
@@ -33,6 +34,7 @@ const ACCESS_LEVELS = [
 export const POSITION_OPTIONS = [
   { value: 'Caller', label: 'Caller' },
   { value: 'Visitor', label: 'Visitor' },
+  { value: 'Receptionist', label: 'Receptionist' },
   { value: 'Lead Receiver', label: 'Lead Receiver' },
   { value: 'Manager', label: 'Manager' },
   { value: 'Other', label: 'Other' }
@@ -67,17 +69,23 @@ export default function Setting({ setHeaderAction }) {
   const [formData, setFormData] = useState({ ...initialFormData });
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
   const load = async () => {
-    const [users, types] = await Promise.all([
-      settingApi.getUsers(),
-      masterApi.getLeadTypes()
-    ]);
-    setRows(users || []);
-    setLeadTypesMaster(types || []);
+    setListLoading(true);
+    try {
+      const [users, types] = await Promise.all([
+        settingApi.getUsers(),
+        masterApi.getLeadTypes()
+      ]);
+      setRows(users || []);
+      setLeadTypesMaster(types || []);
+    } finally {
+      setListLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -139,9 +147,9 @@ export default function Setting({ setHeaderAction }) {
         canEdit ? (
           <button
             onClick={openAdd}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 px-4 h-[32px] lg:h-[38px] text-sm font-semibold shadow-sm transition cursor-pointer"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1.5 px-3 h-[34px] text-xs sm:text-sm font-semibold shadow-sm transition cursor-pointer whitespace-nowrap"
           >
-            <Plus size={16} /> Add User
+            <Plus size={15} /> Add User
           </button>
         ) : null
       );
@@ -154,7 +162,7 @@ export default function Setting({ setHeaderAction }) {
     if (loading) return;
     if (!formData.name.trim()) { toast.error('Name is required'); return; }
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
-    if (!formData.id.trim()) { toast.error('ID is required'); return; }
+    if (!formData.id.trim()) { toast.error('User Name is required'); return; }
     if (!formData.password.trim()) { toast.error('Password is required'); return; }
 
     setLoading(true);
@@ -320,56 +328,79 @@ export default function Setting({ setHeaderAction }) {
   );
 
   const renderCard = (row) => (
-    <div key={row.id} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
-      <div className="flex justify-between items-start border-b border-gray-100 pb-2">
-        <div>
-          <span className="text-[9px] text-indigo-500 uppercase tracking-widest leading-none block mb-1">{serialLabel(row)}</span>
-          <h4 className="text-sm text-gray-900 font-medium">{row.name}</h4>
+    <div key={row.id} className="bg-white rounded-xl border border-gray-200 shadow-xs p-3 space-y-2.5">
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold flex items-center justify-center flex-shrink-0">
+            {String(row.name || '?').trim().charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold text-gray-900 truncate">{row.name}</h4>
+            <p className="text-[11px] text-indigo-500 font-medium">{serialLabel(row)}</p>
+          </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
           {row.role === 'ADMIN' ? (
-            <span className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1">
+            <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1">
               <ShieldCheck size={10} /> Admin
             </span>
           ) : (
-            <span className="text-[9px] bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-semibold uppercase">
-              User
-            </span>
+            <span className="text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-semibold uppercase">User</span>
           )}
           {row.position && (
-            <span className={`text-[9px] px-2 py-0.5 rounded-full font-semibold uppercase border ${getPositionBadgeClass(row.position)}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase border ${getPositionBadgeClass(row.position)}`}>
               {row.position}
             </span>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-[10px]">
-        <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Position / Role</p>
-          <p className="text-gray-700 font-semibold truncate leading-tight">{row.position || '-'}</p>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs bg-slate-50 rounded-lg p-2.5">
+        <div className="min-w-0">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Number</p>
+          <p className="text-gray-800 font-medium truncate">{row.number || '-'}</p>
         </div>
-        <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Lead Type</p>
-          <p className="text-gray-700 truncate leading-tight">{row.leadType || '-'}</p>
+        <div className="min-w-0">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Lead Type</p>
+          <p className="text-gray-800 font-medium truncate">{row.leadType || '-'}</p>
         </div>
-        <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">ID</p>
-          <p className="text-gray-700 truncate leading-tight">{row.id}</p>
+        <div className="min-w-0 col-span-2">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Gmail</p>
+          <p className="text-gray-800 font-medium truncate">{row.gmail || '-'}</p>
         </div>
-        <div>
-          <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Password</p>
-          <p className="text-gray-700 font-mono truncate leading-tight">{row.password}</p>
+        <div className="min-w-0">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Login ID</p>
+          <p className="text-gray-800 font-medium truncate">{row.id}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Password</p>
+          <p className="text-gray-800 font-mono truncate">{row.password}</p>
         </div>
       </div>
 
+      {row.role !== 'ADMIN' && (
+        <div className="flex flex-wrap gap-1">
+          {accessSummary(row).filter(item => item.val !== 'none').map((item, idx) => (
+            <span key={idx} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${item.val === 'full' ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+              : item.val === 'edit' ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-sky-50 text-sky-700 border-sky-200'
+              }`}>
+              {item.page}: {item.level}
+            </span>
+          ))}
+          {accessSummary(row).every(item => item.val === 'none') && (
+            <span className="text-[10px] text-gray-400 italic">No page access</span>
+          )}
+        </div>
+      )}
+
       {canEdit && (
-        <div className="flex gap-1.5 pt-1">
-          <button onClick={() => openEdit(row)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1 cursor-pointer">
-            <Pencil size={11} /> Edit
+        <div className="flex gap-2">
+          <button onClick={() => openEdit(row)} className="flex-1 bg-indigo-50 text-indigo-600 border border-indigo-200 h-[32px] rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer hover:bg-indigo-100">
+            <Pencil size={12} /> Edit
           </button>
-          <button onClick={() => handleDelete(row)} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-1.5 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center justify-center gap-1 cursor-pointer">
-            <Trash2 size={11} /> Del
+          <button onClick={() => handleDelete(row)} className="flex-1 bg-red-50 text-red-600 border border-red-200 h-[32px] rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer hover:bg-red-100">
+            <Trash2 size={12} /> Delete
           </button>
         </div>
       )}
@@ -377,54 +408,42 @@ export default function Setting({ setHeaderAction }) {
   );
 
   return (
-    <div className="p-2 sm:p-4 md:p-6 space-y-3 flex flex-col h-full min-h-0">
-      {/* Category Filter Pills & Search */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 flex-shrink-0">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-          {filterTabs.map(tab => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => { setPositionFilter(tab.key); setCurrentPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition border flex items-center gap-1.5 cursor-pointer ${positionFilter === tab.key
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-indigo-50 hover:text-indigo-600'
-                }`}
-            >
-              <span>{tab.label}</span>
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${positionFilter === tab.key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-                }`}>
-                {tab.count}
-              </span>
-            </button>
-          ))}
-        </div>
+    <div className="p-2 sm:p-3 space-y-2 flex flex-col h-full min-h-0">
+      {/* Position filter tabs + search */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2 flex-shrink-0">
+        <PageTabs
+          tabs={filterTabs}
+          activeKey={positionFilter}
+          onChange={(key) => { setPositionFilter(key); setCurrentPage(1); }}
+        />
 
         <div className="flex items-center gap-2">
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-[11px] text-gray-400" size={14} />
+          <div className="relative flex-1 lg:w-64 lg:flex-none">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
             <input
               type="text"
               placeholder="Search users..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2 py-1.5 focus:outline-none focus:border-indigo-500 text-sm h-[36px]"
+              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-2 focus:outline-none focus:border-indigo-500 text-xs h-[34px]"
             />
           </div>
           {canEdit && !setHeaderAction && (
             <button
               onClick={openAdd}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center justify-center gap-2 px-4 h-[36px] text-sm font-semibold shadow-sm transition flex-shrink-0 cursor-pointer"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center justify-center gap-1.5 px-3 h-[34px] text-xs sm:text-sm font-semibold shadow-sm transition flex-shrink-0 cursor-pointer whitespace-nowrap"
             >
-              <Plus size={16} /> Add User
+              <Plus size={15} /> Add User
             </button>
           )}
         </div>
       </div>
 
       {/* Main Table */}
-      <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
+      <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden flex flex-col">
         <DataTable
+          loading={listLoading}
+          loadingText="Loading users..."
           headers={tableHeaders}
           data={paginatedRows}
           renderRow={renderRow}
@@ -484,7 +503,7 @@ export default function Setting({ setHeaderAction }) {
           {/* Position Selection (Categorize user as Caller, Visitor, Lead Receiver, etc.) */}
           <div className="space-y-1 col-span-2 sm:col-span-1">
             <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
-              Position / Category
+              Position / Category *
             </label>
             <SearchableDropdown
               options={POSITION_OPTIONS}
@@ -492,6 +511,7 @@ export default function Setting({ setHeaderAction }) {
               onChange={(val) => handleChange('position', val)}
               placeholder="Select position (Caller, Visitor, etc.)"
               height="h-[34px]"
+              required
             />
           </div>
 
@@ -524,7 +544,7 @@ export default function Setting({ setHeaderAction }) {
           </div>
 
           <div className="space-y-1 col-span-2 sm:col-span-1">
-            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">ID *</label>
+            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">User Name *</label>
             <div className="relative">
               <IdCard className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
               <input

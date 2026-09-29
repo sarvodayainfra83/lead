@@ -251,7 +251,7 @@ export default function AllAttendanceTab({ tabBar }) {
   );
 
   return (
-    <div className="space-y-3 flex flex-col h-full min-h-0">
+    <div className="space-y-2 flex flex-col h-full min-h-0">
       {/* Top Filter Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 w-full flex-shrink-0">
         {tabBar && <div className="w-full lg:w-auto lg:flex-shrink-0">{tabBar}</div>}
@@ -263,7 +263,7 @@ export default function AllAttendanceTab({ tabBar }) {
             placeholder="Search employees..."
             value={filters.searchQuery}
             onChange={(e) => { setFilters({ ...filters, searchQuery: e.target.value }); setCurrentPage(1); }}
-            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[38px] shadow-2xs transition-colors"
+            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[34px] shadow-2xs transition-colors"
           />
         </div>
 
@@ -273,7 +273,7 @@ export default function AllAttendanceTab({ tabBar }) {
             value={filters.status}
             onChange={(val) => { setFilters({ ...filters, status: val }); setCurrentPage(1); }}
             placeholder="All Status"
-            height="h-[38px]"
+            height="h-[34px]"
           />
         </div>
 
@@ -283,13 +283,13 @@ export default function AllAttendanceTab({ tabBar }) {
             value={filters.employee}
             onChange={(val) => { setFilters({ ...filters, employee: val }); setCurrentPage(1); }}
             placeholder="All Employees"
-            height="h-[38px]"
+            height="h-[34px]"
           />
         </div>
 
         <button
           onClick={handleClearFilters}
-          className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[38px] h-[38px] hover:bg-gray-100 transition-colors shadow-2xs flex-shrink-0"
+          className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[34px] h-[34px] hover:bg-gray-100 transition-colors shadow-2xs flex-shrink-0"
           title="Clear Filters"
         >
           <RotateCcw size={15} />
@@ -299,6 +299,7 @@ export default function AllAttendanceTab({ tabBar }) {
       {/* Main Table */}
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
         <DataTable
+          loading={loading}
           headers={tableHeaders}
           data={paginatedRows}
           renderRow={renderRow}

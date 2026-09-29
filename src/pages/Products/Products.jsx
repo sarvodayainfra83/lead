@@ -23,16 +23,26 @@ import {
   IndianRupee,
   ChevronLeft,
   ChevronRight,
-  Mail
+  Mail,
+  Share2,
+  ArrowLeft,
+  Phone,
+  X
 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { getLeadCategory } from '../../utils/authUtils';
 import { productApi } from '../../api/productApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
+import PageTabs from '../../components/PageTabs';
 import ModalAlert from '../../components/ModalAlert';
 import ProductFormModal from './ProductFormModal';
 import ProductDetailModal from './ProductDetailModal';
-import { WhatsAppIcon, GmailIcon, shareOnWhatsApp, shareViaGmail, shareViaEmail } from '../../utils/productShare';
+import {
+  WhatsAppIcon, GmailIcon, shareOnWhatsApp, shareViaGmail,
+  leadTypeToProductCategory, shareProductsOnWhatsApp, shareProductsViaEmail
+} from '../../utils/productShare';
 
 const mapLeadTypeToTab = (leadTypeName) => {
   if (!leadTypeName || typeof leadTypeName !== 'string') return null;
@@ -46,6 +56,29 @@ const mapLeadTypeToTab = (leadTypeName) => {
 export default function Products() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';
+
+  // "Share Products" mode: opened from Customer Master / Call Tracker with the client in router state.
+  // Only the client's own lead type products are shown, and selected products are sent to them.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const shareClient = location.state?.shareClient || null;
+  const clientCategory = useMemo(() => {
+    if (!shareClient) return null;
+    return leadTypeToProductCategory(shareClient.leadType)
+      || leadTypeToProductCategory(getLeadCategory('', shareClient.leadNo));
+  }, [shareClient]);
+
+  // Checked product ids (card / row checkboxes) for multi-product sharing
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const toggleSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
 
   const [leadTypes, setLeadTypes] = useState([]);
 
@@ -77,6 +110,10 @@ export default function Products() {
   // - Admins can view and manage all product tabs
   // - Regular users are strictly filtered to their assigned lead_type_id tab
   const allowedTabs = useMemo(() => {
+    // Sharing with a client: only products of the client's lead type
+    if (clientCategory) {
+      return [clientCategory];
+    }
     if (isAdmin) {
       return ['real-estate', 'insurance', 'mutual-funds'];
     }
@@ -84,9 +121,10 @@ export default function Products() {
       return [userAssignedCategory];
     }
     return ['real-estate', 'insurance', 'mutual-funds'];
-  }, [isAdmin, userAssignedCategory]);
+  }, [isAdmin, userAssignedCategory, clientCategory]);
 
   const [activeTab, setActiveTab] = useState(() => {
+    if (clientCategory) return clientCategory;
     if (!isAdmin && userAssignedCategory) return userAssignedCategory;
     return 'real-estate';
   });
@@ -243,7 +281,34 @@ export default function Products() {
     setActiveTab(tabId);
     setCurrentPage(1);
     setSearchQuery('');
+    clearSelection();
   };
+
+  // Full product objects for the checked ids (within the active category)
+  const selectedProducts = useMemo(() => {
+    if (selectedIds.size === 0) return [];
+    const source = activeTab === 'real-estate' ? realEstateProducts
+      : activeTab === 'insurance' ? insuranceProducts
+        : mutualFundProducts;
+    return source.filter(p => selectedIds.has(p.id));
+  }, [selectedIds, activeTab, realEstateProducts, insuranceProducts, mutualFundProducts]);
+
+  const exitShareMode = () => {
+    clearSelection();
+    navigate('/products', { replace: true, state: null });
+  };
+
+  // Checkbox used on cards and table rows
+  const renderSelectCheckbox = (item, extraClass = '') => (
+    <input
+      type="checkbox"
+      checked={selectedIds.has(item.id)}
+      onChange={() => toggleSelected(item.id)}
+      onClick={(e) => e.stopPropagation()}
+      title={selectedIds.has(item.id) ? 'Unselect product' : 'Select product to share'}
+      className={`w-4 h-4 rounded cursor-pointer accent-indigo-600 ${extraClass}`}
+    />
+  );
 
   const handleClearFilters = () => {
     setSearchQuery('');
@@ -303,13 +368,31 @@ export default function Products() {
 
   // Table Headers
   const getTableHeaders = () => {
+    const pageItems = paginatedData.filter(p => p.id);
+    const allPageChecked = pageItems.length > 0 && pageItems.every(p => selectedIds.has(p.id));
+    const selectAll = (
+      <div key="select-all" className="flex items-center justify-center">
+        <input
+          type="checkbox"
+          checked={allPageChecked}
+          onChange={() => setSelectedIds(prev => {
+            const next = new Set(prev);
+            pageItems.forEach(p => (allPageChecked ? next.delete(p.id) : next.add(p.id)));
+            return next;
+          })}
+          title="Select all on this page"
+          className="w-4 h-4 rounded cursor-pointer accent-indigo-600"
+        />
+      </div>
+    );
+
     if (activeTab === 'real-estate') {
-      return ["Image", "Title & Project", "Property Type", "BHK & Area", "Price", "Facing & Floor", "Status", "Featured", "Actions"];
+      return [selectAll, "Image", "Title & Project", "Property Type", "BHK & Area", "Price", "Facing & Floor", "Status", "Featured", "Actions"];
     }
     if (activeTab === 'insurance') {
-      return ["Image", "Plan Title & Insurer", "Product Category", "Sub-Type", "Coverage Amount", "Premium", "Status", "Featured", "Actions"];
+      return [selectAll, "Image", "Plan Title & Insurer", "Product Category", "Sub-Type", "Coverage Amount", "Premium", "Status", "Featured", "Actions"];
     }
-    return ["Image", "Scheme Title", "Fund House", "Risk & Type", "Min SIP / Lumpsum", "1Y / 3Y Return", "Status", "Featured", "Actions"];
+    return [selectAll, "Image", "Scheme Title", "Fund House", "Risk & Type", "Min SIP / Lumpsum", "1Y / 3Y Return", "Status", "Featured", "Actions"];
   };
 
   // Render Row for Desktop Table View
@@ -320,8 +403,13 @@ export default function Products() {
       <tr
         key={item.id || index}
         onClick={() => handleOpenDetail(item)}
-        className="hover:bg-indigo-50/40 transition-colors border-b border-gray-100 text-xs cursor-pointer"
+        className={`hover:bg-indigo-50/40 transition-colors border-b border-gray-100 text-xs cursor-pointer ${selectedIds.has(item.id) ? 'bg-indigo-50/60' : ''}`}
       >
+        {/* Select for sharing */}
+        <td className="px-3 py-3 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+          {renderSelectCheckbox(item)}
+        </td>
+
         {/* Thumbnail */}
         <td className="px-4 py-3 text-center whitespace-nowrap">
           <div className="w-12 h-10 rounded-lg overflow-hidden bg-slate-100 border border-gray-200 flex items-center justify-center mx-auto">
@@ -516,8 +604,9 @@ export default function Products() {
     const thumbUrl = item.imagesList?.[0] || item.cover_image || null;
 
     return (
-      <div key={item.id || index} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3.5 space-y-2.5">
+      <div key={item.id || index} className={`bg-white rounded-xl border shadow-sm p-3.5 space-y-2.5 ${selectedIds.has(item.id) ? 'border-indigo-400 ring-1 ring-indigo-300' : 'border-gray-100'}`}>
         <div className="flex items-start gap-3">
+          {renderSelectCheckbox(item, 'mt-1 shrink-0')}
           <div className="w-16 h-14 rounded-lg bg-slate-100 border border-gray-200 flex-shrink-0 overflow-hidden flex items-center justify-center">
             {thumbUrl ? (
               <img src={thumbUrl} alt="thumb" className="w-full h-full object-cover" />
@@ -596,6 +685,43 @@ export default function Products() {
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2.5 overflow-hidden">
 
+      {/* Share-with-client banner (opened via "Share Products" from Customer Master / Call Tracker) */}
+      {shareClient && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl px-3 sm:px-4 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0 shadow-sm">
+              <Share2 size={17} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-indigo-900 truncate">
+                Sharing products with {shareClient.name || 'client'}
+                {shareClient.leadNo && <span className="font-medium text-indigo-500"> · {shareClient.leadNo}</span>}
+              </p>
+              <p className="text-[11px] text-indigo-700 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                {shareClient.phone && <span className="inline-flex items-center gap-1"><Phone size={11} /> {shareClient.phone}</span>}
+                {shareClient.email && <span className="inline-flex items-center gap-1"><Mail size={11} /> {shareClient.email}</span>}
+                <span>Showing <strong>{shareClient.leadType || 'related'}</strong> products only · tick products, then send</span>
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition"
+            >
+              <ArrowLeft size={13} /> Back
+            </button>
+            <button
+              onClick={exitShareMode}
+              title="Exit share mode and show all products"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold transition"
+            >
+              <X size={13} /> Exit
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Banner & Tab Switcher */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 sm:p-4 space-y-2.5 flex-shrink-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -645,58 +771,15 @@ export default function Products() {
 
         {/* Category Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
-          <div className="flex gap-2 items-center overflow-x-auto scrollbar-hide py-0.5">
-            {allowedTabs.includes('real-estate') && (
-              <button
-                onClick={() => handleTabChange('real-estate')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'real-estate'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                  : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
-                  }`}
-              >
-                <Building2 size={16} />
-                <span>Real Estate</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'real-estate' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}>
-                  {realEstateProducts.length}
-                </span>
-              </button>
-            )}
-
-            {allowedTabs.includes('insurance') && (
-              <button
-                onClick={() => handleTabChange('insurance')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'insurance'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                  : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
-                  }`}
-              >
-                <Shield size={16} />
-                <span>Insurance</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'insurance' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}>
-                  {insuranceProducts.length}
-                </span>
-              </button>
-            )}
-
-            {allowedTabs.includes('mutual-funds') && (
-              <button
-                onClick={() => handleTabChange('mutual-funds')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap ${activeTab === 'mutual-funds'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                  : 'bg-slate-50 text-gray-600 hover:bg-slate-100'
-                  }`}
-              >
-                <TrendingUp size={16} />
-                <span>Mutual Funds</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-extrabold ${activeTab === 'mutual-funds' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                  }`}>
-                  {mutualFundProducts.length}
-                </span>
-              </button>
-            )}
-          </div>
+          <PageTabs
+            tabs={[
+              { key: 'real-estate', label: 'Real Estate', icon: Building2, count: realEstateProducts.length },
+              { key: 'insurance', label: 'Insurance', icon: Shield, count: insuranceProducts.length },
+              { key: 'mutual-funds', label: 'Mutual Funds', icon: TrendingUp, count: mutualFundProducts.length }
+            ].filter(t => allowedTabs.includes(t.key))}
+            activeKey={activeTab}
+            onChange={handleTabChange}
+          />
 
           {!isAdmin && userLeadTypeName && (
             <div className="flex-shrink-0">
@@ -780,7 +863,7 @@ export default function Products() {
                     <div
                       key={item.id}
                       onClick={() => handleOpenDetail(item)}
-                      className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col overflow-hidden group border-t-2 hover:-translate-y-1 cursor-pointer"
+                      className={`bg-white rounded-2xl border shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col overflow-hidden group border-t-2 hover:-translate-y-1 cursor-pointer ${selectedIds.has(item.id) ? 'border-indigo-500 ring-2 ring-indigo-400' : 'border-gray-100'}`}
                     >
                       {/* Card Image Banner */}
                       <div className="relative aspect-[16/10] w-full bg-slate-100 overflow-hidden flex items-center justify-center">
@@ -806,9 +889,19 @@ export default function Products() {
 
                         {/* Top Badges Overlay */}
                         <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-1 pointer-events-none">
-                          <span className="px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-white font-bold text-[10px] uppercase tracking-wider">
-                            {item.product_type}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            {/* Select for sharing */}
+                            <label
+                              onClick={(e) => e.stopPropagation()}
+                              className={`pointer-events-auto flex items-center justify-center w-6 h-6 rounded-md shadow-sm cursor-pointer transition ${selectedIds.has(item.id) ? 'bg-indigo-600' : 'bg-white/90 hover:bg-white'}`}
+                              title={selectedIds.has(item.id) ? 'Unselect product' : 'Select product to share'}
+                            >
+                              {renderSelectCheckbox(item)}
+                            </label>
+                            <span className="px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md text-white font-bold text-[10px] uppercase tracking-wider truncate">
+                              {item.product_type}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-1">
                             {item.is_featured && (
                               <span className="px-2 py-0.5 rounded-lg bg-amber-500 text-white font-bold text-[10px] shadow-sm flex items-center gap-1">
@@ -1065,6 +1158,46 @@ export default function Products() {
             onItemsPerPageChange={setItemsPerPage}
             totalResults={currentList.length}
           />
+        </div>
+      )}
+
+      {/* Floating share bar — appears when product checkboxes are ticked */}
+      {selectedProducts.length > 0 && (
+        <div className="fixed bottom-5 sm:bottom-7 left-1/2 -translate-x-1/2 z-50 w-[94%] sm:w-auto max-w-2xl px-4 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-4 bg-white/95 border border-indigo-200 shadow-2xl rounded-2xl backdrop-blur-md ring-1 ring-indigo-100 animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs flex-shrink-0">
+              {selectedProducts.length}
+            </span>
+            <span className="text-xs sm:text-sm font-bold text-gray-800 truncate">
+              product{selectedProducts.length > 1 ? 's' : ''} selected
+              {shareClient?.name && <span className="font-medium text-gray-500"> for {shareClient.name}</span>}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => shareProductsOnWhatsApp(selectedProducts, activeTab, shareClient || {})}
+              title={shareClient?.phone ? `Send on WhatsApp to ${shareClient.phone}` : 'Share on WhatsApp'}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition active:scale-95 whitespace-nowrap"
+            >
+              <WhatsAppIcon className="w-4 h-4 text-white" />
+              <span>WhatsApp</span>
+            </button>
+            <button
+              onClick={() => shareProductsViaEmail(selectedProducts, activeTab, shareClient || {})}
+              title={shareClient?.email ? `Send by email to ${shareClient.email}` : 'Share by email'}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition active:scale-95 whitespace-nowrap"
+            >
+              <Mail size={14} />
+              <span>Mail</span>
+            </button>
+            <button
+              onClick={clearSelection}
+              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 transition whitespace-nowrap"
+            >
+              Clear
+            </button>
+          </div>
         </div>
       )}
 

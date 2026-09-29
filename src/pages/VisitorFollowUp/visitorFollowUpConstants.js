@@ -7,10 +7,16 @@ export const VISITOR_STATUS_OPTIONS = [
   'Did Not Show'
 ];
 
+export const CUSTOMER_STATUS_OPTIONS = [
+  { value: 'Hot', label: 'HOT' },
+  { value: 'Warm', label: 'Warm' },
+  { value: 'Cold', label: 'Cold' }
+];
+
 export const INTEREST_LEVEL_OPTIONS = [
-  'High',
-  'Medium',
-  'Low'
+  'HOT',
+  'Warm',
+  'Cold'
 ];
 
 export const REJECTED_REASONS = [

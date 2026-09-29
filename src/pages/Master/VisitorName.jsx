@@ -43,7 +43,7 @@ export default function VisitorName({ setHeaderAction }) {
         canEdit ? (
           <button
             onClick={openAdd}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-2 px-4 h-[32px] lg:h-[38px] text-sm font-semibold shadow-sm transition"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg flex items-center gap-1.5 px-3 h-[34px] text-xs sm:text-sm font-semibold whitespace-nowrap shadow-sm transition"
           >
             <Plus size={16} /> Add Visitor
           </button>
@@ -140,7 +140,7 @@ export default function VisitorName({ setHeaderAction }) {
   };
 
   return (
-    <div className="p-2 sm:p-4 md:p-6 space-y-3 flex flex-col h-full min-h-0">
+    <div className="p-2 sm:p-3 space-y-2 flex flex-col h-full min-h-0">
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
         <DataTable
           headers={tableHeaders}

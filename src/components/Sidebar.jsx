@@ -14,20 +14,22 @@ import {
   ChevronRight,
   UserCheck,
   UserSearch,
+  MapPin,
   Fingerprint,
   ClipboardCheck,
-  Layers
+  Layers,
+  FileBarChart
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
-import { DEFAULT_USER_ACCESS } from '../utils/storageManager';
+import { canViewPage } from '../utils/authUtils';
 import companyLogo from '../Assets/Logo.jpeg';
 
 const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuthStore();
-  const { pendingLeadCount, pendingTrackerCount, pendingVisitorCount, pendingVisitorFollowUpCount, customerCount, refresh } = useBadgeCountStore();
+  const { pendingLeadCount, pendingTrackerCount, pendingVisitorCount, pendingVisitorFollowUpCount, pendingSiteVisitMeetingCount, customerCount, refresh } = useBadgeCountStore();
 
   useEffect(() => {
     refresh();
@@ -51,11 +53,11 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', pageKey: 'dashboard' },
     { path: '/lead', icon: UserPlus, label: 'Lead', pageKey: 'lead', badgeCount: pendingLeadCount },
-    { path: '/call-tracker', icon: PhoneCall, label: 'Call Tracker', pageKey: 'callTracker', badgeCount: pendingTrackerCount },
-    { path: '/assign-visitor', icon: UserCheck, label: 'Assign Visitor', pageKey: 'assignVisitor', badgeCount: pendingVisitorCount },
-    { path: '/visitor-follow-up', icon: UserSearch, label: 'Visitor Follow Up', pageKey: 'visitorFollowUp', badgeCount: pendingVisitorFollowUpCount },
-    { path: '/customer-master', icon: Users, label: 'Customer Master', pageKey: 'customerMaster', badgeCount: customerCount },
-    { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
+    { path: '/call-tracker', icon: PhoneCall, label: 'Lead & Followup', pageKey: 'callTracker', badgeCount: pendingTrackerCount },
+    { path: '/site-visit-meeting', icon: MapPin, label: 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: pendingSiteVisitMeetingCount ?? (pendingVisitorCount + pendingVisitorFollowUpCount) },
+    { path: '/customer-master', icon: Users, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount },
+    // { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
+    { path: '/mis-report', icon: FileBarChart, label: 'MIS Report', pageKey: 'misReport' },
     { path: '/attendance', icon: Fingerprint, label: 'Attendance', pageKey: 'attendance' },
     { path: '/attendance-report', icon: ClipboardCheck, label: 'Attendance Report', pageKey: 'attendanceReport' },
     { path: '/products', icon: Layers, label: 'Products', pageKey: 'products' },
@@ -63,18 +65,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   ];
 
   // Admins see everything; Users only see pages their access level isn't 'none' for
-  const menuItems = allMenuItems.filter((item) => {
-    if (user?.role === 'ADMIN') return true;
-    if (item.pageKey === 'master') {
-      const masterAccess = user?.accessPages?.master ?? DEFAULT_USER_ACCESS.master ?? 'none';
-      const settingAccess = user?.accessPages?.setting ?? DEFAULT_USER_ACCESS.setting ?? 'none';
-      return masterAccess !== 'none' || settingAccess !== 'none';
-    }
-    const accessLevel = user?.accessPages?.[item.pageKey] !== undefined
-      ? user.accessPages[item.pageKey]
-      : (DEFAULT_USER_ACCESS[item.pageKey] || 'none');
-    return accessLevel !== 'none';
-  });
+  const menuItems = allMenuItems.filter((item) => canViewPage(user, item.pageKey));
 
   return (
     <>

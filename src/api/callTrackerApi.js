@@ -3,9 +3,12 @@ import { leadApi } from './leadApi';
 import {
   getCallTrackers as getLocalCallTrackers,
   saveCallTracker as saveLocalCallTracker,
+  saveCallTrackers as saveLocalCallTrackers,
   deleteCallTracker as deleteLocalCallTracker
 } from '../utils/storageManager';
 import { refreshBadgeCounts } from '../store/badgeCountStore';
+import { normalizeCustomerStatus } from '../pages/CallTracker/callTrackerConstants';
+import { nowIST } from './leadApi';
 
 export const callTrackerApi = {
   // Map DB row -> Frontend Tracker model
@@ -18,7 +21,12 @@ export const callTrackerApi = {
       customerSaid: row.customer_said || '',
       nextDate: row.next_date,
       timestamp: row.timestamp,
-      timestampMs: Number(row.timestamp_ms)
+      timestampMs: Number(row.timestamp_ms),
+      customerStatus: normalizeCustomerStatus(row.customer_status),
+      adminRemark: row.admin_remark || '',
+      adminRemarkDate: row.admin_remark_date || null,
+      userRemark: row.user_remark || '',
+      updatedAt: row.updated_at || null
     };
   },
 
@@ -31,8 +39,82 @@ export const callTrackerApi = {
       customer_said: entry.customerSaid || '',
       next_date: entry.nextDate && String(entry.nextDate).trim() ? String(entry.nextDate).trim() : null,
       timestamp: entry.timestamp,
-      timestamp_ms: entry.timestampMs || Date.now()
+      timestamp_ms: entry.timestampMs || Date.now(),
+      customer_status: entry.customerStatus || null,
+      updated_at: new Date().toISOString()
     };
+  },
+
+  // Admin: add / edit the admin remark on a single call tracker row (stamps updated_at)
+  async updateAdminRemark(id, adminRemark) {
+    const updatedAt = nowIST();
+    const remark = String(adminRemark || '').trim();
+
+    const updateLocal = () => {
+      const trackers = getLocalCallTrackers();
+      saveLocalCallTrackers(trackers.map(t => (
+        String(t.id) === String(id) ? { ...t, adminRemark: remark, updatedAt } : t
+      )));
+    };
+
+    if (!isSupabaseConfigured) {
+      updateLocal();
+      return { id, adminRemark: remark, updatedAt };
+    }
+
+    const { data, error } = await supabase
+      .from('call_trackers')
+      .update({ admin_remark: remark || null, admin_remark_date: updatedAt, updated_at: updatedAt })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating admin remark in Supabase:', error);
+      throw error;
+    }
+
+    updateLocal();
+    return this.mapFromDb(data);
+  },
+
+  // Update customer status (Hot / Warm / Cold) on a call tracker row
+  async updateCustomerStatus(id, customerStatus) {
+    const updatedAt = new Date().toISOString();
+    const status = normalizeCustomerStatus(customerStatus);
+
+    const updateLocal = () => {
+      const trackers = getLocalCallTrackers();
+      saveLocalCallTrackers(trackers.map(t => (
+        String(t.id) === String(id) ? { ...t, customerStatus: status, updatedAt } : t
+      )));
+    };
+
+    if (!isSupabaseConfigured) {
+      updateLocal();
+      return { id, customerStatus: status, updatedAt };
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('call_trackers')
+        .update({ customer_status: status || null, updated_at: updatedAt })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('Error updating customer status in Supabase:', error);
+      } else if (data) {
+        updateLocal();
+        return this.mapFromDb(data);
+      }
+    } catch (e) {
+      console.warn('Exception updating customer status in Supabase:', e);
+    }
+
+    updateLocal();
+    return { id, customerStatus: status, updatedAt };
   },
 
   // Get all call tracker history entries
@@ -54,6 +136,31 @@ export const callTrackerApi = {
     return data.map(this.mapFromDb);
   },
 
+  // Get the full call history of a single lead (call_trackers.lead_id), oldest first
+  async getCallTrackersByLeadId(leadId) {
+    if (leadId == null || leadId === '') return [];
+    const localForLead = () => getLocalCallTrackers()
+      .filter(t => String(t.leadId) === String(leadId))
+      .sort((a, b) => (Number(a.timestampMs) || 0) - (Number(b.timestampMs) || 0));
+
+    if (!isSupabaseConfigured) {
+      return localForLead();
+    }
+
+    const { data, error } = await supabase
+      .from('call_trackers')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('timestamp_ms', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching call trackers for lead from Supabase:', error);
+      return localForLead();
+    }
+
+    return data.map(this.mapFromDb);
+  },
+
   // Get all call trackers joined with full lead and master details via Foreign Key
   async getCallTrackersWithLeads() {
     const [leads, trackers] = await Promise.all([
@@ -62,7 +169,10 @@ export const callTrackerApi = {
     ]);
     const leadsById = Object.fromEntries(leads.map(l => [l.id, l]));
     const leadsByNo = Object.fromEntries(leads.map(l => [l.leadNo, l]));
-    return trackers.map(t => {
+    const restricted = leadApi.isLeadTypeRestricted();
+    return trackers
+      .filter(t => !restricted || leadsById[t.leadId] || leadsByNo[t.leadNo])
+      .map(t => {
       const lead = leadsById[t.leadId] || leadsByNo[t.leadNo] || {};
       return {
         ...lead,

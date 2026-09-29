@@ -6,8 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard/Dashboard';
 import Lead from './pages/Lead/Lead';
 import FollowUp from './pages/CallTracker/FollowUp';
-import AssignVisitor from './pages/AssignVisitor/AssignVisitor';
-import VisitorFollowUp from './pages/VisitorFollowUp/VisitorFollowUp';
+import SiteVisitMeeting from './pages/SiteVisitMeeting/SiteVisitMeeting';
 import Customermaster from './pages/CustomerMaster/Customermaster';
 import Master from './pages/Master/Master';
 import Setting from './pages/Setting/Setting';
@@ -15,6 +14,7 @@ import CallerReport from './pages/CallerReport/CallerReport';
 import Attendance from './pages/Attendance/Attendance';
 import AttendanceReport from './pages/AttendanceReport/AttendanceReport';
 import Products from './pages/Products/Products';
+import MISReport from './pages/MISReport/MISReport';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import AccessGuard from './components/AccessGuard';
@@ -56,12 +56,14 @@ function App() {
             <Route path="dashboard" element={<AccessGuard pageKey="dashboard"><Dashboard /></AccessGuard>} />
             <Route path="lead" element={<AccessGuard pageKey="lead"><Lead /></AccessGuard>} />
             <Route path="call-tracker" element={<AccessGuard pageKey="callTracker"><FollowUp /></AccessGuard>} />
-            <Route path="assign-visitor" element={<AccessGuard pageKey="assignVisitor"><AssignVisitor /></AccessGuard>} />
-            <Route path="visitor-follow-up" element={<AccessGuard pageKey="visitorFollowUp"><VisitorFollowUp /></AccessGuard>} />
+            <Route path="site-visit-meeting" element={<AccessGuard pageKey="siteVisitMeeting"><SiteVisitMeeting /></AccessGuard>} />
+            <Route path="assign-visitor" element={<Navigate to="/site-visit-meeting" replace />} />
+            <Route path="visitor-follow-up" element={<Navigate to="/site-visit-meeting" replace />} />
             <Route path="customer-master" element={<AccessGuard pageKey="customerMaster"><Customermaster /></AccessGuard>} />
             <Route path="products" element={<AccessGuard pageKey="products"><Products /></AccessGuard>} />
             <Route path="caller-report" element={<AccessGuard pageKey="callerReport"><CallerReport /></AccessGuard>} />
             <Route path="attendance" element={<AccessGuard pageKey="attendance"><Attendance /></AccessGuard>} />
+            <Route path="mis-report" element={<AccessGuard pageKey="misReport"><MISReport /></AccessGuard>} />
             <Route path="attendance-report" element={<AccessGuard pageKey="attendanceReport"><AttendanceReport /></AccessGuard>} />
             <Route path="master" element={<AccessGuard pageKey="master"><Master /></AccessGuard>} />
             <Route path="setting" element={<AccessGuard pageKey="setting"><Master /></AccessGuard>} />

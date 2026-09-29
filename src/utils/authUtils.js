@@ -53,14 +53,79 @@ export const matchesUserReceiver = (lead, user) => {
 };
 
 /**
+ * Normalize a lead type name to one of 'Real Estate' | 'Insurance' | 'Mutual Fund' ('' if unknown).
+ * Falls back to the Lead No prefix (LR / LI / LM) when no type name is available.
+ */
+export const getLeadCategory = (leadTypeName, leadNo = '') => {
+  const type = String(leadTypeName || '').toLowerCase();
+  const no = String(leadNo || '').trim().toUpperCase();
+  if (type.includes('insurance')) return 'Insurance';
+  if (type.includes('mutual') || type.includes('fund')) return 'Mutual Fund';
+  if (type.includes('real') || type.includes('estate')) return 'Real Estate';
+  if (no.startsWith('LI')) return 'Insurance';
+  if (no.startsWith('LM')) return 'Mutual Fund';
+  if (no.startsWith('LR')) return 'Real Estate';
+  return '';
+};
+
+/**
+ * The lead type a regular USER is restricted to, or null when they can see every type
+ * (admins, and users who have no lead type set on their account).
+ */
+export const getUserLeadTypeScope = (user) => {
+  if (!user || isUserAdmin(user)) return null;
+  const category = getLeadCategory(user.leadType);
+  if (!category && !user.leadTypeId) return null;
+  return { category, leadTypeId: user.leadTypeId || null };
+};
+
+/**
+ * Check if a lead (or any record carrying leadType / leadTypeId / leadNo) belongs to the
+ * lead type the user is allowed to see. Admins and users without a lead type see everything.
+ */
+export const matchesUserLeadType = (lead, user) => {
+  const scope = getUserLeadTypeScope(user);
+  if (!scope) return true;
+  if (scope.leadTypeId && lead?.leadTypeId) {
+    return String(lead.leadTypeId) === String(scope.leadTypeId);
+  }
+  return Boolean(scope.category) && getLeadCategory(lead?.leadType, lead?.leadNo) === scope.category;
+};
+
+/**
  * Check if the user has Full Access permission for a specific page.
  * Admins always have full access.
  */
-export const hasFullAccess = (user, pageKey) => {
-  if (!user) return false;
-  if (isUserAdmin(user)) return true;
+export const hasFullAccess = (user, pageKey) => getPageAccess(user, pageKey) === 'full';
+
+/**
+ * The access level ('none' | 'view' | 'full') a user has on a page. Deny by default:
+ * - Admins: always 'full'.
+ * - Users: ONLY what the admin explicitly granted in Setting → Page Access. A page that isn't
+ *   listed for the user (e.g. a page added later) is 'none' — never a built-in default.
+ * - Each page is checked on its own key (Assign Visitor and Visitor Follow Up no longer grant
+ *   each other); 'master' and 'setting' are the same page. Legacy 'edit' is treated as 'full'.
+ */
+export const getPageAccess = (user, pageKey) => {
+  if (!user) return 'none';
+  if (isUserAdmin(user)) return 'full';
+  const pages = (user.accessPages && typeof user.accessPages === 'object' && !Array.isArray(user.accessPages))
+    ? user.accessPages
+    : {};
+
+  let level;
   if (pageKey === 'master' || pageKey === 'setting') {
-    return user.accessPages?.master === 'full' || user.accessPages?.setting === 'full';
+    level = pages.master ?? pages.setting;
+  } else if (pageKey === 'assignVisitor' || pageKey === 'visitorFollowUp') {
+    // Old accounts stored one shared 'siteVisitMeeting' level for both visitor pages
+    level = pages[pageKey] ?? pages.siteVisitMeeting;
+  } else {
+    level = pages[pageKey];
   }
-  return user.accessPages?.[pageKey] === 'full';
+
+  if (level === 'edit') return 'full';
+  return level === 'full' || level === 'view' ? level : 'none';
 };
+
+/** Can the user open the page at all (view or full)? */
+export const canViewPage = (user, pageKey) => getPageAccess(user, pageKey) !== 'none';

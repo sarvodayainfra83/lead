@@ -10,17 +10,16 @@ import MutualFundProduct from './MutualFundProduct';
 import InsuranceProduct from './InsuranceProduct';
 import InsuranceSubProduct from './InsuranceSubProduct';
 import InvestmentBudget from './InvestmentBudget';
+import PageTabs from '../../components/PageTabs';
 
 /**
  * Master & Settings Unified Hub
- * Manages Users & Permissions (Setting) alongside all Master Data categories
- * on a single unified page with smooth tabbed navigation.
+ * Manages Users & Permissions (Setting) alongside all Master Data categories.
+ * Large screens: side menu + content. Phones / tablets: scrollable tab strip on top.
  */
 export default function Master() {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState(() => {
-    return location.pathname.includes('setting') ? 'users' : 'users';
-  });
+  const [activeTab, setActiveTab] = useState('users');
   const [headerAction, setHeaderAction] = useState(null);
 
   useEffect(() => {
@@ -41,74 +40,68 @@ export default function Master() {
     { key: 'investmentBudget', label: 'Investment Budget', icon: Wallet, Component: InvestmentBudget }
   ];
 
-  const ActiveComponent = tabs.find(t => t.key === activeTab)?.Component;
+  const active = tabs.find(t => t.key === activeTab) || tabs[0];
+  const ActiveComponent = active.Component;
+  const ActiveIcon = active.icon;
+
+  const selectTab = (key) => {
+    setActiveTab(key);
+    setHeaderAction(null);
+  };
 
   return (
-    <div className="flex flex-col md:flex-row h-full min-h-0 bg-white md:bg-gray-50/30">
-      {/* Sidebar for Master Data & Settings */}
-      <div className="w-full md:w-[260px] flex-shrink-0 border-r border-gray-200 overflow-y-auto no-scrollbar hidden md:flex flex-col bg-white">
-        <div className="px-6 pt-5 pb-3">
+    <div className="flex flex-col lg:flex-row h-full min-h-0 gap-2">
+      {/* Side menu (large screens) */}
+      <aside className="hidden lg:flex flex-col w-[220px] xl:w-[240px] flex-shrink-0 bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-4 pt-4 pb-2">
           <h2 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Master & Settings</h2>
         </div>
-        <div className="px-3 pb-6 flex flex-col gap-1">
-          {tabs.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => { setActiveTab(key); setHeaderAction(null); }}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-colors w-full text-left cursor-pointer ${activeTab === key
-                ? 'bg-indigo-50 text-indigo-950 font-semibold'
-                : 'bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+        <nav className="px-2 pb-3 flex flex-col gap-0.5 overflow-y-auto no-scrollbar">
+          {tabs.map(({ key, label, icon: Icon }) => {
+            const isActive = activeTab === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => selectTab(key)}
+                className={`flex items-center gap-2.5 px-3 h-[36px] rounded-lg text-[13px] transition-colors w-full text-left ${
+                  isActive
+                    ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                    : 'text-gray-600 hover:bg-indigo-50 hover:text-indigo-700 font-medium'
                 }`}
-            >
-              <Icon size={18} className={activeTab === key ? "text-indigo-600" : "text-gray-400"} />
-              <span className="truncate">{label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      
-      {/* Mobile Tab Bar */}
-      <div className="md:hidden flex flex-col justify-between px-2 pt-2 flex-shrink-0 gap-2 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 max-w-full">
-          {tabs.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => { setActiveTab(key); setHeaderAction(null); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border h-[32px] whitespace-nowrap flex-shrink-0 cursor-pointer ${activeTab === key
-                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                : 'bg-white text-gray-600 border-gray-200 hover:bg-indigo-50 hover:text-indigo-600'
-                }`}
-            >
-              <Icon size={14} />
-              {label}
-            </button>
-          ))}
-        </div>
+              >
+                <Icon size={16} className={isActive ? 'text-white' : 'text-gray-400'} />
+                <span className="truncate">{label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+      {/* Tab strip (phones / tablets) */}
+      <div className="lg:hidden flex-shrink-0">
+        <PageTabs tabs={tabs} activeKey={activeTab} onChange={selectTab} />
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 min-w-0 flex flex-col">
-        {/* Header area containing Tab Title and Header Action */}
-        <div className="px-4 sm:px-6 py-3 md:py-4 flex items-center justify-between gap-4 flex-shrink-0 border-b border-gray-100 bg-white">
-          <div className="flex items-center gap-2">
-            <h1 className="text-base sm:text-lg font-bold text-gray-900 tracking-tight">
-              {tabs.find(t => t.key === activeTab)?.label}
-            </h1>
-            <span className="text-xs text-gray-400 font-normal hidden sm:inline">
-              · Master Data & Settings
+      {/* Content */}
+      <section className="flex-1 min-w-0 min-h-0 flex flex-col bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2 flex-shrink-0 border-b border-gray-100">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
+              <ActiveIcon size={15} className="text-indigo-600" />
             </span>
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-bold text-gray-900 tracking-tight truncate">{active.label}</h1>
+              <p className="text-[10px] sm:text-[11px] text-gray-400 truncate">Master Data & Settings</p>
+            </div>
           </div>
-          <div className="flex-shrink-0">
-            {headerAction}
-          </div>
+          <div className="flex-shrink-0">{headerAction}</div>
         </div>
 
-        {/* Dynamic Component */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-50/40">
           {ActiveComponent && <ActiveComponent setHeaderAction={setHeaderAction} />}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
-
