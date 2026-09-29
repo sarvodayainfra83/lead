@@ -2924,4 +2924,3 @@ export const deleteAttendanceLog = (id) => {
   saveAttendanceLogs(filtered);
   return true;
 };
-
