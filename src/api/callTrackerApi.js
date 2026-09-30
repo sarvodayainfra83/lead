@@ -173,25 +173,25 @@ export const callTrackerApi = {
     return trackers
       .filter(t => !restricted || leadsById[t.leadId] || leadsByNo[t.leadNo])
       .map(t => {
-      const lead = leadsById[t.leadId] || leadsByNo[t.leadNo] || {};
-      return {
-        ...lead,
-        ...t,
-        id: t.id,
-        leadId: t.leadId || lead.id,
-        leadNo: t.leadNo || lead.leadNo || '',
-        leadDate: lead.timestamp || '',
-        personName: lead.customerName || lead.personName || '',
-        number: lead.customerNumber || lead.number || '',
-        email: lead.customerEmail || lead.email || '',
-        location: lead.customerAddress || lead.location || '',
-        requirement: lead.requirement || '',
-        investmentBudget: lead.investmentBudget || '',
-        whenToBuyPlan: lead.whenToBuyPlan || '',
-        callerAssigned: lead.callerAssigned || t.callerAssigned || '',
-        leadSource: lead.leadSource || ''
-      };
-    });
+        const lead = leadsById[t.leadId] || leadsByNo[t.leadNo] || {};
+        return {
+          ...lead,
+          ...t,
+          id: t.id,
+          leadId: t.leadId || lead.id,
+          leadNo: t.leadNo || lead.leadNo || '',
+          leadDate: lead.timestamp || '',
+          personName: lead.customerName || lead.personName || '',
+          number: lead.customerNumber || lead.number || '',
+          email: lead.customerEmail || lead.email || '',
+          location: lead.customerAddress || lead.location || '',
+          requirement: lead.requirement || '',
+          investmentBudget: lead.investmentBudget || '',
+          whenToBuyPlan: lead.whenToBuyPlan || '',
+          callerAssigned: lead.callerAssigned || t.callerAssigned || '',
+          leadSource: lead.leadSource || ''
+        };
+      });
   },
 
   // Save new call outcome log entry

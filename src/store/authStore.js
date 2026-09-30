@@ -25,6 +25,23 @@ const readSession = () => {
 
 const initialSession = readSession();
 
+const isSameUser = (a, b) => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.dbId === b.dbId &&
+    a.name === b.name &&
+    a.role === b.role &&
+    a.position === b.position &&
+    a.leadTypeId === b.leadTypeId &&
+    a.leadType === b.leadType &&
+    a.number === b.number &&
+    a.gmail === b.gmail &&
+    JSON.stringify(a.accessPages || {}) === JSON.stringify(b.accessPages || {})
+  );
+};
+
 const useAuthStore = create((set, get) => ({
   user: null,
   isAuthenticated: false,
@@ -32,12 +49,11 @@ const useAuthStore = create((set, get) => ({
   checking: Boolean(initialSession),
 
   loginWithApi: async (userIdCode, password) => {
-    await authApi.loginUser(userIdCode, password); // validates the credentials
-    const fresh = await authApi.getUserByUsername(userIdCode);
-    if (!fresh) throw new Error('Invalid credentials');
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ id: fresh.id }));
-    set({ user: fresh, isAuthenticated: true, checking: false });
-    return fresh;
+    const user = await authApi.loginUser(userIdCode, password); // validates credentials and returns profile
+    if (!user) throw new Error('Invalid credentials');
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ id: user.id }));
+    set({ user, isAuthenticated: true, checking: false });
+    return user;
   },
 
   login: (userData) => {
@@ -56,7 +72,9 @@ const useAuthStore = create((set, get) => ({
   refreshUser: async () => {
     const session = readSession();
     if (!session) {
-      set({ user: null, isAuthenticated: false, checking: false });
+      if (get().user !== null || get().isAuthenticated !== false) {
+        set({ user: null, isAuthenticated: false, checking: false });
+      }
       return null;
     }
     try {
@@ -66,12 +84,18 @@ const useAuthStore = create((set, get) => ({
         get().logout();
         return null;
       }
-      set({ user: fresh, isAuthenticated: true, checking: false });
+      const current = get().user;
+      // Only trigger a state change if the user data actually changed, avoiding spurious re-renders
+      if (!isSameUser(current, fresh)) {
+        set({ user: fresh, isAuthenticated: true, checking: false });
+      } else if (get().checking) {
+        set({ checking: false });
+      }
       return fresh;
     } catch (err) {
       // Could not reach the server: keep whatever we have, but never grant access without a profile
       console.error('Could not refresh user:', err);
-      set({ checking: false });
+      if (get().checking) set({ checking: false });
       return get().user;
     }
   },
@@ -84,12 +108,17 @@ if (initialSession) {
   useAuthStore.getState().refreshUser();
 }
 if (typeof window !== 'undefined') {
-  window.addEventListener('focus', () => {
+  let lastRefreshTime = Date.now();
+  const throttledRefresh = () => {
+    const now = Date.now();
+    // Throttle: don't hit the DB more than once every 60 seconds on window focus
+    if (now - lastRefreshTime < 60 * 1000) return;
+    lastRefreshTime = now;
     if (readSession()) useAuthStore.getState().refreshUser();
-  });
-  setInterval(() => {
-    if (readSession()) useAuthStore.getState().refreshUser();
-  }, 60 * 1000);
+  };
+
+  window.addEventListener('focus', throttledRefresh);
+  setInterval(throttledRefresh, 60 * 1000);
 }
 
 export { useAuthStore };

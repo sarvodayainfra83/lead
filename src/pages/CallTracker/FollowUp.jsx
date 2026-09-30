@@ -25,6 +25,8 @@ export default function FollowUp() {
   // Determine initial tab from the Dashboard card, else the user's assigned lead type
   const initialTab = useMemo(() => {
     if (navState.tab) return navState.tab;
+    const scope = getUserLeadTypeScope(user);
+    if (scope?.categories?.length > 0) return scope.categories[0];
     if (user?.leadType) {
       const norm = user.leadType.toLowerCase();
       if (norm.includes('insurance')) return 'Insurance';
@@ -32,7 +34,7 @@ export default function FollowUp() {
       if (norm.includes('real') || norm.includes('estate')) return 'Real Estate';
     }
     return 'Real Estate';
-  }, [user]);
+  }, [user, navState.tab]);
 
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -112,9 +114,11 @@ export default function FollowUp() {
     { key: 'Insurance', label: 'Insurance', icon: ShieldCheck },
     { key: 'Mutual Fund', label: 'Mutual Fund', icon: TrendingUp }
   ];
-  // Role USER only gets the tab of their own lead type
-  const userLeadCategory = getUserLeadTypeScope(user)?.category;
-  const tabs = userLeadCategory ? allTabs.filter(t => t.key === userLeadCategory) : allTabs;
+  // Role USER gets tabs of all their assigned lead types (both/all tabs if multiple)
+  const scope = getUserLeadTypeScope(user);
+  const tabs = scope?.categories?.length > 0
+    ? allTabs.filter(t => scope.categories.includes(t.key))
+    : (scope?.category ? allTabs.filter(t => t.key === scope.category) : allTabs);
 
   // Live accurate counts matching the exact number of leads in each tab
   const categoryCounts = useMemo(() => ({

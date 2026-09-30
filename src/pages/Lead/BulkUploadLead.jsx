@@ -113,9 +113,11 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const wasOpenRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
       const defaultType = defaultLeadType || resolveUserLeadType();
       if (defaultType) setLeadType(defaultType);
 
@@ -135,10 +137,12 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
         setInsuranceProductsMaster(insProducts || []);
 
         const resolved = resolveUserLeadType(types || []);
-        if (resolved) setLeadType(resolved);
-      });
+        if (resolved) setLeadType(prev => prev || resolved);
+      }).catch(console.error);
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, user]);
+  }, [isOpen, defaultLeadType]);
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));

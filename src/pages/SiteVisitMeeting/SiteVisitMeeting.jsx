@@ -30,6 +30,8 @@ export default function SiteVisitMeeting() {
   // Determine initial tab from nav state or user's assigned lead type
   const initialTab = useMemo(() => {
     if (navState.tab) return navState.tab;
+    const scope = getUserLeadTypeScope(user);
+    if (scope?.categories?.length > 0) return scope.categories[0];
     if (user?.leadType) {
       const norm = user.leadType.toLowerCase();
       if (norm.includes('insurance')) return 'Insurance';
@@ -123,9 +125,11 @@ export default function SiteVisitMeeting() {
     }
   ];
 
-  // Role USER only gets the tab of their own lead type
-  const userLeadCategory = getUserLeadTypeScope(user)?.category;
-  const visibleTabs = userLeadCategory ? tabs.filter(t => t.key === userLeadCategory) : tabs;
+  // Role USER gets tabs of all their assigned lead types (both/all tabs if multiple)
+  const scope = getUserLeadTypeScope(user);
+  const visibleTabs = scope?.categories?.length > 0
+    ? tabs.filter(t => scope.categories.includes(t.key))
+    : (scope?.category ? tabs.filter(t => t.key === scope.category) : tabs);
 
   const currentTabObj = visibleTabs.find(t => t.key === activeTab) || visibleTabs[0];
 

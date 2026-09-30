@@ -53,7 +53,9 @@ const initialFormData = {
   password: '',
   role: 'USER',
   position: '',
+  customPosition: '',
   leadTypeId: '',
+  leadType: '',
   accessPages: emptyAccessPages()
 };
 
@@ -112,9 +114,15 @@ export default function Setting({ setHeaderAction }) {
     setShowForm(true);
   }, []);
 
+  const STANDARD_POSITIONS = ['Caller', 'Visitor', 'Receptionist', 'Lead Receiver', 'Manager'];
+
   const openEdit = (row) => {
     setEditRow(row);
     const existingMasterSetting = row.accessPages?.master || row.accessPages?.setting || 'none';
+    const isStandard = STANDARD_POSITIONS.includes(row.position);
+    const posValue = isStandard ? row.position : (row.position ? 'Other' : '');
+    const customPosValue = isStandard ? '' : (row.position || '');
+
     setFormData({
       name: row.name || '',
       number: row.number || '',
@@ -122,8 +130,10 @@ export default function Setting({ setHeaderAction }) {
       id: row.id || '',
       password: row.password || '',
       role: row.role || 'USER',
-      position: row.position || '',
+      position: posValue,
+      customPosition: customPosValue,
       leadTypeId: row.leadTypeId || '',
+      leadType: row.leadType || '',
       accessPages: {
         ...emptyAccessPages(),
         ...(row.accessPages || {}),
@@ -164,6 +174,10 @@ export default function Setting({ setHeaderAction }) {
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
     if (!formData.id.trim()) { toast.error('User Name is required'); return; }
     if (!formData.password.trim()) { toast.error('Password is required'); return; }
+    if (formData.position === 'Other' && !formData.customPosition?.trim()) {
+      toast.error('Please enter the custom position name');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -176,6 +190,10 @@ export default function Setting({ setHeaderAction }) {
         accessPagesPayload.setting = accessPagesPayload.master;
       }
 
+      const resolvedPosition = formData.position === 'Other'
+        ? formData.customPosition.trim()
+        : (formData.position || null);
+
       const payload = {
         name: formData.name.trim(),
         number: formData.number.trim(),
@@ -183,8 +201,9 @@ export default function Setting({ setHeaderAction }) {
         id: formData.id.trim(),
         password: formData.password,
         role: formData.role,
-        position: formData.position || null,
+        position: resolvedPosition,
         leadTypeId: formData.leadTypeId || null,
+        leadType: formData.leadType || '',
         accessPages: accessPagesPayload
       };
 
@@ -197,12 +216,49 @@ export default function Setting({ setHeaderAction }) {
     }
   };
 
+  const selectedLeadTypes = (formData.leadType || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const availableLeadTypeNames = leadTypesMaster.length > 0
+    ? leadTypesMaster.map(t => t.leadType)
+    : ['Real Estate', 'Insurance', 'Mutual Fund'];
+
+  const toggleLeadType = (typeName) => {
+    const current = (formData.leadType || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    let updated;
+    if (current.includes(typeName)) {
+      updated = current.filter(t => t !== typeName);
+    } else {
+      updated = [...current, typeName];
+    }
+
+    const newLeadTypeStr = updated.join(', ');
+    const firstMatch = leadTypesMaster.find(t => updated.includes(t.leadType));
+
+    setFormData(prev => ({
+      ...prev,
+      leadType: newLeadTypeStr,
+      leadTypeId: firstMatch ? firstMatch.id : null
+    }));
+  };
+
   const handleDelete = async (row) => {
     if (row.id === 'admin') { toast.error("The default admin account can't be deleted"); return; }
     if (!window.confirm(`Delete user "${row.name}"?`)) return;
-    await settingApi.deleteUser(row.id);
-    await load();
-    toast.success('User deleted');
+    try {
+      await settingApi.deleteUser(row.id);
+      await load();
+      toast.success('User deleted');
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      toast.error(err?.message || 'Failed to delete user');
+    }
   };
 
   const serialLabel = (row) => `SN-${String(row.serialNo || 0).padStart(3, '0')}`;
@@ -292,9 +348,13 @@ export default function Setting({ setHeaderAction }) {
       </td>
       <td className="px-4 py-2.5 text-center text-[13px] whitespace-nowrap">
         {row.leadType ? (
-          <span className="inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-700 text-[11px] font-medium border border-gray-200">
-            {row.leadType}
-          </span>
+          <div className="flex flex-wrap gap-1 justify-center max-w-[220px] mx-auto">
+            {row.leadType.split(',').map(s => s.trim()).filter(Boolean).map((lt, idx) => (
+              <span key={idx} className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[11px] font-semibold border border-indigo-200">
+                {lt}
+              </span>
+            ))}
+          </div>
         ) : (
           <span className="text-gray-400 text-xs">-</span>
         )}
@@ -508,25 +568,80 @@ export default function Setting({ setHeaderAction }) {
             <SearchableDropdown
               options={POSITION_OPTIONS}
               value={formData.position}
-              onChange={(val) => handleChange('position', val)}
+              onChange={(val) => {
+                handleChange('position', val);
+                if (val !== 'Other') {
+                  handleChange('customPosition', '');
+                }
+              }}
               placeholder="Select position (Caller, Visitor, etc.)"
               height="h-[34px]"
               required
             />
+            {formData.position === 'Other' && (
+              <div className="pt-1.5">
+                <input
+                  type="text"
+                  value={formData.customPosition || ''}
+                  onChange={(e) => handleChange('customPosition', e.target.value)}
+                  placeholder="Enter custom position name *"
+                  className="w-full border border-indigo-300 bg-indigo-50/20 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[34px]"
+                  required
+                  autoFocus
+                />
+              </div>
+            )}
           </div>
 
-          {/* Lead Type Selection (Links user to Lead Type) */}
-          <div className="space-y-1 col-span-2 sm:col-span-1">
-            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
-              Assigned Lead Type
-            </label>
-            <SearchableDropdown
-              options={leadTypeSelectOptions}
-              value={formData.leadTypeId}
-              onChange={(val) => handleChange('leadTypeId', val)}
-              placeholder="Select lead type"
-              height="h-[34px]"
-            />
+          {/* Lead Type Selection (Multi-Select for multiple assigned lead types) */}
+          <div className="space-y-1.5 col-span-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold flex items-center gap-1.5">
+                <Tag size={13} className="text-indigo-600" />
+                Assigned Lead Type (Multiple Allowed)
+              </label>
+              {selectedLeadTypes.length > 0 && (
+                <span className="text-[11px] text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                  {selectedLeadTypes.length} Selected
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2.5 bg-slate-50 border border-gray-200 rounded-lg">
+              {availableLeadTypeNames.map(typeName => {
+                const isSelected = selectedLeadTypes.includes(typeName);
+                return (
+                  <label
+                    key={typeName}
+                    className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none text-xs font-semibold ${isSelected
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                      : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50'
+                      }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleLeadType(typeName)}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
+                    />
+                    <span className="truncate">{typeName}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            {formData.leadType ? (
+              <p className="text-[11px] text-gray-500 flex items-center gap-1 flex-wrap">
+                <span className="text-gray-400">Comma-separated value:</span>
+                <span className="font-semibold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded text-[11px] border border-indigo-200 font-mono">
+                  {formData.leadType}
+                </span>
+              </p>
+            ) : (
+              <p className="text-[11px] text-gray-400 italic">
+                None selected (User will have unrestricted access to all lead types).
+              </p>
+            )}
           </div>
 
           <div className="space-y-1 col-span-2 sm:col-span-1">

@@ -33,8 +33,23 @@ export default function ProductFormModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const wasOpenRef = useRef(false);
+  const lastDataIdRef = useRef(null);
+
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    const currentId = initialData?.id || (initialData ? 'edit' : 'new');
+    const isFirstOpen = !wasOpenRef.current;
+    const isNewData = currentId !== lastDataIdRef.current;
+
+    if (isFirstOpen || isNewData) {
+      wasOpenRef.current = true;
+      lastDataIdRef.current = currentId;
+
       if (initialData) {
         setFormData({
           ...initialData,

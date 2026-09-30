@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   User, Phone, Mail,
@@ -121,9 +121,24 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
     .map(s => ({ value: s.subProductType, label: s.subProductType }));
   const investmentBudgetOptions = investmentBudgetsMaster.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
 
-  // Populate form whenever the modal opens with a new lead
+  const wasOpenRef = useRef(false);
+  const lastLeadIdRef = useRef(null);
+
+  // Populate form only when the modal opens with a new lead
   useEffect(() => {
-    if (lead) {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    const currentId = lead?.id || lead?.leadNo;
+    const isFirstOpen = !wasOpenRef.current;
+    const isNewLead = currentId && currentId !== lastLeadIdRef.current;
+
+    if (lead && (isFirstOpen || isNewLead)) {
+      wasOpenRef.current = true;
+      lastLeadIdRef.current = currentId;
+
       setFormData({
         leadType: lead.leadType || user?.leadType || '',
         leadReceiver: lead.leadReceiver || '',
@@ -164,7 +179,7 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
         remarks: lead.remarks || ''
       });
     }
-  }, [lead, realEstateRequirementsMaster]);
+  }, [isOpen, lead, realEstateRequirementsMaster]);
 
   const isRealEstate = formData.leadType === 'Real Estate';
   const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');

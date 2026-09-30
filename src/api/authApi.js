@@ -2,23 +2,45 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getUsers as getLocalUsers, saveUser as saveLocalUser, deleteUser as deleteLocalUser } from '../utils/storageManager';
 
 export const authApi = {
-  // Login user by Username and Password
+  // Login user by Username, Email, or Phone and Password
   async loginUser(userIdCode, password) {
+    const cleanId = String(userIdCode || '').trim();
+    const cleanPassword = String(password || '').trim();
+
+    if (!cleanId || !cleanPassword) {
+      throw new Error('Invalid credentials');
+    }
+
     if (!isSupabaseConfigured) {
       const users = getLocalUsers();
-      const matched = users.find(u => u.id === userIdCode && u.password === password);
+      const matched = users.find(
+        u => (u.id?.toLowerCase() === cleanId.toLowerCase() || u.gmail?.toLowerCase() === cleanId.toLowerCase() || u.number === cleanId) &&
+          u.password === cleanPassword
+      );
       if (!matched) throw new Error('Invalid credentials');
       return matched;
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('users')
       .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .eq('username', userIdCode)
-      .eq('password', password)
-      .maybeSingle();
+      .eq('password', cleanPassword);
 
-    if (error || !data) {
+    // Support username (case-insensitive), email, or phone number
+    if (cleanId.includes(',') || cleanId.includes('(') || cleanId.includes(')')) {
+      query = query.ilike('username', cleanId);
+    } else {
+      query = query.or(`username.ilike.${cleanId},gmail.ilike.${cleanId},number.eq.${cleanId}`);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) {
+      console.error('Database error during login:', error);
+      throw new Error('Database error during login');
+    }
+
+    if (!data) {
       throw new Error('Invalid credentials');
     }
 
@@ -32,7 +54,7 @@ export const authApi = {
       role: data.role,
       position: data.position || '',
       leadTypeId: data.lead_type_id || null,
-      leadType: data.master_lead_types?.lead_type || '',
+      leadType: data.lead_type || data.access_pages?.__assigned_lead_types || data.master_lead_types?.lead_type || '',
       accessPages: data.access_pages || {}
     };
   },
@@ -42,8 +64,9 @@ export const authApi = {
   // the user no longer exists.
   async getUserByUsername(userIdCode) {
     if (!userIdCode) return null;
+    const cleanId = String(userIdCode).trim();
     if (!isSupabaseConfigured) {
-      const u = getLocalUsers().find(x => x.id === userIdCode);
+      const u = getLocalUsers().find(x => x.id?.toLowerCase() === cleanId.toLowerCase());
       if (!u) return null;
       const { password, ...rest } = u;
       return { ...rest, accessPages: u.accessPages || {} };
@@ -52,7 +75,7 @@ export const authApi = {
     const { data, error } = await supabase
       .from('users')
       .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .eq('username', userIdCode)
+      .ilike('username', cleanId)
       .maybeSingle();
 
     if (error) throw error; // network / server problem — caller keeps the session and retries
@@ -67,7 +90,7 @@ export const authApi = {
       role: data.role,
       position: data.position || '',
       leadTypeId: data.lead_type_id || null,
-      leadType: data.master_lead_types?.lead_type || '',
+      leadType: data.lead_type || data.access_pages?.__assigned_lead_types || data.master_lead_types?.lead_type || '',
       accessPages: data.access_pages || {}
     };
   },
@@ -116,7 +139,7 @@ export const authApi = {
         role: u.role,
         position: u.position || '',
         leadTypeId: u.lead_type_id || null,
-        leadType: (u.lead_type_id && typeMap[u.lead_type_id]) || '',
+        leadType: u.lead_type || u.access_pages?.__assigned_lead_types || (u.lead_type_id && typeMap[u.lead_type_id]) || '',
         accessPages: u.access_pages || {}
       }));
     }
@@ -132,7 +155,7 @@ export const authApi = {
       role: u.role,
       position: u.position || '',
       leadTypeId: u.lead_type_id || null,
-      leadType: u.master_lead_types?.lead_type || '',
+      leadType: u.lead_type || u.access_pages?.__assigned_lead_types || u.master_lead_types?.lead_type || '',
       accessPages: u.access_pages || {}
     }));
   },
@@ -143,7 +166,12 @@ export const authApi = {
       return saveLocalUser(userData);
     }
 
-    const payload = {
+    const accessPages = {
+      ...(userData.accessPages || {}),
+      __assigned_lead_types: userData.leadType || ''
+    };
+
+    let payload = {
       username: userData.id,
       name: userData.name,
       number: userData.number || '',
@@ -151,14 +179,23 @@ export const authApi = {
       password: userData.password,
       role: userData.role,
       position: userData.position || null,
+      lead_type: userData.leadType || null,
       lead_type_id: userData.leadTypeId || null,
-      access_pages: userData.accessPages || {}
+      access_pages: accessPages
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('users')
       .upsert(payload, { onConflict: 'username' })
       .select();
+
+    if (error && (error.message?.includes('lead_type') || error.code === 'PGRST204')) {
+      delete payload.lead_type;
+      ({ data, error } = await supabase
+        .from('users')
+        .upsert(payload, { onConflict: 'username' })
+        .select());
+    }
 
     if (error) {
       console.error('Error saving user to Supabase:', error);
@@ -176,6 +213,32 @@ export const authApi = {
       return deleteLocalUser(userIdCode);
     }
 
+    // 1. Fetch user to obtain dbId (UUID) and username
+    try {
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('id, username')
+        .eq('username', userIdCode)
+        .maybeSingle();
+
+      if (userRow) {
+        // Disconnect foreign key in attendance_logs so deletion won't fail with FK constraint error (23503)
+        if (userRow.id) {
+          await supabase
+            .from('attendance_logs')
+            .update({ user_id: null })
+            .eq('user_id', userRow.id);
+        }
+        await supabase
+          .from('attendance_logs')
+          .update({ user_id: null })
+          .eq('user_id', userRow.username);
+      }
+    } catch (cleanErr) {
+      console.warn('Could not un-link attendance logs before deleting user:', cleanErr);
+    }
+
+    // 2. Delete user row
     const { error } = await supabase
       .from('users')
       .delete()

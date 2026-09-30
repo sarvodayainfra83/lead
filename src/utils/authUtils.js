@@ -69,14 +69,56 @@ export const getLeadCategory = (leadTypeName, leadNo = '') => {
 };
 
 /**
+ * Parse a comma-separated lead type string into an array of normalized categories:
+ * e.g. "Real Estate, Insurance" -> ['Real Estate', 'Insurance']
+ */
+export const getUserLeadCategories = (leadTypeStr) => {
+  if (!leadTypeStr) return [];
+  const parts = String(leadTypeStr)
+    .split(',')
+    .map(p => p.trim())
+    .filter(Boolean);
+
+  const categories = [];
+  for (const part of parts) {
+    const cat = getLeadCategory(part);
+    if (cat && !categories.includes(cat)) {
+      categories.push(cat);
+    }
+  }
+  return categories;
+};
+
+/**
  * The lead type a regular USER is restricted to, or null when they can see every type
  * (admins, and users who have no lead type set on their account).
+ * Returns { categories: string[], category: string | null, leadTypeId: string | null } or null.
  */
 export const getUserLeadTypeScope = (user) => {
   if (!user || isUserAdmin(user)) return null;
+  const categories = getUserLeadCategories(user.leadType);
+  if (categories.length > 0) {
+    return {
+      categories,
+      category: categories.length === 1 ? categories[0] : null,
+      leadTypeId: user.leadTypeId || null
+    };
+  }
+
   const category = getLeadCategory(user.leadType);
-  if (!category && !user.leadTypeId) return null;
-  return { category, leadTypeId: user.leadTypeId || null };
+  if (category) {
+    return {
+      categories: [category],
+      category,
+      leadTypeId: user.leadTypeId || null
+    };
+  }
+
+  if (user.leadTypeId) {
+    return { categories: [], category: null, leadTypeId: user.leadTypeId };
+  }
+
+  return null;
 };
 
 /**
@@ -86,10 +128,14 @@ export const getUserLeadTypeScope = (user) => {
 export const matchesUserLeadType = (lead, user) => {
   const scope = getUserLeadTypeScope(user);
   if (!scope) return true;
+  const leadCat = getLeadCategory(lead?.leadType, lead?.leadNo);
+  if (scope.categories && scope.categories.length > 0) {
+    return scope.categories.includes(leadCat);
+  }
   if (scope.leadTypeId && lead?.leadTypeId) {
     return String(lead.leadTypeId) === String(scope.leadTypeId);
   }
-  return Boolean(scope.category) && getLeadCategory(lead?.leadType, lead?.leadNo) === scope.category;
+  return Boolean(scope.category) && leadCat === scope.category;
 };
 
 /**

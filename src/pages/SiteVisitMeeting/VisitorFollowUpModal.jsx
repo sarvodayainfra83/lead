@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { MessageSquare, Calendar, X, CheckCircle, Clock } from 'lucide-react';
@@ -76,8 +76,23 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     return () => { isMounted = false; };
   }, []);
 
+  const wasOpenRef = useRef(false);
+  const lastLeadIdRef = useRef(null);
+
   useEffect(() => {
-    if (lead && isOpen) {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    const currentId = lead?.id || lead?.leadNo;
+    const isFirstOpen = !wasOpenRef.current;
+    const isNewLead = currentId && currentId !== lastLeadIdRef.current;
+
+    if (lead && (isFirstOpen || isNewLead)) {
+      wasOpenRef.current = true;
+      lastLeadIdRef.current = currentId;
+
       const initialStatus = lead.status === 'Pending Assignment' ? '' : (lead.latestFollowUp?.status || '');
       const initialDealOutcome = lead.latestFollowUp?.dealOutcome || lead.dealOutcome || 'Closed (Won)';
       const initialClosingAmount = lead.latestFollowUp?.closingAmount || lead.closingAmount || lead.investmentBudget || '';

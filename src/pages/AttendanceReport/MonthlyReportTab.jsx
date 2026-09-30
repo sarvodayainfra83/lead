@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Calendar, ChevronLeft, ChevronRight, RotateCcw, Search } from 'lucide-react';
 import { attendanceApi } from '../../api/attendanceApi';
+import { authApi } from '../../api/authApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
 import { useAuthStore } from '../../store/authStore';
@@ -34,15 +35,38 @@ const getWorkingDaysInMonth = (year, monthIndex) => {
   return workingDays > 0 ? workingDays : 1;
 };
 
-// Default designation mapping
-const getEmployeeDesignation = (user) => {
-  if (user.role === 'ADMIN') return 'Administrator';
-  if (user.designation) return user.designation;
-  return 'Relationship Manager';
+// Designation badge styling (consistent with Setting.jsx)
+const getPositionBadgeClass = (position) => {
+  const pos = String(position || '').toLowerCase();
+  if (pos.includes('admin')) return 'bg-purple-50 text-purple-700 border-purple-200';
+  if (pos.includes('caller')) return 'bg-blue-50 text-blue-700 border-blue-200';
+  if (pos.includes('visitor')) return 'bg-teal-50 text-teal-700 border-teal-200';
+  if (pos.includes('account')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (pos.includes('receiver')) return 'bg-amber-50 text-amber-700 border-amber-200';
+  return 'bg-gray-50 text-gray-700 border-gray-200';
 };
 
+// Actual designation from users table
+const getEmployeeDesignation = (user) => {
+  if (user.position && String(user.position).trim()) return String(user.position).trim();
+  if (user.role === 'ADMIN') return 'Admin';
+  if (user.designation && String(user.designation).trim()) return String(user.designation).trim();
+  return '-';
+};
+
+// Actual department / assigned lead type from users table
 const getEmployeeDepartment = (user) => {
-  return user.department || 'Sales';
+  if (user.leadType && String(user.leadType).trim()) return String(user.leadType).trim();
+  if (user.department && String(user.department).trim()) return String(user.department).trim();
+  if (user.role === 'ADMIN') return 'Administration';
+  if (user.position) {
+    const pos = String(user.position).toLowerCase();
+    if (pos.includes('account')) return 'Accounts';
+    if (pos.includes('call')) return 'Calling';
+    if (pos.includes('visit')) return 'Site Visit';
+    if (pos.includes('sales')) return 'Sales';
+  }
+  return '-';
 };
 
 export default function MonthlyReportTab({ tabBar }) {
@@ -65,16 +89,39 @@ export default function MonthlyReportTab({ tabBar }) {
   const loadMonthlyData = async () => {
     setLoading(true);
     try {
-      const [logs, receivers] = await Promise.all([
+      const [logs, dbUsers, receivers] = await Promise.all([
         attendanceApi.getAttendanceLogs(),
-        masterApi.getLeadReceivers()
+        authApi.getUsers().catch(() => []),
+        masterApi.getLeadReceivers().catch(() => [])
       ]);
 
       const workingDays = getWorkingDaysInMonth(year, monthIndex);
       setWorkingDaysCount(workingDays);
 
       const seen = new Set();
-      const receiverNames = [];
+      const usersList = [];
+
+      // 1. Primary source: actual users from users table
+      (dbUsers || []).forEach(u => {
+        const rawName = u.name || u.id;
+        if (!rawName) return;
+        const clean = String(rawName).trim();
+        const lower = clean.toLowerCase();
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          usersList.push({
+            id: u.id || clean,
+            dbId: u.dbId,
+            name: clean,
+            role: u.role || 'USER',
+            position: u.position || '',
+            leadType: u.leadType || '',
+            department: u.department || ''
+          });
+        }
+      });
+
+      // 2. Secondary fallback: master lead receivers if not already in users
       (receivers || []).forEach(r => {
         const raw = r?.personName;
         if (!raw) return;
@@ -82,18 +129,33 @@ export default function MonthlyReportTab({ tabBar }) {
         const lower = clean.toLowerCase();
         if (clean && !seen.has(lower)) {
           seen.add(lower);
-          receiverNames.push(clean);
+          usersList.push({
+            id: clean,
+            dbId: null,
+            name: clean,
+            role: 'USER',
+            position: 'Lead Receiver',
+            leadType: r.leadType || '',
+            department: r.leadType || ''
+          });
         }
       });
-      const users = receiverNames.map(name => ({ id: name, name, role: 'USER' }));
 
       // Filter logs for the selected month and year
-      const monthLogs = logs.filter(log => {
+      const monthLogs = (logs || []).filter(log => {
         let logDate = null;
         if (log.date && log.date.includes('/')) {
           const [d, m, y] = log.date.split('/').map(Number);
           const fullYear = y < 100 ? 2000 + y : y;
           logDate = new Date(fullYear, m - 1, d);
+        } else if (log.date && log.date.includes('-')) {
+          const parts = log.date.split('-').map(Number);
+          if (parts[0] > 1000) {
+            logDate = new Date(parts[0], parts[1] - 1, parts[2]);
+          } else {
+            const fullYear = parts[2] < 100 ? 2000 + parts[2] : parts[2];
+            logDate = new Date(fullYear, parts[1] - 1, parts[0]);
+          }
         } else if (log.timestampMs) {
           logDate = new Date(log.timestampMs);
         }
@@ -102,33 +164,50 @@ export default function MonthlyReportTab({ tabBar }) {
         return logDate.getFullYear() === year && logDate.getMonth() === monthIndex;
       });
 
-      // Group logs by (employeeName, dateString) to get distinct days
+      // Group logs by (employee, dateString)
       const daysByUser = {};
-      users.forEach(u => {
-        if (u.name) daysByUser[u.name] = {};
+      usersList.forEach(u => {
+        const key = u.name.toLowerCase();
+        daysByUser[key] = {};
+        if (u.id) daysByUser[String(u.id).toLowerCase()] = daysByUser[key];
+        if (u.dbId) daysByUser[String(u.dbId).toLowerCase()] = daysByUser[key];
       });
 
       monthLogs.forEach(log => {
-        const uName = log.userName;
-        if (!daysByUser[uName]) daysByUser[uName] = {};
-        const dKey = log.date || (log.timestamp ? log.timestamp.split(' ')[0] : 'd');
-        if (!daysByUser[uName][dKey]) {
-          daysByUser[uName][dKey] = { in: false, out: false, minMs: log.timestampMs, maxMs: log.timestampMs };
+        const rawName = log.userName || '';
+        const rawId = log.userId || '';
+        const lowerName = rawName.trim().toLowerCase();
+        const lowerId = String(rawId).trim().toLowerCase();
+
+        let target = (lowerId && daysByUser[lowerId]) || (lowerName && daysByUser[lowerName]);
+        if (!target) {
+          target = {};
+          if (lowerName) daysByUser[lowerName] = target;
+          if (lowerId) daysByUser[lowerId] = target;
         }
-        if (log.status?.toUpperCase() === 'IN') daysByUser[uName][dKey].in = true;
-        if (log.status?.toUpperCase() === 'OUT') daysByUser[uName][dKey].out = true;
-        if (log.timestampMs < daysByUser[uName][dKey].minMs) daysByUser[uName][dKey].minMs = log.timestampMs;
-        if (log.timestampMs > daysByUser[uName][dKey].maxMs) daysByUser[uName][dKey].maxMs = log.timestampMs;
+
+        const dKey = log.date || (log.timestamp ? log.timestamp.split(' ')[0] : 'd');
+        if (!target[dKey]) {
+          target[dKey] = { in: false, out: false, minMs: log.timestampMs, maxMs: log.timestampMs };
+        }
+        if (log.status?.toUpperCase() === 'IN') target[dKey].in = true;
+        if (log.status?.toUpperCase() === 'OUT') target[dKey].out = true;
+        if (log.timestampMs < target[dKey].minMs) target[dKey].minMs = log.timestampMs;
+        if (log.timestampMs > target[dKey].maxMs) target[dKey].maxMs = log.timestampMs;
       });
 
       // Calculate Present, Half Day, Absent, and Consistency %
-      const activeUsers = users.filter(u => u.name);
+      const activeUsers = usersList.filter(u => u.name);
       const scopedUsers = isAdmin
         ? activeUsers
-        : activeUsers.filter(u => u.name === user?.name || u.id === user?.id);
+        : activeUsers.filter(u =>
+            (user?.name && u.name.toLowerCase() === user.name.toLowerCase()) ||
+            (user?.id && u.id?.toLowerCase() === user.id.toLowerCase()) ||
+            (user?.dbId && u.dbId === user.dbId)
+          );
 
       const rows = scopedUsers.map(u => {
-        const userDays = daysByUser[u.name] || {};
+        const userDays = daysByUser[u.name.toLowerCase()] || {};
         let presentCount = 0;
         let halfDayCount = 0;
 
@@ -159,6 +238,7 @@ export default function MonthlyReportTab({ tabBar }) {
 
         return {
           id: u.id || u.name,
+          dbId: u.dbId,
           name: u.name,
           designation: getEmployeeDesignation(u),
           department: getEmployeeDepartment(u),
@@ -206,11 +286,27 @@ export default function MonthlyReportTab({ tabBar }) {
       <td className="px-4 py-3 text-center text-[13px] text-gray-900 font-semibold whitespace-nowrap">
         {item.name}
       </td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap">
-        {item.designation}
+      <td className="px-4 py-3 text-center text-[13px] whitespace-nowrap">
+        {item.designation && item.designation !== '-' ? (
+          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase border ${getPositionBadgeClass(item.designation)}`}>
+            {item.designation}
+          </span>
+        ) : (
+          <span className="text-gray-400 text-xs">-</span>
+        )}
       </td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">
-        {item.department}
+      <td className="px-4 py-3 text-center text-[13px] whitespace-nowrap">
+        {item.department && item.department !== '-' ? (
+          <div className="flex flex-wrap gap-1 justify-center max-w-[240px] mx-auto">
+            {item.department.split(',').map(s => s.trim()).filter(Boolean).map((dept, idx) => (
+              <span key={idx} className="inline-block px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[11px] font-semibold border border-indigo-200">
+                {dept}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-gray-400 text-xs">-</span>
+        )}
       </td>
       <td className="px-4 py-3 text-center text-[13px] font-bold text-gray-700 whitespace-nowrap">
         {item.workingDays}

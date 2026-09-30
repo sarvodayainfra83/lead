@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   User, Phone, Mail,
@@ -67,6 +67,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
     return 'Real Estate';
   };
 
+  const wasOpenRef = useRef(false);
+
   const [formData, setFormData] = useState(() => ({
     ...initialFormData,
     leadType: defaultLeadType || user?.leadType || 'Real Estate',
@@ -74,13 +76,14 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
   }));
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
       const targetType = defaultLeadType || resolveUserLeadType();
-      setFormData(prev => ({
+      setFormData({
         ...initialFormData,
         leadType: targetType,
         callerAssigned: user?.name || user?.id || ''
-      }));
+      });
 
       Promise.all([
         masterApi.getLeadTypes(),
@@ -108,11 +111,13 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         const finalType = defaultLeadType || resolveUserLeadType(types || []);
         setFormData(prev => ({
           ...prev,
-          leadType: finalType
+          leadType: prev.leadType || finalType
         }));
-      });
+      }).catch(console.error);
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, defaultLeadType, user]);
+  }, [isOpen, defaultLeadType]);
 
   const leadTypeOptions = useMemo(() => {
     if (defaultLeadType) {

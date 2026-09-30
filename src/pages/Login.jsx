@@ -15,18 +15,30 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const cleanId = id.trim();
+    const cleanPassword = password.trim();
+
+    if (!cleanId || !cleanPassword) {
+      toast.error('Please enter both User ID and Password');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      await loginWithApi(id, password);
+      await loginWithApi(cleanId, cleanPassword);
       toast.success('Login successful!');
-      // Close the on-screen keyboard (which may have scrolled the page up to stay visible above
-      // it) before navigating, so the app's first screen doesn't inherit that scroll offset.
+      // Close the on-screen keyboard before navigating
       document.activeElement?.blur();
       navigate("/", { replace: true });
     } catch (err) {
       console.error(err);
-      toast.error('Invalid credentials or connection error');
+      const isInvalidCreds = err?.message?.toLowerCase().includes('invalid credential');
+      toast.error(
+        isInvalidCreds
+          ? 'Invalid User ID or Password. Please check and try again.'
+          : (err.message || 'Login failed. Please check your network connection.')
+      );
     } finally {
       setSubmitting(false);
     }
@@ -73,8 +85,11 @@ const Login = () => {
                   required
                   value={id}
                   onChange={(e) => setId(e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck="false"
                   className="block w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 text-base focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white transition-all"
-                  placeholder="Enter user ID"
+                  placeholder="Enter User ID, Email or Phone"
                 />
               </div>
             </div>

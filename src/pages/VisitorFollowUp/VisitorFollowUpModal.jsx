@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { MessageSquare } from 'lucide-react';
 import { siteVisitFollowUpApi } from '../../api/siteVisitFollowUpApi';
@@ -27,8 +27,23 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     nextVisitDate: ''
   });
 
+  const wasOpenRef = useRef(false);
+  const lastLeadIdRef = useRef(null);
+
   useEffect(() => {
-    if (lead && isOpen) {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    const currentId = lead?.id || lead?.leadNo;
+    const isFirstOpen = !wasOpenRef.current;
+    const isNewLead = currentId && currentId !== lastLeadIdRef.current;
+
+    if (lead && (isFirstOpen || isNewLead)) {
+      wasOpenRef.current = true;
+      lastLeadIdRef.current = currentId;
+
       setFormData({
         status: '',
         customerStatus: resolveInitialCustomerStatus(lead),

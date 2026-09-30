@@ -55,6 +55,9 @@ const latestOf = (a, b) => {
   return ta >= tb ? a : b;
 };
 
+// Tracks whether Supabase leads table has admin_remark_seen_at / user_remark_seen_at columns
+let seenColumnsAvailable = true;
+
 export const leadApi = {
   // Helper to map DB row -> Frontend Lead model
   mapFromDb(row) {
@@ -360,15 +363,25 @@ export const leadApi = {
     if (!isSupabaseConfigured || leads.length === 0) return leads;
 
     // Admin / user remark thread lives on the leads table (same id as call_trackers.lead_id)
-    let { data: remarkRows, error } = await supabase
-      .from('leads')
-      .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date, admin_remark_seen_at, user_remark_seen_at');
-    if (error) {
-      // Seen-marker columns not added yet — load the remarks without them
+    let remarkRows = null;
+    let error = null;
+
+    if (seenColumnsAvailable) {
+      ({ data: remarkRows, error } = await supabase
+        .from('leads')
+        .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date, admin_remark_seen_at, user_remark_seen_at'));
+      if (error) {
+        // Seen-marker columns not added in Supabase yet — disable querying them for this session
+        seenColumnsAvailable = false;
+      }
+    }
+
+    if (!remarkRows) {
       ({ data: remarkRows, error } = await supabase
         .from('leads')
         .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date'));
     }
+
     if (error || !remarkRows) {
       if (error) console.warn('Could not load lead remarks:', error);
       return leads;
@@ -400,10 +413,13 @@ export const leadApi = {
     const column = viewerIsAdmin ? 'user_remark_seen_at' : 'admin_remark_seen_at';
     const seenAt = nowIST();
     writeLocalSeen(leadId, field, seenAt); // instant + fallback when the column isn't created yet
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && seenColumnsAvailable) {
       const { error } = await supabase.from('leads').update({ [column]: seenAt }).eq('id', leadId);
-      if (error) console.warn('Could not save remark seen time (run the leads seen-columns SQL):', error.message);
-    } else {
+      if (error) {
+        seenColumnsAvailable = false;
+        console.warn('Could not save remark seen time (run the leads seen-columns SQL):', error.message);
+      }
+    } else if (!isSupabaseConfigured) {
       const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
       if (existing) updateLocalLead({ ...existing, [field]: seenAt });
     }

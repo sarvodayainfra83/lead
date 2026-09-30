@@ -46,6 +46,8 @@ export default function Customermaster() {
   // Initial tab from the Dashboard card, else the user's assigned lead type
   const initialTab = useMemo(() => {
     if (navState.tab) return navState.tab;
+    const scope = getUserLeadTypeScope(user);
+    if (scope?.categories?.length > 0) return scope.categories[0];
     if (user?.leadType) {
       const norm = user.leadType.toLowerCase();
       if (norm.includes('insurance')) return 'Insurance';
@@ -53,12 +55,14 @@ export default function Customermaster() {
       if (norm.includes('real') || norm.includes('estate')) return 'Real Estate';
     }
     return 'Real Estate';
-  }, [user]);
+  }, [user, navState.tab]);
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  // Role USER only gets the tab of their own lead type
-  const userLeadCategory = getUserLeadTypeScope(user)?.category;
-  const visibleTabs = userLeadCategory ? TABS.filter(t => t.key === userLeadCategory) : TABS;
+  // Role USER gets tabs of all their assigned lead types (both/all tabs if multiple)
+  const scope = getUserLeadTypeScope(user);
+  const visibleTabs = scope?.categories?.length > 0
+    ? TABS.filter(t => scope.categories.includes(t.key))
+    : (scope?.category ? TABS.filter(t => t.key === scope.category) : TABS);
 
   const initialFilters = {
     searchQuery: '',

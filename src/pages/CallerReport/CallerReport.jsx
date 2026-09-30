@@ -57,11 +57,13 @@ export default function CallerReport() {
 
   const [activeLeadType, setActiveLeadType] = useState('All');
 
-  // Role USER only gets their own lead type in the Lead Type filter
-  const userLeadCategory = getUserLeadTypeScope(user)?.category;
-  const leadTypeOptions = userLeadCategory
-    ? LEAD_TYPE_OPTIONS.filter(o => o.value === 'All' || o.value === userLeadCategory)
-    : LEAD_TYPE_OPTIONS;
+  // Role USER only gets their assigned lead types in the Lead Type filter
+  const scope = getUserLeadTypeScope(user);
+  const leadTypeOptions = scope?.categories?.length > 0
+    ? LEAD_TYPE_OPTIONS.filter(o => o.value === 'All' || scope.categories.includes(o.value))
+    : (scope?.category
+      ? LEAD_TYPE_OPTIONS.filter(o => o.value === 'All' || o.value === scope.category)
+      : LEAD_TYPE_OPTIONS);
   const [activeCaller, setActiveCaller] = useState(isAdmin ? 'Complete' : (user?.name || user?.id || 'Complete'));
   const [activeMonth, setActiveMonth] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');

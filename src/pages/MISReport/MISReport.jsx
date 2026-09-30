@@ -45,9 +45,11 @@ export default function MISReport() {
   const [data, setData] = useState({ leads: [], calls: [], employees: [], attendance: [], visits: [], visitFollowUps: [] });
   const [loading, setLoading] = useState(true);
 
-  const userLeadCategory = getUserLeadTypeScope(user)?.category;
-  const visibleTabs = userLeadCategory ? TABS.filter(t => t.key === userLeadCategory) : [ALL_TAB, ...TABS];
-  const [activeTab, setActiveTab] = useState(userLeadCategory || 'All');
+  const scope = getUserLeadTypeScope(user);
+  const visibleTabs = scope?.categories?.length > 0
+    ? TABS.filter(t => scope.categories.includes(t.key))
+    : (scope?.category ? TABS.filter(t => t.key === scope.category) : [ALL_TAB, ...TABS]);
+  const [activeTab, setActiveTab] = useState(scope?.categories?.[0] || scope?.category || 'All');
   const tab = visibleTabs.find(t => t.key === activeTab)?.key || visibleTabs[0].key;
   const isAll = tab === 'All';
 

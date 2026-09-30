@@ -288,10 +288,12 @@ export default function Dashboard() {
   // Employee dropdown (normalized name) — options follow the active tab
   const [employeeKey, setEmployeeKey] = useState('');
 
-  // Role USER only gets the tab of their own lead type; everyone else also gets "All Leads"
-  const userLeadCategory = getUserLeadTypeScope(user)?.category;
-  const visibleTabs = userLeadCategory ? TABS.filter(t => t.key === userLeadCategory) : [ALL_TAB, ...TABS];
-  const [activeTab, setActiveTab] = useState(userLeadCategory || 'All');
+  // Role USER gets tabs of all their assigned lead types; everyone else also gets "All Leads"
+  const scope = getUserLeadTypeScope(user);
+  const visibleTabs = scope?.categories?.length > 0
+    ? TABS.filter(t => scope.categories.includes(t.key))
+    : (scope?.category ? TABS.filter(t => t.key === scope.category) : [ALL_TAB, ...TABS]);
+  const [activeTab, setActiveTab] = useState(scope?.categories?.[0] || scope?.category || 'All');
   const tab = visibleTabs.find(t => t.key === activeTab)?.key || visibleTabs[0].key;
   const isAll = tab === 'All';
   const inTab = useCallback((category) => isAll || category === tab, [isAll, tab]);

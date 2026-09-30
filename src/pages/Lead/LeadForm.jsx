@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
   User, Phone, Mail,
@@ -61,18 +61,21 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
     return 'Real Estate';
   };
 
+  const wasOpenRef = useRef(false);
+
   const [formData, setFormData] = useState(() => ({
     ...initialFormData,
     leadType: defaultLeadType || user?.leadType || 'Real Estate'
   }));
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
       const initialDefaultType = defaultLeadType || resolveUserLeadType();
-      setFormData(prev => ({
+      setFormData({
         ...initialFormData,
         leadType: defaultLeadType || initialDefaultType
-      }));
+      });
 
       Promise.all([
         masterApi.getLeadTypes(),
@@ -99,12 +102,14 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         if (resolvedType) {
           setFormData(prev => ({
             ...prev,
-            leadType: resolvedType
+            leadType: prev.leadType || resolvedType
           }));
         }
-      });
+      }).catch(console.error);
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, user]);
+  }, [isOpen, defaultLeadType]);
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
   const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));

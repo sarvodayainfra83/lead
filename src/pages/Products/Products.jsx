@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
-import { getLeadCategory } from '../../utils/authUtils';
+import { getLeadCategory, getUserLeadTypeScope } from '../../utils/authUtils';
 import { productApi } from '../../api/productApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
@@ -107,8 +107,9 @@ export default function Products() {
   }, [userLeadTypeName]);
 
   // Allowed categories based on users table lead_type_id:
+  // Allowed categories based on user assigned lead type(s):
   // - Admins can view and manage all product tabs
-  // - Regular users are strictly filtered to their assigned lead_type_id tab
+  // - Regular users are strictly filtered to their assigned lead type tab(s)
   const allowedTabs = useMemo(() => {
     // Sharing with a client: only products of the client's lead type
     if (clientCategory) {
@@ -117,14 +118,28 @@ export default function Products() {
     if (isAdmin) {
       return ['real-estate', 'insurance', 'mutual-funds'];
     }
+    const scope = getUserLeadTypeScope(user);
+    if (scope?.categories?.length > 0) {
+      const tabs = [];
+      scope.categories.forEach(cat => {
+        const mapped = mapLeadTypeToTab(cat);
+        if (mapped && !tabs.includes(mapped)) tabs.push(mapped);
+      });
+      if (tabs.length > 0) return tabs;
+    }
     if (userAssignedCategory) {
       return [userAssignedCategory];
     }
     return ['real-estate', 'insurance', 'mutual-funds'];
-  }, [isAdmin, userAssignedCategory, clientCategory]);
+  }, [isAdmin, user, userAssignedCategory, clientCategory]);
 
   const [activeTab, setActiveTab] = useState(() => {
     if (clientCategory) return clientCategory;
+    const scope = getUserLeadTypeScope(user);
+    if (!isAdmin && scope?.categories?.length > 0) {
+      const mapped = mapLeadTypeToTab(scope.categories[0]);
+      if (mapped) return mapped;
+    }
     if (!isAdmin && userAssignedCategory) return userAssignedCategory;
     return 'real-estate';
   });

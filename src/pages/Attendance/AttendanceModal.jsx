@@ -60,35 +60,43 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
     setIsWebcamOpen(false);
   };
 
+  const wasOpenRef = useRef(false);
+
   useEffect(() => {
     if (isOpen) {
       const statusInfo = attendanceApi.getUserTodayAttendanceStatus(existingLogs, user);
       setAttendanceStatus(statusInfo);
 
-      try {
-        const savedSessionStr = sessionStorage.getItem('attendance_camera_session');
-        if (savedSessionStr) {
-          const savedSession = JSON.parse(savedSessionStr);
-          const isFresh = (Date.now() - (savedSession.timestamp || 0)) < 10 * 60 * 1000;
-          if (isFresh && savedSession.status && statusInfo.allowedStatuses.includes(savedSession.status)) {
-            setStatus(savedSession.status);
+      // Only perform a full clean reset when the modal is first opened
+      if (!wasOpenRef.current) {
+        wasOpenRef.current = true;
+
+        try {
+          const savedSessionStr = sessionStorage.getItem('attendance_camera_session');
+          if (savedSessionStr) {
+            const savedSession = JSON.parse(savedSessionStr);
+            const isFresh = (Date.now() - (savedSession.timestamp || 0)) < 10 * 60 * 1000;
+            if (isFresh && savedSession.status && statusInfo.allowedStatuses.includes(savedSession.status)) {
+              setStatus(savedSession.status);
+            } else {
+              setStatus(statusInfo.defaultStatus);
+            }
           } else {
             setStatus(statusInfo.defaultStatus);
           }
-        } else {
+        } catch (e) {
           setStatus(statusInfo.defaultStatus);
         }
-      } catch (e) {
-        setStatus(statusInfo.defaultStatus);
-      }
 
-      setUserName(user?.name || '');
-      setPhotoData(null);
-      setFileName('');
-      setLocation(null);
-      setAddress('');
-      stopWebcam();
+        setUserName(user?.name || '');
+        setPhotoData(null);
+        setFileName('');
+        setLocation(null);
+        setAddress('');
+        stopWebcam();
+      }
     } else {
+      wasOpenRef.current = false;
       stopWebcam();
     }
   }, [isOpen, user, existingLogs]);

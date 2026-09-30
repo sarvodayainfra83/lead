@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Search, RotateCcw } from 'lucide-react';
 import { attendanceApi } from '../../api/attendanceApi';
+import { authApi } from '../../api/authApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -35,38 +36,72 @@ export default function AllAttendanceTab({ tabBar }) {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [logs, receivers] = await Promise.all([
+      const [logs, dbUsers, receivers] = await Promise.all([
         attendanceApi.getAttendanceLogs(),
-        masterApi.getLeadReceivers()
+        authApi.getUsers().catch(() => []),
+        masterApi.getLeadReceivers().catch(() => [])
       ]);
 
       const seen = new Set();
-      const receiverNames = [];
+      const userList = [];
+      const userMap = new Map();
+
+      // 1. Primary: actual users from users table
+      (dbUsers || []).forEach(u => {
+        const rawName = u.name || u.id;
+        if (!rawName) return;
+        const clean = String(rawName).trim();
+        const lower = clean.toLowerCase();
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          userList.push({ id: u.id || clean, name: clean });
+        }
+        if (u.id) userMap.set(String(u.id).toLowerCase(), clean);
+        if (u.dbId) userMap.set(String(u.dbId).toLowerCase(), clean);
+        userMap.set(lower, clean);
+      });
+
+      // 2. Secondary: master lead receivers
       (receivers || []).forEach(r => {
         const raw = r?.personName;
         if (!raw) return;
         const clean = String(raw).replace(/\s+/g, ' ').trim();
         const lower = clean.toLowerCase();
-        if (clean && !seen.has(lower)) {
+        if (!seen.has(lower)) {
           seen.add(lower);
-          receiverNames.push(clean);
+          userList.push({ id: clean, name: clean });
+        }
+        userMap.set(lower, clean);
+      });
+
+      // 3. Any additional log userNames
+      (logs || []).forEach(l => {
+        const raw = l.userName;
+        if (!raw) return;
+        const clean = String(raw).trim();
+        const lower = clean.toLowerCase();
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          userList.push({ id: clean, name: clean });
         }
       });
 
-      const userList = receiverNames.map(name => ({ id: name, name }));
       setEmployees(userList);
 
       // Group logs by Date + Employee Name
       const grouped = {};
-      logs.forEach(log => {
+      (logs || []).forEach(log => {
         const dateKey = log.date || (log.timestamp ? log.timestamp.split(' ')[0] : 'Unknown');
-        const userKey = log.userName || 'Unknown';
-        const key = `${dateKey}___${userKey}`;
+        const resolvedName = (log.userId && userMap.get(String(log.userId).toLowerCase())) ||
+          (log.userName && userMap.get(String(log.userName).toLowerCase())) ||
+          log.userName || 'Unknown';
+        const key = `${dateKey}___${resolvedName}`;
 
         if (!grouped[key]) {
           grouped[key] = {
             date: dateKey,
-            name: userKey,
+            name: resolvedName,
+            userId: log.userId,
             inTimes: [],
             outTimes: [],
             latestTimestampMs: log.timestampMs || 0
@@ -122,6 +157,7 @@ export default function AllAttendanceTab({ tabBar }) {
           id: `${group.date}_${group.name}`,
           date: group.date,
           name: group.name,
+          userId: group.userId,
           checkIn,
           checkOut,
           workingHours,
@@ -133,7 +169,12 @@ export default function AllAttendanceTab({ tabBar }) {
       // Scope for regular users if not admin
       const scopedRows = isAdmin
         ? rows
-        : rows.filter(r => r.name === user?.name || r.name === user?.id);
+        : rows.filter(r =>
+          (user?.name && r.name.toLowerCase() === user.name.toLowerCase()) ||
+          (user?.id && r.name.toLowerCase() === user.id.toLowerCase()) ||
+          (user?.id && r.userId === user.id) ||
+          (user?.dbId && r.userId === user.dbId)
+        );
 
       setDailySummaries(scopedRows.sort((a, b) => b.sortMs - a.sortMs));
     } catch (err) {
@@ -208,9 +249,8 @@ export default function AllAttendanceTab({ tabBar }) {
         {item.workingHours}
       </td>
       <td className="px-4 py-3 text-center whitespace-nowrap">
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-          STATUS_BADGES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'
-        }`}>
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${STATUS_BADGES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'
+          }`}>
           {item.status}
         </span>
       </td>
@@ -226,9 +266,8 @@ export default function AllAttendanceTab({ tabBar }) {
           </span>
           <h4 className="text-sm font-bold text-gray-900 leading-tight">{item.name}</h4>
         </div>
-        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${
-          STATUS_BADGES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'
-        }`}>
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${STATUS_BADGES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'
+          }`}>
           {item.status}
         </span>
       </div>

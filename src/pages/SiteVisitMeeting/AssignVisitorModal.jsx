@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { MapPin, UserCheck, Calendar, X } from 'lucide-react';
@@ -48,8 +48,23 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
     }
   });
 
+  const wasOpenRef = useRef(false);
+  const lastLeadIdRef = useRef(null);
+
   useEffect(() => {
-    if (lead && isOpen) {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    const currentId = lead?.id || lead?.leadNo;
+    const isFirstOpen = !wasOpenRef.current;
+    const isNewLead = currentId && currentId !== lastLeadIdRef.current;
+
+    if (lead && (isFirstOpen || isNewLead)) {
+      wasOpenRef.current = true;
+      lastLeadIdRef.current = currentId;
+
       setFormData({
         visitorName: lead.assignedVisitor || '',
         visitorId: lead.visitorId || '',
