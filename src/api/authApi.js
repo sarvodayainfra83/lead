@@ -1,6 +1,14 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { getUsers as getLocalUsers, saveUser as saveLocalUser, deleteUser as deleteLocalUser } from '../utils/storageManager';
 
+const resolveUserRole = (rawRole, accessPages) => {
+  const r = String(rawRole || '').trim().toUpperCase();
+  if (r === 'TESTER' || accessPages?.__role === 'TESTER' || accessPages?.__is_tester) {
+    return 'TESTER';
+  }
+  return r || 'USER';
+};
+
 export const authApi = {
   // Login user by Username, Email, or Phone and Password
   async loginUser(userIdCode, password) {
@@ -51,7 +59,7 @@ export const authApi = {
       number: data.number,
       gmail: data.gmail,
       password: data.password,
-      role: data.role,
+      role: resolveUserRole(data.role, data.access_pages),
       position: data.position || '',
       leadTypeId: data.lead_type_id || null,
       leadType: data.lead_type || data.access_pages?.__assigned_lead_types || data.master_lead_types?.lead_type || '',
@@ -87,7 +95,7 @@ export const authApi = {
       name: data.name,
       number: data.number,
       gmail: data.gmail,
-      role: data.role,
+      role: resolveUserRole(data.role, data.access_pages),
       position: data.position || '',
       leadTypeId: data.lead_type_id || null,
       leadType: data.lead_type || data.access_pages?.__assigned_lead_types || data.master_lead_types?.lead_type || '',
@@ -136,7 +144,7 @@ export const authApi = {
         number: u.number,
         gmail: u.gmail,
         password: u.password,
-        role: u.role,
+        role: resolveUserRole(u.role, u.access_pages),
         position: u.position || '',
         leadTypeId: u.lead_type_id || null,
         leadType: u.lead_type || u.access_pages?.__assigned_lead_types || (u.lead_type_id && typeMap[u.lead_type_id]) || '',
@@ -152,7 +160,7 @@ export const authApi = {
       number: u.number,
       gmail: u.gmail,
       password: u.password,
-      role: u.role,
+      role: resolveUserRole(u.role, u.access_pages),
       position: u.position || '',
       leadTypeId: u.lead_type_id || null,
       leadType: u.lead_type || u.access_pages?.__assigned_lead_types || u.master_lead_types?.lead_type || '',
@@ -171,6 +179,11 @@ export const authApi = {
       __assigned_lead_types: userData.leadType || ''
     };
 
+    if (userData.role === 'TESTER') {
+      accessPages.__role = 'TESTER';
+      accessPages.__is_tester = true;
+    }
+
     let payload = {
       username: userData.id,
       name: userData.name,
@@ -188,6 +201,15 @@ export const authApi = {
       .from('users')
       .upsert(payload, { onConflict: 'username' })
       .select();
+
+    // Fallback: If database has older users_role_check constraint rejecting 'TESTER', fallback to 'USER' in role column with __role in access_pages
+    if (error && (error.message?.includes('users_role_check') || error.message?.includes('role') || error.code === '23514')) {
+      payload.role = 'USER';
+      ({ data, error } = await supabase
+        .from('users')
+        .upsert(payload, { onConflict: 'username' })
+        .select());
+    }
 
     if (error && (error.message?.includes('lead_type') || error.code === 'PGRST204')) {
       delete payload.lead_type;

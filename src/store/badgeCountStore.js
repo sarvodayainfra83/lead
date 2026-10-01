@@ -4,7 +4,7 @@ import { callTrackerApi } from '../api/callTrackerApi';
 import { siteVisitApi } from '../api/siteVisitApi';
 import { siteVisitFollowUpApi } from '../api/siteVisitFollowUpApi';
 import {
-  isLeadPending, getLeadStatus, getLatestCustomerStatus, isFollowUpRejected, CUSTOMER_MASTER_STATUSES
+  isLeadPending, getLeadStatus, getLatestCustomerStatus, isFollowUpRejected, CUSTOMER_MASTER_STATUSES, isDirectSiteVisitLead
 } from '../pages/CallTracker/callTrackerConstants';
 import { useAuthStore } from './authStore';
 import { isUserAdmin, matchesUserAssignment, matchesUserReceiver } from '../utils/authUtils';
@@ -42,10 +42,10 @@ export const useBadgeCountStore = create((set) => ({
       const userLeadIdSet = new Set(userLeads.flatMap(l => [String(l.id), String(l.leadNo)].filter(Boolean)));
       const userTrackers = isAdmin ? allTrackers : allTrackers.filter(t => userLeadIdSet.has(String(t.leadId)) || userLeadIdSet.has(String(t.leadNo)));
 
-      // Pending leads without caller assigned (exclude direct leads created in Call Tracker)
+      // Pending leads without caller assigned (exclude direct leads and direct site visit leads)
       const pendingLeadCount = isAdmin
-        ? allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct').length
-        : allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct' && matchesUserReceiver(l, user)).length;
+        ? allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct' && !isDirectSiteVisitLead(l)).length
+        : allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct' && !isDirectSiteVisitLead(l) && matchesUserReceiver(l, user)).length;
 
       // Pending tracker leads awaiting a call (must use allTrackers to check actual terminal status)
       const pendingTrackerCount = userLeads.filter(l => isLeadPending(allTrackers, l)).length;

@@ -1,9 +1,30 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import {
   getAttendanceLogs as getLocalAttendanceLogs,
+  saveAttendanceLogs as saveLocalAttendanceLogs,
   saveAttendanceLog as saveLocalAttendanceLog,
-  deleteAttendanceLog as deleteLocalAttendanceLog
+  deleteAttendanceLog as deleteLocalAttendanceLog,
+  getLocalLocationCache,
+  addLocalLocationCacheEntry,
+  getLastResolvedAddress,
+  saveLastResolvedAddress
 } from '../utils/storageManager';
+
+// Haversine distance calculator between two coordinates in meters
+function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371e3; // Earth's radius in meters
+  const phi1 = (Number(lat1) * Math.PI) / 180;
+  const phi2 = (Number(lat2) * Math.PI) / 180;
+  const deltaPhi = ((Number(lat2) - Number(lat1)) * Math.PI) / 180;
+  const deltaLambda = ((Number(lon2) - Number(lon1)) * Math.PI) / 180;
+
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
 
 // Convert base64 data URL to binary Blob for efficient storage upload
 function dataURLtoBlob(dataUrl) {
@@ -181,8 +202,12 @@ export const attendanceApi = {
       outPhotoUrl: row.out_photo_url || row.outPhotoUrl || '',
       latitude: row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null,
       longitude: row.longitude !== null && row.longitude !== undefined ? Number(row.longitude) : null,
+      accuracy: row.accuracy !== null && row.accuracy !== undefined ? Number(row.accuracy) : null,
       locationName: row.location_name || row.locationName || row.location || '',
+      geocodingStatus: row.geocoding_status || row.geocodingStatus || 'RESOLVED',
+      outAccuracy: row.out_accuracy !== null && row.out_accuracy !== undefined ? Number(row.out_accuracy) : null,
       outLocationName: row.out_location_name || row.outLocationName || '',
+      outGeocodingStatus: row.out_geocoding_status || row.outGeocodingStatus || 'RESOLVED',
       createdAt: row.created_at || row.createdAt,
       updatedAt: row.updated_at || row.updatedAt
     };
@@ -201,8 +226,12 @@ export const attendanceApi = {
       out_photo_url: entry.outPhotoUrl || null,
       latitude: entry.latitude !== null && entry.latitude !== undefined ? Number(entry.latitude) : null,
       longitude: entry.longitude !== null && entry.longitude !== undefined ? Number(entry.longitude) : null,
+      accuracy: entry.accuracy !== null && entry.accuracy !== undefined ? Number(entry.accuracy) : null,
       location_name: entry.locationName || entry.location || '',
-      out_location_name: entry.outLocationName || null
+      geocoding_status: entry.geocodingStatus || entry.geocoding_status || 'RESOLVED',
+      out_accuracy: entry.outAccuracy !== null && entry.outAccuracy !== undefined ? Number(entry.outAccuracy) : null,
+      out_location_name: entry.outLocationName || null,
+      out_geocoding_status: entry.outGeocodingStatus || entry.out_geocoding_status || 'RESOLVED'
     };
   },
 
@@ -276,8 +305,14 @@ export const attendanceApi = {
       outPhotoUrl: isMarkingOut ? finalPhotoUrl : (existingTodayLog?.outPhotoUrl || null),
       inTime: isMarkingOut ? (existingTodayLog?.inTime || entry.inTime || '') : (entry.inTime || entry.timestamp?.split(' ')[1] || ''),
       outTime: isMarkingOut ? (entry.outTime || entry.timestamp?.split(' ')[1] || '') : (existingTodayLog?.outTime || null),
+      latitude: !isMarkingOut ? (entry.latitude != null ? entry.latitude : existingTodayLog?.latitude) : (existingTodayLog?.latitude || entry.latitude),
+      longitude: !isMarkingOut ? (entry.longitude != null ? entry.longitude : existingTodayLog?.longitude) : (existingTodayLog?.longitude || entry.longitude),
+      accuracy: !isMarkingOut ? (entry.accuracy != null ? entry.accuracy : existingTodayLog?.accuracy) : (existingTodayLog?.accuracy || entry.accuracy),
       locationName: isMarkingOut ? (existingTodayLog?.locationName || entry.locationName) : entry.locationName,
-      outLocationName: isMarkingOut ? entry.locationName : (existingTodayLog?.outLocationName || null)
+      geocodingStatus: !isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.geocodingStatus || 'RESOLVED'),
+      outAccuracy: isMarkingOut ? (entry.accuracy != null ? entry.accuracy : null) : (existingTodayLog?.outAccuracy || null),
+      outLocationName: isMarkingOut ? entry.locationName : (existingTodayLog?.outLocationName || null),
+      outGeocodingStatus: isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.outGeocodingStatus || 'RESOLVED')
     };
 
     if (existingTodayLog) {
@@ -299,12 +334,17 @@ export const attendanceApi = {
           out_photo_url: payloadWithPhoto.outPhotoUrl || null,
           out_location_name: payloadWithPhoto.outLocationName || null
         };
-        // If re-marking IN / Half Day, update primary photo & location
-        if (!isMarkingOut) {
+        if (isMarkingOut) {
+          if (entry.accuracy != null) updatePayload.out_accuracy = Number(entry.accuracy);
+          if (entry.geocodingStatus) updatePayload.out_geocoding_status = entry.geocodingStatus;
+        } else {
+          // If re-marking IN / Half Day, update primary photo & location
           if (finalPhotoUrl) updatePayload.photo_url = finalPhotoUrl;
           if (entry.locationName) updatePayload.location_name = entry.locationName;
           if (entry.latitude != null) updatePayload.latitude = Number(entry.latitude);
           if (entry.longitude != null) updatePayload.longitude = Number(entry.longitude);
+          if (entry.accuracy != null) updatePayload.accuracy = Number(entry.accuracy);
+          if (entry.geocodingStatus) updatePayload.geocoding_status = entry.geocodingStatus;
         }
 
         const { data, error } = await supabase
@@ -315,9 +355,28 @@ export const attendanceApi = {
           .single();
 
         if (error) {
-          console.warn('Error updating existing attendance log on Supabase, falling back to local:', error);
-          const savedLocal = saveLocalAttendanceLog(payloadWithPhoto);
-          return this.mapFromDb(savedLocal);
+          // Fallback if extra columns not in Supabase yet
+          const fallbackUpdatePayload = { ...updatePayload };
+          delete fallbackUpdatePayload.accuracy;
+          delete fallbackUpdatePayload.geocoding_status;
+          delete fallbackUpdatePayload.out_accuracy;
+          delete fallbackUpdatePayload.out_geocoding_status;
+
+          const retry = await supabase
+            .from('attendance_logs')
+            .update(fallbackUpdatePayload)
+            .eq('id', existingTodayLog.id)
+            .select('*, users(id, name, username)')
+            .single();
+
+          if (retry.error) {
+            console.warn('Error updating existing attendance log on Supabase, falling back to local:', retry.error);
+            const savedLocal = saveLocalAttendanceLog(payloadWithPhoto);
+            return this.mapFromDb(savedLocal);
+          }
+          const updated = this.mapFromDb(retry.data);
+          saveLocalAttendanceLog({ ...updated, ...payloadWithPhoto });
+          return updated;
         }
 
         const updated = this.mapFromDb(data);
@@ -333,9 +392,27 @@ export const attendanceApi = {
           .single();
 
         if (error) {
-          console.warn('Error inserting attendance log to Supabase, saving locally:', error);
-          const createdLocal = saveLocalAttendanceLog(payloadWithPhoto);
-          return this.mapFromDb(createdLocal);
+          // Fallback insert if new columns not yet migrated in Supabase
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.accuracy;
+          delete fallbackPayload.geocoding_status;
+          delete fallbackPayload.out_accuracy;
+          delete fallbackPayload.out_geocoding_status;
+
+          const retry = await supabase
+            .from('attendance_logs')
+            .insert(fallbackPayload)
+            .select('*, users(id, name, username)')
+            .single();
+
+          if (retry.error) {
+            console.warn('Error inserting attendance log to Supabase, saving locally:', retry.error);
+            const createdLocal = saveLocalAttendanceLog(payloadWithPhoto);
+            return this.mapFromDb(createdLocal);
+          }
+          const created = this.mapFromDb(retry.data);
+          saveLocalAttendanceLog({ ...created, ...payloadWithPhoto });
+          return created;
         }
 
         const created = this.mapFromDb(data);
@@ -443,9 +520,121 @@ async updateAttendanceLog(id, updatedFields) {
     return true;
   },
 
-  // Reverse geocoding helper via OpenStreetMap Nominatim API
-  async reverseGeocode(lat, lng) {
-    if (!lat || !lng) return '';
+  // 1. Search for nearby cached location within radius (default 100 meters)
+  async findNearbyLocationInCache(lat, lng, radiusMeters = 100) {
+    if (lat == null || lng == null) return null;
+    const numLat = Number(lat);
+    const numLng = Number(lng);
+
+    // Check local storage cache first
+    try {
+      const localCache = getLocalLocationCache();
+      if (Array.isArray(localCache) && localCache.length > 0) {
+        let closest = null;
+        let minDistance = Infinity;
+
+        for (const item of localCache) {
+          if (item.latitude != null && item.longitude != null && item.address) {
+            const dist = calculateDistanceMeters(numLat, numLng, item.latitude, item.longitude);
+            if (dist <= radiusMeters && dist < minDistance) {
+              minDistance = dist;
+              closest = { ...item, distance: dist };
+            }
+          }
+        }
+
+        if (closest) {
+          return closest;
+        }
+      }
+    } catch (err) {
+      console.warn('Error reading local location cache:', err);
+    }
+
+    // Check Supabase location_cache table if configured
+    if (isSupabaseConfigured) {
+      try {
+        // Bounding box pre-filter (~220m radius)
+        const latDelta = 0.002;
+        const lngDelta = 0.002;
+
+        const { data, error } = await supabase
+          .from('location_cache')
+          .select('*')
+          .gte('latitude', numLat - latDelta)
+          .lte('latitude', numLat + latDelta)
+          .gte('longitude', numLng - lngDelta)
+          .lte('longitude', numLng + lngDelta)
+          .limit(20);
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          let closest = null;
+          let minDistance = Infinity;
+
+          for (const item of data) {
+            if (item.latitude != null && item.longitude != null && item.address) {
+              const dist = calculateDistanceMeters(numLat, numLng, item.latitude, item.longitude);
+              if (dist <= radiusMeters && dist < minDistance) {
+                minDistance = dist;
+                closest = { ...item, distance: dist };
+              }
+            }
+          }
+
+          if (closest) {
+            // Also store in local cache for offline reuse
+            addLocalLocationCacheEntry({
+              latitude: closest.latitude,
+              longitude: closest.longitude,
+              address: closest.address,
+              accuracy: closest.accuracy
+            });
+            return closest;
+          }
+        }
+      } catch (err) {
+        console.warn('Error querying Supabase location_cache:', err);
+      }
+    }
+
+    return null;
+  },
+
+  // 2. Save resolved location to cache (both Supabase and local storage)
+  async saveLocationToCache(lat, lng, address, accuracy = null) {
+    if (lat == null || lng == null || !address) return;
+    const numLat = Number(lat);
+    const numLng = Number(lng);
+    const numAcc = accuracy != null ? Number(accuracy) : null;
+
+    // Save to local storage
+    addLocalLocationCacheEntry({
+      latitude: numLat,
+      longitude: numLng,
+      address,
+      accuracy: numAcc
+    });
+
+    // Save to Supabase location_cache table
+    if (isSupabaseConfigured) {
+      try {
+        await supabase
+          .from('location_cache')
+          .insert({
+            latitude: numLat,
+            longitude: numLng,
+            address,
+            accuracy: numAcc
+          });
+      } catch (err) {
+        console.warn('Could not save to Supabase location_cache table:', err);
+      }
+    }
+  },
+
+  // 3. Direct Nominatim reverse geocode call
+  async reverseGeocodeNominatim(lat, lng) {
+    if (lat == null || lng == null) return null;
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -457,12 +646,184 @@ async updateAttendanceLog(id, updatedFields) {
         }
       );
       clearTimeout(timeoutId);
-      if (!res.ok) throw new Error('Geocoding request failed');
+      if (!res.ok) throw new Error(`Geocoding HTTP status: ${res.status}`);
       const data = await res.json();
-      return data.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    } catch (e) {
-      console.warn('Reverse geocode error:', e);
-      return `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+      return data.display_name || null;
+    } catch (err) {
+      console.warn('Nominatim reverse geocode error:', err);
+      return null;
+    }
+  },
+
+  // 4. 5-Tier Location Address Resolution
+  async resolveLocationAddress(lat, lng, accuracy = null) {
+    if (lat == null || lng == null) {
+      return {
+        address: '',
+        geocodingStatus: 'RESOLVED',
+        source: 'none',
+        isFallback: false
+      };
+    }
+
+    const numLat = Number(lat);
+    const numLng = Number(lng);
+
+    // Tier 1: Check Location Cache (within 100m radius)
+    try {
+      const cached = await this.findNearbyLocationInCache(numLat, numLng, 100);
+      if (cached && cached.address) {
+        saveLastResolvedAddress(cached.address);
+        return {
+          address: cached.address,
+          geocodingStatus: 'RESOLVED',
+          source: 'cache',
+          isFallback: false
+        };
+      }
+    } catch (cacheErr) {
+      console.warn('Cache lookup failed:', cacheErr);
+    }
+
+    // Tier 2: OpenStreetMap Nominatim Reverse Geocoding
+    if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
+      try {
+        const nominatimAddress = await this.reverseGeocodeNominatim(numLat, numLng);
+        if (nominatimAddress) {
+          // Save to shared cache & local storage
+          this.saveLocationToCache(numLat, numLng, nominatimAddress, accuracy);
+          saveLastResolvedAddress(nominatimAddress);
+          return {
+            address: nominatimAddress,
+            geocodingStatus: 'RESOLVED',
+            source: 'nominatim',
+            isFallback: false
+          };
+        }
+      } catch (nomErr) {
+        console.warn('Nominatim resolution failed:', nomErr);
+      }
+    }
+
+    // Tier 3: Local Last Known Address Fallback
+    const lastKnownAddress = getLastResolvedAddress();
+    if (lastKnownAddress) {
+      return {
+        address: `${lastKnownAddress} (Approximate / Offline)`,
+        geocodingStatus: 'PENDING',
+        source: 'last_known',
+        isFallback: true
+      };
+    }
+
+    // Tier 4: Raw GPS Coordinates Fallback
+    return {
+      address: `${numLat.toFixed(6)}, ${numLng.toFixed(6)}`,
+      geocodingStatus: 'PENDING',
+      source: 'coordinates',
+      isFallback: true
+    };
+  },
+
+  // Backward compatible reverseGeocode method returning address string
+  async reverseGeocode(lat, lng, accuracy = null) {
+    const result = await this.resolveLocationAddress(lat, lng, accuracy);
+    return result.address;
+  },
+
+  // Controlled retry for pending geocoding records (e.g. when back online)
+  async retryPendingGeocoding(onSuccessCallback = null) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (this._isRetrying) return;
+    this._isRetrying = true;
+
+    try {
+      if (isSupabaseConfigured) {
+        // Query pending attendance_logs from Supabase
+        const { data: pendingLogs, error } = await supabase
+          .from('attendance_logs')
+          .select('*')
+          .or('geocoding_status.eq.PENDING,out_geocoding_status.eq.PENDING')
+          .limit(10);
+
+        if (!error && Array.isArray(pendingLogs) && pendingLogs.length > 0) {
+          let updatedCount = 0;
+
+          for (const log of pendingLogs) {
+            const updates = {};
+
+            // Retry IN punch location
+            if (log.geocoding_status === 'PENDING' && log.latitude != null && log.longitude != null) {
+              const res = await this.resolveLocationAddress(log.latitude, log.longitude, log.accuracy);
+              if (res.geocodingStatus === 'RESOLVED') {
+                updates.location_name = res.address;
+                updates.geocoding_status = 'RESOLVED';
+              }
+            }
+
+            // Retry OUT punch location
+            if (log.out_geocoding_status === 'PENDING') {
+              const outLat = log.out_latitude != null ? log.out_latitude : log.latitude;
+              const outLng = log.out_longitude != null ? log.out_longitude : log.longitude;
+              if (outLat != null && outLng != null) {
+                const res = await this.resolveLocationAddress(outLat, outLng, log.out_accuracy || log.accuracy);
+                if (res.geocodingStatus === 'RESOLVED') {
+                  updates.out_location_name = res.address;
+                  updates.out_geocoding_status = 'RESOLVED';
+                }
+              }
+            }
+
+            if (Object.keys(updates).length > 0) {
+              updates.updated_at = new Date().toISOString();
+              const { error: updateError } = await supabase
+                .from('attendance_logs')
+                .update(updates)
+                .eq('id', log.id);
+
+              if (!updateError) {
+                updatedCount++;
+              }
+            }
+          }
+
+          if (updatedCount > 0 && typeof onSuccessCallback === 'function') {
+            onSuccessCallback();
+          }
+        }
+      }
+
+      // Also process pending records in local storage
+      const localLogs = getLocalAttendanceLogs();
+      let localModified = false;
+      for (const log of localLogs) {
+        if (log.geocoding_status === 'PENDING' && log.latitude != null && log.longitude != null) {
+          const res = await this.resolveLocationAddress(log.latitude, log.longitude, log.accuracy);
+          if (res.geocodingStatus === 'RESOLVED') {
+            log.location_name = res.address;
+            log.geocoding_status = 'RESOLVED';
+            localModified = true;
+          }
+        }
+        if (log.out_geocoding_status === 'PENDING' && log.latitude != null && log.longitude != null) {
+          const res = await this.resolveLocationAddress(log.latitude, log.longitude, log.out_accuracy || log.accuracy);
+          if (res.geocodingStatus === 'RESOLVED') {
+            log.out_location_name = res.address;
+            log.out_geocoding_status = 'RESOLVED';
+            localModified = true;
+          }
+        }
+      }
+      if (localModified) {
+        saveLocalAttendanceLogs(localLogs);
+        if (typeof onSuccessCallback === 'function') {
+          onSuccessCallback();
+        }
+      }
+    } catch (err) {
+      console.warn('retryPendingGeocoding error:', err);
+    } finally {
+      this._isRetrying = false;
     }
   },
 

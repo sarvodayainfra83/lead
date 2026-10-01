@@ -118,5 +118,21 @@ export const getTodayStr = () => {
   return `${year}-${month}-${day}`;
 };
 
+/**
+ * Checks if a lead was assigned directly to a site visit upon creation
+ * (e.g. Real Estate + Walk-in with Site Visit checked).
+ */
+export const isDirectSiteVisitLead = (lead) => {
+  if (!lead) return false;
+  if (lead.processType === 'Direct Site Visit' || lead.process_type === 'Direct Site Visit') return true;
+  if (lead.directSiteVisit === true || lead.direct_site_visit === true) return true;
+  if (lead.isSiteVisit === true || lead.is_site_visit === true) {
+    if (lead.leadSource === 'Walk-in' || lead.lead_source === 'Walk-in' || lead.assignedVisitor || lead.assigned_visitor) {
+      return true;
+    }
+  }
+  return false;
+};
+
 
 

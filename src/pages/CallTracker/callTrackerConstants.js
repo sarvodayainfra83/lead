@@ -88,13 +88,27 @@ export const getLatestTrackerForLead = (trackers, leadId, leadNo) => {
   return forLead.length > 0 ? forLead[forLead.length - 1] : null;
 };
 
+export const isDirectSiteVisitLead = (lead) => {
+  if (!lead) return false;
+  if (lead.processType === 'Direct Site Visit' || lead.process_type === 'Direct Site Visit') return true;
+  if (lead.directSiteVisit === true || lead.direct_site_visit === true) return true;
+  if (lead.isSiteVisit === true || lead.is_site_visit === true) {
+    if (lead.leadSource === 'Walk-in' || lead.lead_source === 'Walk-in' || lead.assignedVisitor || lead.assigned_visitor) {
+      return true;
+    }
+  }
+  return false;
+};
+
 // A lead only enters the Call Tracker's Pending queue once it has an assigned caller —
 // before that it lives in the Lead module's own Pending (awaiting assignment) list instead.
 // Once assigned (or created directly in Call Tracker), it stays pending until a call is logged
-// as Interested, Not Interested, or Site Visit/Meeting.
+// as Interested, Not Interested, or Site Visit/Meeting. Direct Site Visit leads are handled in Site Visit / Meeting.
 export const isLeadPending = (trackers, lead) => {
-  if (!lead?.callerAssigned && lead?.processType !== 'Direct') return false;
-  const latest = getLatestTrackerForLead(trackers, lead?.id, lead?.leadNo);
+  if (!lead) return false;
+  if (isDirectSiteVisitLead(lead)) return false;
+  if (!lead.callerAssigned && lead.processType !== 'Direct') return false;
+  const latest = getLatestTrackerForLead(trackers, lead.id, lead.leadNo);
   return !latest || !TERMINAL_STATUSES.includes(latest.status);
 };
 

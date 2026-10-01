@@ -311,7 +311,7 @@ CREATE TABLE IF NOT EXISTS users (
     number TEXT,
     gmail TEXT,
     password TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER', 'HR')),
+    role TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER', 'HR', 'TESTER')),
     position TEXT,
     lead_type_id UUID REFERENCES master_lead_types(id) ON DELETE SET NULL,
     access_pages JSONB DEFAULT '{}'::jsonb,
@@ -319,9 +319,9 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Update check constraint for existing installations to support 'HR' role
+-- Update check constraint for existing installations to support 'HR' and 'TESTER' roles
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN', 'USER', 'HR'));
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN', 'USER', 'HR', 'TESTER'));
 
 -- 3. MASTER LEAD SOURCES TABLE
 CREATE TABLE IF NOT EXISTS master_lead_sources (
@@ -924,6 +924,10 @@ ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS in_time TEXT;
 ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_time TEXT;
 ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_photo_url TEXT;
 ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_location_name TEXT;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS accuracy DOUBLE PRECISION;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS geocoding_status TEXT DEFAULT 'RESOLVED';
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_accuracy DOUBLE PRECISION;
+ALTER TABLE attendance_logs ADD COLUMN IF NOT EXISTS out_geocoding_status TEXT DEFAULT 'RESOLVED';
 
 CREATE INDEX IF NOT EXISTS idx_attendance_logs_user_name ON attendance_logs(user_name);
 CREATE INDEX IF NOT EXISTS idx_attendance_logs_date ON attendance_logs(date);
@@ -932,6 +936,23 @@ CREATE INDEX IF NOT EXISTS idx_attendance_logs_timestamp_ms ON attendance_logs(t
 ALTER TABLE attendance_logs ENABLE ROW LEVEL SECURITY; 
 CREATE POLICY "Allow all operations for anon on attendance_logs"
 ON attendance_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- Location Cache table for attendance and reverse-geocoding optimization (shared across all users)
+CREATE TABLE IF NOT EXISTS location_cache (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    address TEXT NOT NULL,
+    accuracy DOUBLE PRECISION,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_cache_lat_lng ON location_cache(latitude, longitude);
+
+ALTER TABLE location_cache ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all operations for anon on location_cache"
+ON location_cache FOR ALL USING (true) WITH CHECK (true);
 
 -- Storage Bucket for Attendance Photos
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

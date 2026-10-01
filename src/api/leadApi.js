@@ -98,9 +98,11 @@ export const leadApi = {
       anyDesease: row.any_desease || '',
       // Product Type — Real Estate/Mutual Fund's own column, or Insurance's product type reused
       productType: row.product_type || row.insurance_type || '',
-      // 'Lead' (Add Lead form) or 'Direct' (Call Tracker's Direct form) — defaults to 'Lead'
-      // for leads saved before this field existed.
+      // 'Lead' (Add Lead form) or 'Direct' (Call Tracker's Direct form) or 'Direct Site Visit'
       processType: row.process_type || row.processType || 'Lead',
+      assignedVisitor: row.assigned_visitor || row.assignedVisitor || '',
+      isSiteVisit: Boolean(row.is_site_visit ?? row.isSiteVisit ?? (row.process_type === 'Direct Site Visit' || row.processType === 'Direct Site Visit')),
+      directSiteVisit: Boolean(row.direct_site_visit ?? row.directSiteVisit ?? (row.process_type === 'Direct Site Visit' || row.processType === 'Direct Site Visit')),
       timestamp: row.timestamp || row.created_at || new Date().toISOString()
     };
   },

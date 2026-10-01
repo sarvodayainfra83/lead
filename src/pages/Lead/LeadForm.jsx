@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import {
   User, Phone, Mail,
-  Briefcase, Wallet, MapPin, Clock, MessageSquare, ClipboardList, Shield, Activity, UserCheck, Share2
+  Briefcase, Wallet, MapPin, Clock, MessageSquare, ClipboardList, Shield, Activity, UserCheck, Share2, Calendar
 } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
+import { authApi } from '../../api/authApi';
+import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { useAuthStore } from '../../store/authStore';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -17,6 +19,9 @@ const initialFormData = {
   leadSource: '',
   customLeadSource: '',
   referencerName: '',
+  // Site Visit fields (Real Estate + Walk-in only)
+  isSiteVisit: true,
+  assignedVisitor: '',
   customerName: '',
   customerNumber: '',
   customerEmail: '',
@@ -54,6 +59,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
   const [insuranceProductsMaster, setInsuranceProductsMaster] = useState([]);
   const [insuranceSubProductsMaster, setInsuranceSubProductsMaster] = useState([]);
   const [investmentBudgetsMaster, setInvestmentBudgetsMaster] = useState([]);
+  const [usersList, setUsersList] = useState([]);
+  const [visitorsList, setVisitorsList] = useState([]);
 
   const resolveUserLeadType = (typesList = leadTypesMaster) => {
     if (defaultLeadType) return defaultLeadType;
@@ -69,7 +76,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
 
   const [formData, setFormData] = useState(() => ({
     ...initialFormData,
-    leadType: defaultLeadType || user?.leadType || 'Real Estate'
+    leadType: defaultLeadType || user?.leadType || 'Real Estate',
+    assignedVisitor: user?.name || ''
   }));
 
   useEffect(() => {
@@ -78,7 +86,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
       const initialDefaultType = defaultLeadType || resolveUserLeadType();
       setFormData({
         ...initialFormData,
-        leadType: defaultLeadType || initialDefaultType
+        leadType: defaultLeadType || initialDefaultType,
+        assignedVisitor: user?.name || ''
       });
 
       Promise.all([
@@ -90,8 +99,10 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         masterApi.getMutualFundProducts(),
         masterApi.getInsuranceProducts(),
         masterApi.getInsuranceSubProducts(),
-        masterApi.getInvestmentBudgets()
-      ]).then(([types, sources, receivers, reProducts, reRequirements, mfProducts, insProducts, insSubProducts, budgets]) => {
+        masterApi.getInvestmentBudgets(),
+        authApi.getUsers().catch(() => []),
+        masterApi.getVisitors().catch(() => [])
+      ]).then(([types, sources, receivers, reProducts, reRequirements, mfProducts, insProducts, insSubProducts, budgets, usersData, visitorsData]) => {
         setLeadTypesMaster(types || []);
         setLeadSourcesMaster(sources || []);
         setLeadReceiversMaster(receivers || []);
@@ -101,12 +112,15 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         setInsuranceProductsMaster(insProducts || []);
         setInsuranceSubProductsMaster(insSubProducts || []);
         setInvestmentBudgetsMaster(budgets || []);
+        setUsersList(usersData || []);
+        setVisitorsList(visitorsData || []);
 
         const resolvedType = resolveUserLeadType(types || []);
         if (resolvedType) {
           setFormData(prev => ({
             ...prev,
-            leadType: prev.leadType || resolvedType
+            leadType: prev.leadType || resolvedType,
+            assignedVisitor: prev.assignedVisitor || user?.name || ''
           }));
         }
       }).catch(console.error);
@@ -148,10 +162,64 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
     )
   ).map(name => ({ value: name, label: name }));
 
-  const isRealEstate = formData.leadType === 'Real Estate';
+  const isRealEstate = formData.leadType === 'Real Estate' || formData.leadType?.toLowerCase().includes('real');
   const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');
   const isMutualFund = formData.leadType === 'Mutual Fund';
   const isReferenceSource = formData.leadSource?.toLowerCase() === 'reference';
+
+  const isWalkInSource = useMemo(() => {
+    const src = String(formData.leadSource || '').toLowerCase().trim();
+    if (src.includes('walk-in') || src.includes('walk in') || src.includes('walkin') || src === 'walk in' || src === 'walk-in' || src === 'walkin') {
+      return true;
+    }
+    if (isOtherValue(formData.leadSource)) {
+      const custom = String(formData.customLeadSource || '').toLowerCase().trim();
+      if (custom.includes('walk-in') || custom.includes('walk in') || custom.includes('walkin')) {
+        return true;
+      }
+    }
+    return false;
+  }, [formData.leadSource, formData.customLeadSource]);
+
+  const showSiteVisitOption = isRealEstate && isWalkInSource;
+
+  const visitorOptions = useMemo(() => {
+    const seen = new Set();
+    const opts = [];
+
+    // 1. Current logged-in user first
+    if (user?.name) {
+      const cleanName = String(user.name).trim();
+      seen.add(cleanName.toLowerCase());
+      opts.push({ value: cleanName, label: `${cleanName} (You)` });
+    }
+
+    // 2. Visitors from master
+    (visitorsList || []).forEach(v => {
+      const name = v?.personName || v?.name;
+      if (!name) return;
+      const clean = String(name).trim();
+      const lower = clean.toLowerCase();
+      if (clean && !seen.has(lower)) {
+        seen.add(lower);
+        opts.push({ value: clean, label: clean });
+      }
+    });
+
+    // 3. Registered users
+    (usersList || []).forEach(u => {
+      const name = u?.name;
+      if (!name) return;
+      const clean = String(name).trim();
+      const lower = clean.toLowerCase();
+      if (clean && !seen.has(lower)) {
+        seen.add(lower);
+        opts.push({ value: clean, label: clean });
+      }
+    });
+
+    return opts;
+  }, [user, visitorsList, usersList]);
 
   const realEstateProductOptions = useMemo(() => {
     const opts = (realEstateProductsMaster || []).map(t => ({ value: t.productType, label: t.productType }));
@@ -212,6 +280,15 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         if (value === 'Insurance' || value?.toLowerCase().includes('insurance')) {
           if (!updated.insuranceType) updated.insuranceType = 'Life Insurance';
         }
+        const isRE = value === 'Real Estate' || value?.toLowerCase().includes('real');
+        if (!isRE) {
+          updated.isSiteVisit = false;
+        } else if (isWalkInSource) {
+          updated.isSiteVisit = true;
+          if (!updated.assignedVisitor) {
+            updated.assignedVisitor = user?.name || '';
+          }
+        }
       }
       if (field === 'productType' && !isOtherValue(value)) {
         updated.customProductType = '';
@@ -232,6 +309,24 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         }
         if (!isOtherValue(value)) {
           updated.customLeadSource = '';
+        }
+        const clean = String(value || '').toLowerCase().trim();
+        const isWalk = clean.includes('walk-in') || clean.includes('walk in') || clean.includes('walkin');
+        if (isWalk && isRealEstate) {
+          updated.isSiteVisit = true;
+          if (!updated.assignedVisitor) {
+            updated.assignedVisitor = user?.name || '';
+          }
+        }
+      }
+      if (field === 'customLeadSource') {
+        const clean = String(value || '').toLowerCase().trim();
+        const isWalk = clean.includes('walk-in') || clean.includes('walk in') || clean.includes('walkin');
+        if (isWalk && isRealEstate) {
+          updated.isSiteVisit = true;
+          if (!updated.assignedVisitor) {
+            updated.assignedVisitor = user?.name || '';
+          }
         }
       }
       return updated;
@@ -408,6 +503,9 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
       const leadNo = generateLeadNo(formData.leadType, existingLeads);
       const timestamp = new Date().toISOString();
 
+      const isDirectSiteVisit = Boolean(showSiteVisitOption && formData.isSiteVisit);
+      const assignedVisitorName = isDirectSiteVisit ? (formData.assignedVisitor || user?.name || '').trim() : '';
+
       const newLead = {
         leadNo,
         timestamp,
@@ -421,13 +519,52 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         number: formData.customerNumber,
         email: formData.customerEmail,
         location: formData.customerAddress,
-        processType: 'Lead'
+        processType: isDirectSiteVisit ? 'Direct Site Visit' : 'Lead',
+        isSiteVisit: isDirectSiteVisit,
+        directSiteVisit: isDirectSiteVisit,
+        assignedVisitor: assignedVisitorName,
+        callerAssigned: ''
       };
 
-      await leadApi.saveLead(newLead);
+      const createdLead = await leadApi.saveLead(newLead);
+
+      // Real Estate + Walk-in + Site Visit checked -> directly record in Site Visit / Meeting
+      if (isDirectSiteVisit) {
+        try {
+          const now = new Date();
+          const yyyy = now.getFullYear();
+          const mm = String(now.getMonth() + 1).padStart(2, '0');
+          const dd = String(now.getDate()).padStart(2, '0');
+          const todayDateStr = `${yyyy}-${mm}-${dd}`;
+
+          const matchedUser = (usersList || []).find(u => String(u.name || '').trim().toLowerCase() === assignedVisitorName.toLowerCase())
+            || (visitorsList || []).find(v => String(v.personName || v.name || '').trim().toLowerCase() === assignedVisitorName.toLowerCase());
+          const visitorId = matchedUser?.dbId || matchedUser?.id || (assignedVisitorName.toLowerCase() === (user?.name || '').trim().toLowerCase() ? (user?.dbId || user?.id) : null);
+
+          const visitorEntry = {
+            leadId: createdLead?.id || newLead.id,
+            leadNo: createdLead?.leadNo || leadNo,
+            visitorName: assignedVisitorName,
+            visitorId: visitorId || null,
+            visitDate: todayDateStr,
+            location: formData.customerAddress || '',
+            remarks: formData.remarks || 'Walk-in Site Visit',
+            status: 'Assigned',
+            assignedBy: user?.name || ''
+          };
+
+          await siteVisitMeetingApi.saveAssignedVisitor(visitorEntry);
+        } catch (visitErr) {
+          console.error('Failed to auto-assign site visit for walk-in lead:', visitErr);
+        }
+      }
 
       toast.success(`Lead ${leadNo} has been successfully created.`);
-      setFormData({ ...initialFormData, leadType: resolveUserLeadType() });
+      setFormData({
+        ...initialFormData,
+        leadType: resolveUserLeadType(),
+        assignedVisitor: user?.name || ''
+      });
       setLoading(false);
       onSaved?.();
       onClose();
@@ -509,6 +646,97 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
                 className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
               />
             </div>
+          </div>
+        )}
+
+        {/* REAL ESTATE + WALK-IN ONLY: Site Visit & Assign Visitor */}
+        {showSiteVisitOption && (
+          <div className="col-span-2 p-3 bg-gradient-to-r from-amber-50/90 via-orange-50/40 to-indigo-50/70 border border-amber-200 rounded-xl space-y-3 animate-in fade-in duration-200 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-700 shadow-2xs">
+                  <MapPin size={17} />
+                </div>
+                <div>
+                  <div className="text-[12px] md:text-[13px] font-bold text-gray-800 flex items-center gap-1.5">
+                    <span>Site Visit</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                      Real Estate Walk-in
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    Conduct or schedule a site visit / meeting for this walk-in lead?
+                  </p>
+                </div>
+              </div>
+
+              {/* Radio / Checkbox toggle buttons */}
+              <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-700 hover:text-indigo-600 transition">
+                  <input
+                    type="radio"
+                    name="isSiteVisitOption"
+                    checked={formData.isSiteVisit === true}
+                    onChange={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        isSiteVisit: true,
+                        assignedVisitor: prev.assignedVisitor || user?.name || ''
+                      }));
+                    }}
+                    className="text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>Yes (Site Visit)</span>
+                </label>
+                <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-700 hover:text-indigo-600 transition">
+                  <input
+                    type="radio"
+                    name="isSiteVisitOption"
+                    checked={formData.isSiteVisit === false}
+                    onChange={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        isSiteVisit: false
+                      }));
+                    }}
+                    className="text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                  />
+                  <span>No</span>
+                </label>
+              </div>
+            </div>
+
+            {formData.isSiteVisit && (
+              <div className="pt-2.5 border-t border-amber-200/70 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-150">
+                <div className="space-y-1 col-span-2 sm:col-span-1">
+                  <label className="block text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
+                    Assign Visitor *
+                  </label>
+                  <SearchableDropdown
+                    options={visitorOptions}
+                    value={formData.assignedVisitor || user?.name || ''}
+                    onChange={(val) => handleChange('assignedVisitor', val)}
+                    placeholder="Select assigned visitor"
+                  />
+                  <p className="text-[10px] text-gray-500">
+                    Defaulted to logged-in user (<span className="font-semibold text-gray-700">{user?.name || 'Current User'}</span>). You can select any other team member.
+                  </p>
+                </div>
+
+                <div className="space-y-1 col-span-2 sm:col-span-1">
+                  <label className="block text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
+                    Site Visit Date
+                  </label>
+                  <div className="flex items-center h-[30px] md:h-[34px] px-3 bg-white border border-gray-300 rounded text-[11px] md:text-[13px] text-gray-700 font-medium">
+                    <Calendar size={14} className="mr-2 text-indigo-500" />
+                    <span>{new Date().toLocaleDateString('en-GB')} (Today - Current Date)</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Directly updates the Site Visit / Meeting section with today's date.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

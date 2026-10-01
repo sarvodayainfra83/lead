@@ -197,7 +197,7 @@ export default function Setting({ setHeaderAction }) {
       const idTaken = existing.some(u => u.id === formData.id && (!editRow || u.id !== editRow.id));
       if (idTaken) { toast.error('This ID is already in use'); return; }
 
-      const accessPagesPayload = formData.role === 'ADMIN' ? {} : { ...formData.accessPages };
+      const accessPagesPayload = (formData.role === 'ADMIN' || formData.role === 'TESTER') ? {} : { ...formData.accessPages };
       if (accessPagesPayload.master) {
         accessPagesPayload.setting = accessPagesPayload.master;
       }
@@ -276,7 +276,7 @@ export default function Setting({ setHeaderAction }) {
   const serialLabel = (row) => `SN-${String(row.serialNo || 0).padStart(3, '0')}`;
 
   const accessSummary = (row) => {
-    if (row.role === 'ADMIN') return [];
+    if (row.role === 'ADMIN' || row.role === 'TESTER') return [];
     return APP_PAGES.map(p => {
       const levelVal = p.key === 'master'
         ? (row.accessPages?.master || row.accessPages?.setting || 'none')
@@ -300,6 +300,8 @@ export default function Setting({ setHeaderAction }) {
     if (positionFilter !== 'All') {
       if (positionFilter === 'Admins') {
         if (row.role !== 'ADMIN') return false;
+      } else if (positionFilter === 'Testers') {
+        if (row.role !== 'TESTER') return false;
       } else if (positionFilter === 'HR') {
         if (row.role !== 'HR' && !String(row.position || '').toLowerCase().includes('hr')) return false;
       } else {
@@ -333,8 +335,9 @@ export default function Setting({ setHeaderAction }) {
     { key: 'Caller', label: 'Callers', count: rows.filter(r => String(r.position || '').toLowerCase().includes('caller')).length },
     { key: 'Visitor', label: 'Visitors', count: rows.filter(r => String(r.position || '').toLowerCase().includes('visitor')).length },
     { key: 'Lead Receiver', label: 'Lead Receivers', count: rows.filter(r => String(r.position || '').toLowerCase().includes('receiver')).length },
-    { key: 'HR', label: 'HRs', count: rows.filter(r => r.role === 'HR' || String(r.position || '').toLowerCase().includes('hr')).length },
-    { key: 'Admins', label: 'Admins', count: rows.filter(r => r.role === 'ADMIN').length }
+    { key: 'HR', label: 'HR', count: rows.filter(r => r.role === 'HR' || String(r.position || '').toLowerCase().includes('hr')).length },
+    { key: 'Admins', label: 'Admins', count: rows.filter(r => r.role === 'ADMIN').length },
+    { key: 'Testers', label: 'Testers', count: rows.filter(r => r.role === 'TESTER').length }
   ];
 
   const renderRow = (row) => (
@@ -386,6 +389,12 @@ export default function Setting({ setHeaderAction }) {
               <ShieldCheck size={11} /> Full Access (Admin)
             </span>
           </div>
+        ) : row.role === 'TESTER' ? (
+          <div className="flex justify-center">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase border bg-emerald-50 text-emerald-700 border-emerald-200">
+              <ShieldCheck size={11} /> Full Access (Tester)
+            </span>
+          </div>
         ) : (
           <div className="flex flex-wrap gap-1 justify-center">
             {accessSummary(row).map((item, idx) => (
@@ -419,6 +428,10 @@ export default function Setting({ setHeaderAction }) {
           {row.role === 'ADMIN' ? (
             <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1">
               <ShieldCheck size={10} /> Admin
+            </span>
+          ) : row.role === 'TESTER' ? (
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1">
+              <ShieldCheck size={10} /> Tester
             </span>
           ) : row.role === 'HR' ? (
             <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1">
@@ -458,7 +471,7 @@ export default function Setting({ setHeaderAction }) {
         </div>
       </div>
 
-      {row.role !== 'ADMIN' && (
+      {row.role !== 'ADMIN' && row.role !== 'TESTER' && (
         <div className="flex flex-wrap gap-1">
           {accessSummary(row).filter(item => item.val !== 'none').map((item, idx) => (
             <span key={idx} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${item.val === 'full' ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
@@ -709,7 +722,7 @@ export default function Setting({ setHeaderAction }) {
           <div className="space-y-1 col-span-2 sm:col-span-1">
             <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Role *</label>
             <SearchableDropdown
-              options={[{ value: 'ADMIN', label: 'Admin' }, { value: 'USER', label: 'User' }, { value: 'HR', label: 'HR' }]}
+              options={[{ value: 'ADMIN', label: 'Admin' }, { value: 'USER', label: 'User' }, { value: 'HR', label: 'HR' }, { value: 'TESTER', label: 'Tester' }]}
               value={formData.role}
               onChange={(val) => handleChange('role', val)}
               placeholder="Select role"
@@ -717,8 +730,8 @@ export default function Setting({ setHeaderAction }) {
             />
           </div>
 
-          {/* Page Access — Admins always have full access, so this only applies to Users */}
-          {formData.role !== 'ADMIN' && (
+          {/* Page Access — Admins and Testers always have full access, so this only applies to Users */}
+          {formData.role !== 'ADMIN' && formData.role !== 'TESTER' && (
             <div className="space-y-1 col-span-2">
               <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Page Access</label>
               <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
@@ -748,6 +761,12 @@ export default function Setting({ setHeaderAction }) {
           {formData.role === 'ADMIN' && (
             <div className="col-span-2 flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-[11px] md:text-[13px] text-indigo-700">
               <ShieldCheck size={14} /> Admins have full access to every page by default.
+            </div>
+          )}
+
+          {formData.role === 'TESTER' && (
+            <div className="col-span-2 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-[11px] md:text-[13px] text-emerald-700">
+              <ShieldCheck size={14} /> Testers have full access to every page and all action controls.
             </div>
           )}
 

@@ -9,6 +9,7 @@ import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
+import { isDirectSiteVisitLead } from './leadConstants';
 
 export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
   const user = useAuthStore(state => state.user);
@@ -799,12 +800,19 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
         {/* Caller Assigned to */}
         <div className="space-y-1 col-span-2 sm:col-span-1">
           <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Caller Assigned to</label>
-          <SearchableDropdown
-            options={callerOptions}
-            value={formData.callerAssigned}
-            onChange={(val) => handleChange('callerAssigned', val)}
-            placeholder="Select caller"
-          />
+          {isDirectSiteVisitLead(lead) ? (
+            <div className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800 font-semibold flex items-center gap-1.5 h-[30px] md:h-[34px]">
+              <MapPin size={13} className="text-blue-600" />
+              <span>Direct Site Visit (Visitor: {lead.assignedVisitor || 'Assigned'})</span>
+            </div>
+          ) : (
+            <SearchableDropdown
+              options={callerOptions}
+              value={formData.callerAssigned}
+              onChange={(val) => handleChange('callerAssigned', val)}
+              placeholder="Select caller"
+            />
+          )}
         </div>
 
         {/* INSURANCE SPECIFIC: Any Disease */}

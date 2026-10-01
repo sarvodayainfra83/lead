@@ -243,24 +243,9 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               {/* Call Followup Scheduling */}
               <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 space-y-1">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
-                  Scheduled from Call Followup
-                </span>
-                <p className="text-gray-800 text-xs">
-                  {lead.callTrackerRemarks ? `"${lead.callTrackerRemarks}"` : 'Site Visit / Meeting requested.'}
-                </p>
-                {lead.relationshipManager && (
-                  <p className="text-[11px] text-gray-500 pt-0.5">
-                    Caller / Relationship Manager: <span className="font-semibold text-gray-700">{lead.relationshipManager}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Visitor Assignment */}
-              <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
-                    Visitor Assignment
+                    Followup
                   </span>
                   <button
                     onClick={() => { onClose(); onAssignVisitor(lead); }}
@@ -269,18 +254,28 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                     {lead.assignedVisitor ? 'Reassign' : '+ Assign'}
                   </button>
                 </div>
-                {lead.assignedVisitor ? (
-                  <>
-                    <p className="text-xs font-bold text-gray-900 flex items-center gap-1">
-                      <UserCheck size={12} className="text-indigo-600" /> {lead.assignedVisitor}
-                    </p>
-                    {lead.visitorRemarks && (
-                      <p className="text-[11px] text-gray-600 italic">"{lead.visitorRemarks}"</p>
-                    )}
-                  </>
+                <p className="text-gray-800 text-xs">
+                  {lead.callTrackerRemarks ? `"${lead.callTrackerRemarks}"` : 'Site Visit / Meeting requested.'}
+                </p>
+                {lead.relationshipManager && (
+                  <p className="text-[11px] text-gray-500 pt-0.5">
+                    Visited By: <span className="font-semibold text-gray-700">{lead.relationshipManager}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Remark */}
+              <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 space-y-1">
+                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+                  Remark
+                </span>
+                {lead.visitorRemarks || lead.remarks ? (
+                  <p className="text-xs text-gray-800 italic leading-relaxed">
+                    "{lead.visitorRemarks || lead.remarks}"
+                  </p>
                 ) : (
-                  <p className="text-xs text-amber-600 font-semibold italic">
-                    Awaiting visitor assignment
+                  <p className="text-xs text-gray-400 italic">
+                    No remarks provided.
                   </p>
                 )}
               </div>

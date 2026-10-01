@@ -7,6 +7,7 @@ import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin, matchesUserAssignment, hasFullAccess, getUserLeadTypeScope } from '../../utils/authUtils';
+import { isDirectSiteVisitLead } from './callTrackerConstants';
 import CallTrackerCategoryView from './CallTrackerCategoryView';
 import Direct from './Direct';
 
@@ -76,9 +77,13 @@ export default function FollowUp() {
   }, [loadData, user]);
 
   // Filter leads matching current user assignment permissions
+  // Direct site visit leads created through Add Lead are handled exclusively in Site Visit / Meeting
   const accessibleLeads = useMemo(() => {
     const isAdmin = isUserAdmin(user);
     return allLeads.filter(lead => {
+      if (isDirectSiteVisitLead(lead)) {
+        return false;
+      }
       if (!isAdmin && !matchesUserAssignment(lead, user)) {
         return false;
       }

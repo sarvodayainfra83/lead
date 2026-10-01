@@ -48,7 +48,9 @@ const STORAGE_KEYS = {
   MATERIAL_REQUIREMENTS: 'pcb_material_requirements_v1',
   EXECUTIONS: 'pcb_executions_v1',
   ACTUALS: 'pcb_actuals_v1',
-  ATTENDANCE: 'pcb_attendance_v1'
+  ATTENDANCE: 'pcb_attendance_v1',
+  LOCATION_CACHE: 'pcb_location_cache_v1',
+  LAST_RESOLVED_ADDRESS: 'pcb_last_resolved_address_v1'
 };
 
 // Initialize default data
@@ -255,7 +257,7 @@ export const initializeStorage = () => {
     if (!updated.gmail && legacy) { updated.gmail = legacy.gmail; usersChanged = true; }
     if (updated.serialNo == null) { updated.serialNo = idx + 1; usersChanged = true; }
 
-    if (updated.role !== 'ADMIN') {
+    if (updated.role !== 'ADMIN' && updated.role !== 'TESTER') {
       if (!updated.accessPages || Array.isArray(updated.accessPages)) {
         updated.accessPages = Object.fromEntries(Object.keys(DEFAULT_USER_ACCESS).map(k => [k, 'none']));
         usersChanged = true;
@@ -2924,3 +2926,54 @@ export const deleteAttendanceLog = (id) => {
   saveAttendanceLogs(filtered);
   return true;
 };
+
+// --- Location Cache Operations ---
+export const getLocalLocationCache = () => {
+  return getFromStorage(STORAGE_KEYS.LOCATION_CACHE) || [];
+};
+
+export const saveLocalLocationCache = (data) => {
+  saveToStorage(STORAGE_KEYS.LOCATION_CACHE, data);
+};
+
+export const addLocalLocationCacheEntry = (entry) => {
+  if (!entry || entry.latitude == null || entry.longitude == null || !entry.address) return;
+  const cache = getLocalLocationCache();
+  // Filter out any duplicate exact/close entry if it exists and prepend newest
+  const filtered = cache.filter(c => {
+    const latDiff = Math.abs(Number(c.latitude) - Number(entry.latitude));
+    const lngDiff = Math.abs(Number(c.longitude) - Number(entry.longitude));
+    return !(latDiff < 0.0001 && lngDiff < 0.0001);
+  });
+  filtered.unshift({
+    id: entry.id || `loc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+    latitude: Number(entry.latitude),
+    longitude: Number(entry.longitude),
+    address: String(entry.address).trim(),
+    accuracy: entry.accuracy != null ? Number(entry.accuracy) : null,
+    createdAt: entry.createdAt || new Date().toISOString()
+  });
+  // Cap at 300 entries to keep localStorage lightweight
+  saveLocalLocationCache(filtered.slice(0, 300));
+};
+
+// --- Last Resolved Address Fallback Operations ---
+export const getLastResolvedAddress = () => {
+  const item = getFromStorage(STORAGE_KEYS.LAST_RESOLVED_ADDRESS);
+  if (!item) return null;
+  return typeof item === 'string' ? item : (item.address || null);
+};
+
+export const saveLastResolvedAddress = (entry) => {
+  if (!entry) return;
+  const address = typeof entry === 'string' ? entry : entry.address;
+  if (!address) return;
+  saveToStorage(STORAGE_KEYS.LAST_RESOLVED_ADDRESS, {
+    address: String(address).trim(),
+    latitude: typeof entry === 'object' && entry.latitude != null ? Number(entry.latitude) : null,
+    longitude: typeof entry === 'object' && entry.longitude != null ? Number(entry.longitude) : null,
+    accuracy: typeof entry === 'object' && entry.accuracy != null ? Number(entry.accuracy) : null,
+    resolvedAt: new Date().toISOString()
+  });
+};
+

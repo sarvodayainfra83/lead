@@ -115,12 +115,24 @@ export default function PhotoViewModal({ isOpen, onClose, log }) {
               <div className="flex items-start gap-1.5 min-w-0 text-gray-700">
                 <MapPin size={14} className="text-rose-500 flex-shrink-0 mt-0.5" />
                 <div className="min-w-0">
-                  <p className="text-[11px] leading-tight text-gray-800 break-words font-medium">
-                    {log.locationName || `${log.latitude?.toFixed(6)}, ${log.longitude?.toFixed(6)}`}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[11px] leading-tight text-gray-800 break-words font-medium">
+                      {log.locationName || `${log.latitude?.toFixed(6)}, ${log.longitude?.toFixed(6)}`}
+                    </p>
+                    {log.geocodingStatus === 'PENDING' && (
+                      <span className="text-[9px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0">
+                        Pending Sync
+                      </span>
+                    )}
+                  </div>
                   {log.latitude && log.longitude && (
                     <p className="text-[10px] text-gray-400 font-mono mt-0.5">
                       {log.latitude?.toFixed(6)}, {log.longitude?.toFixed(6)}
+                      {log.accuracy != null && (
+                        <span className="text-gray-400 font-sans ml-1">
+                          (±{Math.round(log.accuracy)}m)
+                        </span>
+                      )}
                     </p>
                   )}
                 </div>

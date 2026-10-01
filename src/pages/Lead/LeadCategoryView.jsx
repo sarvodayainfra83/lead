@@ -8,9 +8,11 @@ import {
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { formatLeadDate, parseLeadDate, DATE_FILTER_OPTIONS, getTodayStr, LEAD_SOURCES } from './leadConstants';
+import { formatLeadDate, parseLeadDate, DATE_FILTER_OPTIONS, getTodayStr, LEAD_SOURCES, isDirectSiteVisitLead } from './leadConstants';
 import { getLeadTypeTextClass, getLeadTypeBadgeClass } from '../../utils/leadTypeColors';
 import { leadApi } from '../../api/leadApi';
+import { useAuthStore } from '../../store/authStore';
+import { isUserTester } from '../../utils/authUtils';
 
 export default function LeadCategoryView({
   category, // 'Real Estate' | 'Insurance' | 'Mutual Fund'ch
@@ -28,6 +30,9 @@ export default function LeadCategoryView({
   onEditLead,
   onViewDetails
 }) {
+  const user = useAuthStore(state => state.user);
+  const isTester = isUserTester(user);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [callerStatusFilter, setCallerStatusFilter] = useState('all'); // 'all' | 'unassigned' | 'assigned'
   const [dateFilter, setDateFilter] = useState(initialDateFilter || 'all');
@@ -228,16 +233,20 @@ export default function LeadCategoryView({
     return sortedLeads.slice(start, start + itemsPerPage);
   }, [sortedLeads, currentPage, itemsPerPage]);
 
-  // Selection handlers for batch assignment
-  const allCurrentChecked = paginatedLeads.length > 0 && paginatedLeads.every(l => selectedIds.has(l.id));
+  // Selection handlers for batch assignment (excludes direct site visit leads)
+  const selectableLeads = useMemo(() => {
+    return paginatedLeads.filter(l => !isDirectSiteVisitLead(l));
+  }, [paginatedLeads]);
+
+  const allCurrentChecked = selectableLeads.length > 0 && selectableLeads.every(l => selectedIds.has(l.id));
 
   const toggleSelectAll = () => {
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (allCurrentChecked) {
-        paginatedLeads.forEach(l => next.delete(l.id));
+        selectableLeads.forEach(l => next.delete(l.id));
       } else {
-        paginatedLeads.forEach(l => next.add(l.id));
+        selectableLeads.forEach(l => next.add(l.id));
       }
       return next;
     });
@@ -380,12 +389,12 @@ export default function LeadCategoryView({
 
     headers.push("Lead Source", "Team Member", "Remarks");
 
-    if (canEdit) {
+    if (isTester) {
       headers.push("Actions");
     }
 
     return headers;
-  }, [category, canEdit, allCurrentChecked]);
+  }, [category, isTester, allCurrentChecked]);
 
   // Render Table Row (Desktop)
   const renderRow = (item, index) => {
@@ -408,12 +417,22 @@ export default function LeadCategoryView({
           className="px-3 py-2.5 text-center whitespace-nowrap"
           style={{ position: 'sticky', left: 0, zIndex: 10, background: 'inherit' }}
         >
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={(e) => toggleSelectRow(item.id, e)}
-            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-          />
+          {isDirectSiteVisitLead(item) ? (
+            <input
+              type="checkbox"
+              disabled
+              checked={false}
+              className="w-4 h-4 rounded text-gray-300 bg-gray-100 border-gray-300 cursor-not-allowed opacity-40"
+              title="Direct Site Visit lead - caller assignment disabled"
+            />
+          ) : (
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={(e) => toggleSelectRow(item.id, e)}
+              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+            />
+          )}
         </td>
 
         {/* Lead Date */}
@@ -423,7 +442,15 @@ export default function LeadCategoryView({
 
         {/* Caller Assigned / Inline Picker */}
         <td className="px-4 py-2.5 text-center whitespace-nowrap min-w-[180px]">
-          {item.callerAssigned ? (
+          {isDirectSiteVisitLead(item) ? (
+            <span
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200"
+              title={`Direct Site Visit assigned to ${item.assignedVisitor || 'Visitor'}`}
+            >
+              <MapPin size={12} className="text-blue-600" />
+              <span>Site Visit ({item.assignedVisitor || 'Assigned'})</span>
+            </span>
+          ) : item.callerAssigned ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <UserCheck size={12} className="text-emerald-600" />
               {item.callerAssigned}
@@ -563,7 +590,7 @@ export default function LeadCategoryView({
         </td>
 
         {/* Actions */}
-        {canEdit && (
+        {isTester && (
           <td
             className="px-3 py-2.5 text-center whitespace-nowrap"
             style={{ position: 'sticky', right: 0, zIndex: 10, background: 'inherit' }}
@@ -610,12 +637,22 @@ export default function LeadCategoryView({
         {/* Card Top Row: Checkbox, Lead No, Date, Status */}
         <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
           <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={(e) => toggleSelectRow(item.id, e)}
-              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-            />
+            {isDirectSiteVisitLead(item) ? (
+              <input
+                type="checkbox"
+                disabled
+                checked={false}
+                className="w-4 h-4 rounded text-gray-300 bg-gray-100 border-gray-300 cursor-not-allowed opacity-40"
+                title="Direct Site Visit lead - caller assignment disabled"
+              />
+            ) : (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={(e) => toggleSelectRow(item.id, e)}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+              />
+            )}
             <button
               onClick={() => onViewDetails?.(item)}
               className="font-bold text-xs px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 hover:bg-indigo-100 transition"
@@ -628,7 +665,12 @@ export default function LeadCategoryView({
           </div>
 
           <div>
-            {item.callerAssigned ? (
+            {isDirectSiteVisitLead(item) ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                <MapPin size={10} className="text-blue-600" />
+                <span className="max-w-[110px] truncate">Site Visit ({item.assignedVisitor || 'Assigned'})</span>
+              </span>
+            ) : item.callerAssigned ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <UserCheck size={10} />
                 <span className="max-w-[90px] truncate">{item.callerAssigned}</span>
@@ -732,8 +774,8 @@ export default function LeadCategoryView({
           )}
         </div>
 
-        {/* Inline Quick Assign for Unassigned Leads */}
-        {!item.callerAssigned && (
+        {/* Inline Quick Assign for Unassigned Leads (excluding Direct Site Visit) */}
+        {!item.callerAssigned && !isDirectSiteVisitLead(item) && (
           <div className="pt-1">
             <SearchableDropdown
               options={callerOptions}
@@ -761,7 +803,7 @@ export default function LeadCategoryView({
             >
               <Info size={12} /> Details
             </button>
-            {canEdit && (
+            {isTester && (
               <>
                 <button
                   onClick={() => onEditLead?.(item)}

@@ -21,6 +21,8 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
   const [fileName, setFileName] = useState('');
   const [location, setLocation] = useState(null);
   const [address, setAddress] = useState('');
+  const [geocodingStatus, setGeocodingStatus] = useState('RESOLVED');
+  const [locationFallback, setLocationFallback] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -93,6 +95,8 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         setFileName('');
         setLocation(null);
         setAddress('');
+        setGeocodingStatus('RESOLVED');
+        setLocationFallback(false);
         stopWebcam();
       }
     } else {
@@ -249,13 +253,18 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
       async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        setLocation({ latitude: lat, longitude: lng });
+        const accuracy = pos.coords.accuracy != null ? Number(pos.coords.accuracy) : null;
+        setLocation({ latitude: lat, longitude: lng, accuracy });
 
         try {
-          const addr = await attendanceApi.reverseGeocode(lat, lng);
-          setAddress(addr);
+          const res = await attendanceApi.resolveLocationAddress(lat, lng, accuracy);
+          setAddress(res.address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+          setGeocodingStatus(res.geocodingStatus || 'RESOLVED');
+          setLocationFallback(!!res.isFallback);
         } catch (e) {
           setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+          setGeocodingStatus('PENDING');
+          setLocationFallback(true);
         } finally {
           setLoadingLocation(false);
           toast.success('Image and location captured');
@@ -266,6 +275,8 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         setLoadingLocation(false);
         setLocation(null);
         setAddress('Location unavailable');
+        setGeocodingStatus('RESOLVED');
+        setLocationFallback(false);
         toast.success('Image uploaded');
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
@@ -277,6 +288,8 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
     setFileName('');
     setLocation(null);
     setAddress('');
+    setGeocodingStatus('RESOLVED');
+    setLocationFallback(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -355,9 +368,11 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         outTime: isMarkingOut ? formatted12hTime : null,
         status: status,
         photoUrl: photoData,
-        latitude: location?.latitude || null,
-        longitude: location?.longitude || null,
-        locationName: address || 'Current Location'
+        latitude: location?.latitude != null ? location.latitude : null,
+        longitude: location?.longitude != null ? location.longitude : null,
+        accuracy: location?.accuracy != null ? location.accuracy : null,
+        locationName: address || (location ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}` : 'Current Location'),
+        geocodingStatus: geocodingStatus || (locationFallback ? 'PENDING' : 'RESOLVED')
       });
 
       try {
@@ -539,12 +554,24 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
                     {location && (
                       <p className="text-[11px] font-mono text-gray-700 truncate leading-tight mt-0.5 font-medium">
                         {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                        {location.accuracy != null && (
+                          <span className="text-gray-400 font-sans text-[10px] ml-1">
+                            (±{Math.round(location.accuracy)}m)
+                          </span>
+                        )}
                       </p>
                     )}
                     {address && (
-                      <p className="text-[10px] text-gray-500 truncate leading-tight mt-0.5" title={address}>
-                        {address}
-                      </p>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <p className="text-[10px] text-gray-500 truncate leading-tight flex-1" title={address}>
+                          {address}
+                        </p>
+                        {geocodingStatus === 'PENDING' && (
+                          <span className="text-[9px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0" title="Geocoding pending sync">
+                            Pending Sync
+                          </span>
+                        )}
+                      </div>
                     )}
                   </>
                 )}

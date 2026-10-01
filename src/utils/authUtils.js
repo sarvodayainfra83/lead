@@ -3,11 +3,20 @@
  */
 
 /**
- * Check if the given user has an ADMIN role (case-insensitive).
+ * Check if the given user has an ADMIN or TESTER role (case-insensitive).
  */
 export const isUserAdmin = (user) => {
   if (!user) return false;
-  return (user.role || '').toUpperCase() === 'ADMIN';
+  const role = (user.role || '').toUpperCase();
+  return role === 'ADMIN' || role === 'TESTER';
+};
+
+/**
+ * Check if the given user has a TESTER role (case-insensitive).
+ */
+export const isUserTester = (user) => {
+  if (!user) return false;
+  return (user.role || '').toUpperCase() === 'TESTER';
 };
 
 /**

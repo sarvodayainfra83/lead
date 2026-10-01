@@ -8,7 +8,7 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import LeadForm from './LeadForm';
 import LeadEdit from './LeadEdit';
 import BulkUploadLead from './BulkUploadLead';
-import { LEAD_TYPES, LEAD_SOURCES } from './leadConstants';
+import { LEAD_TYPES, LEAD_SOURCES, isDirectSiteVisitLead } from './leadConstants';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin, matchesUserReceiver, hasFullAccess } from '../../utils/authUtils';
 import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
@@ -117,7 +117,7 @@ export default function PendingLead({ setHeaderAction }) {
       leadApi.getLeads(),
       masterApi.getCallerNames()
     ]);
-    const unassigned = allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct');
+    const unassigned = allLeads.filter(l => !l.callerAssigned && l.processType !== 'Direct' && !isDirectSiteVisitLead(l));
     setLeads(isUserAdmin(user) ? unassigned : unassigned.filter(l => matchesUserReceiver(l, user)));
     setCallersMaster(callers);
   };

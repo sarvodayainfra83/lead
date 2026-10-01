@@ -18,12 +18,13 @@ import AttendanceModal from "./AttendanceModal";
 import PhotoViewModal from "./PhotoViewModal";
 import AttendanceEdit from "./AttendanceEdit";
 import { useAuthStore } from "../../store/authStore";
-import { isUserAdmin, isUserHR, hasFullAccess } from "../../utils/authUtils";
+import { isUserAdmin, isUserHR, isUserTester, hasFullAccess } from "../../utils/authUtils";
 
 export default function Attendance() {
   const { user } = useAuthStore();
   const isAdmin = isUserAdmin(user);
   const isHR = isUserHR(user);
+  const isTester = isUserTester(user);
   const canEdit = hasFullAccess(user, "attendance");
 
   const [logs, setLogs] = useState([]);
@@ -122,6 +123,24 @@ export default function Attendance() {
     loadLogs();
   }, [user]);
 
+  // Retry any pending geocoding records on mount and when connection comes back online
+  useEffect(() => {
+    attendanceApi.retryPendingGeocoding(() => {
+      loadLogs();
+    });
+
+    const handleOnline = () => {
+      attendanceApi.retryPendingGeocoding(() => {
+        loadLogs();
+      });
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, []);
+
   // Check for restored attendance session on mount (survives Android low-memory tab reload)
   useEffect(() => {
     try {
@@ -174,7 +193,7 @@ export default function Attendance() {
     "OUT TIME",
     "LOCATION",
     "UPDATED AT",
-    "ACTIONS",
+    ...(isTester ? ["ACTIONS"] : []),
   ];
 
   const renderRow = (item, index) => {
@@ -253,24 +272,34 @@ export default function Attendance() {
           className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[340px] truncate"
           title={item.locationName}
         >
-          {mapsUrl ? (
-            <a
-              href={mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-gray-800 hover:text-indigo-600 transition group"
-            >
-              <span className="truncate">
-                {item.locationName || "View Map"}
+          <div className="flex items-center gap-1.5 min-w-0">
+            {mapsUrl ? (
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-gray-800 hover:text-indigo-600 transition group min-w-0 truncate"
+              >
+                <span className="truncate">
+                  {item.locationName || "View Map"}
+                </span>
+                <ExternalLink
+                  size={12}
+                  className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0"
+                />
+              </a>
+            ) : (
+              <span className="truncate">{item.locationName || "-"}</span>
+            )}
+            {item.geocodingStatus === "PENDING" && (
+              <span
+                className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0"
+                title="Geocoding pending synchronization"
+              >
+                Pending Sync
               </span>
-              <ExternalLink
-                size={12}
-                className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0"
-              />
-            </a>
-          ) : (
-            <span>{item.locationName || "-"}</span>
-          )}
+            )}
+          </div>
         </td>
         {/* Updated At */}
         <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -285,8 +314,8 @@ export default function Attendance() {
         </td>
 
         {/* ACTIONS */}
-        <td className="px-4 py-3 text-center whitespace-nowrap">
-          {canEdit && (
+        {isTester && (
+          <td className="px-4 py-3 text-center whitespace-nowrap">
             <button
               onClick={() => setEditLog(item)}
               className="inline-flex items-center gap-1.5 px-2.5 py-1
@@ -298,8 +327,8 @@ export default function Attendance() {
               <RotateCcw size={13} />
               Edit
             </button>
-          )}
-        </td>
+          </td>
+        )}
       </tr>
     );
   };
@@ -373,9 +402,16 @@ export default function Attendance() {
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">
             Location
           </p>
-          <p className="text-gray-700 leading-tight truncate">
-            {item.locationName || "-"}
-          </p>
+          <div className="flex items-center gap-1">
+            <p className="text-gray-700 leading-tight truncate flex-1">
+              {item.locationName || "-"}
+            </p>
+            {item.geocodingStatus === "PENDING" && (
+              <span className="text-[9px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0">
+                Pending Sync
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 pt-1 border-t border-gray-50">
