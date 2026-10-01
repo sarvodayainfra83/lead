@@ -16,6 +16,7 @@ import SiteVisitFollowUpReport from '../../components/SiteVisitFollowUpReport';
 
 const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Deal Closed': 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-rose-50 text-rose-700 border-rose-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',

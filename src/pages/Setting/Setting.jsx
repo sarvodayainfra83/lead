@@ -37,6 +37,7 @@ export const POSITION_OPTIONS = [
   { value: 'Receptionist', label: 'Receptionist' },
   { value: 'Lead Receiver', label: 'Lead Receiver' },
   { value: 'Manager', label: 'Manager' },
+  { value: 'HR', label: 'HR' },
   { value: 'Other', label: 'Other' }
 ];
 
@@ -95,7 +96,18 @@ export default function Setting({ setHeaderAction }) {
   }, []);
 
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'role' && value === 'HR') {
+        if (!next.position) next.position = 'HR';
+        next.accessPages = {
+          ...next.accessPages,
+          attendance: 'full',
+          attendanceReport: 'full'
+        };
+      }
+      return next;
+    });
   };
 
   const handleAccessChange = (pageKey, level) => {
@@ -114,7 +126,7 @@ export default function Setting({ setHeaderAction }) {
     setShowForm(true);
   }, []);
 
-  const STANDARD_POSITIONS = ['Caller', 'Visitor', 'Receptionist', 'Lead Receiver', 'Manager'];
+  const STANDARD_POSITIONS = ['Caller', 'Visitor', 'Receptionist', 'Lead Receiver', 'Manager', 'HR'];
 
   const openEdit = (row) => {
     setEditRow(row);
@@ -280,6 +292,7 @@ export default function Setting({ setHeaderAction }) {
     if (p.includes('visitor')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     if (p.includes('receiver')) return 'bg-purple-50 text-purple-700 border-purple-200';
     if (p.includes('manager')) return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (p.includes('hr')) return 'bg-teal-50 text-teal-700 border-teal-200';
     return 'bg-gray-50 text-gray-700 border-gray-200';
   };
 
@@ -287,6 +300,8 @@ export default function Setting({ setHeaderAction }) {
     if (positionFilter !== 'All') {
       if (positionFilter === 'Admins') {
         if (row.role !== 'ADMIN') return false;
+      } else if (positionFilter === 'HR') {
+        if (row.role !== 'HR' && !String(row.position || '').toLowerCase().includes('hr')) return false;
       } else {
         const rowPos = String(row.position || '').toLowerCase();
         if (!rowPos.includes(positionFilter.toLowerCase())) return false;
@@ -318,6 +333,7 @@ export default function Setting({ setHeaderAction }) {
     { key: 'Caller', label: 'Callers', count: rows.filter(r => String(r.position || '').toLowerCase().includes('caller')).length },
     { key: 'Visitor', label: 'Visitors', count: rows.filter(r => String(r.position || '').toLowerCase().includes('visitor')).length },
     { key: 'Lead Receiver', label: 'Lead Receivers', count: rows.filter(r => String(r.position || '').toLowerCase().includes('receiver')).length },
+    { key: 'HR', label: 'HRs', count: rows.filter(r => r.role === 'HR' || String(r.position || '').toLowerCase().includes('hr')).length },
     { key: 'Admins', label: 'Admins', count: rows.filter(r => r.role === 'ADMIN').length }
   ];
 
@@ -403,6 +419,10 @@ export default function Setting({ setHeaderAction }) {
           {row.role === 'ADMIN' ? (
             <span className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1">
               <ShieldCheck size={10} /> Admin
+            </span>
+          ) : row.role === 'HR' ? (
+            <span className="text-[10px] bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded-full font-semibold uppercase flex items-center gap-1">
+              <ShieldCheck size={10} /> HR
             </span>
           ) : (
             <span className="text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-semibold uppercase">User</span>
@@ -689,7 +709,7 @@ export default function Setting({ setHeaderAction }) {
           <div className="space-y-1 col-span-2 sm:col-span-1">
             <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Role *</label>
             <SearchableDropdown
-              options={[{ value: 'ADMIN', label: 'Admin' }, { value: 'USER', label: 'User' }]}
+              options={[{ value: 'ADMIN', label: 'Admin' }, { value: 'USER', label: 'User' }, { value: 'HR', label: 'HR' }]}
               value={formData.role}
               onChange={(val) => handleChange('role', val)}
               placeholder="Select role"

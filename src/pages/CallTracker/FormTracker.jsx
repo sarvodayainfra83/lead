@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { MessageSquare, ClipboardList, Clock, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -32,9 +32,11 @@ const initialFormState = {
   requirement: '',
   requirementOption: '',
   customRequirement: '',
-  productType: '',
+  customProductType: '',
   insuranceType: '',
+  customInsuranceType: '',
   insuranceSubType: '',
+  customInsuranceSubType: '',
   investmentBudget: '',
   whenToBuyPlan: ''
 };
@@ -73,6 +75,18 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     }
   }, [isOpen]);
 
+  const isOtherValue = (val) => {
+    if (!val) return false;
+    const lower = String(val).toLowerCase().trim();
+    return lower === 'other' || lower === 'others';
+  };
+
+  const isRealEstate =
+    (lead?.leadType || '').trim().toLowerCase() === 'real estate' ||
+    (lead?.leadNo || '').trim().toUpperCase().startsWith('LR');
+  const isMutualFund = (lead?.leadType || '').trim().toLowerCase() === 'mutual fund';
+  const isInsurance = (lead?.leadType || '').trim().toLowerCase().includes('insurance');
+
   // Only reset the outcome fields when the modal first opens or a different lead is opened
   useEffect(() => {
     if (!isOpen) {
@@ -88,29 +102,48 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       wasOpenRef.current = true;
       lastLeadIdRef.current = currentLeadId;
 
-      const req = (lead.requirement || '').trim();
-      const isPreset = requirementsList.some(
-        r => r.requirement !== 'Other' && r.requirement.toLowerCase() === req.toLowerCase()
+      const rawProduct = (lead.productType || '').trim();
+      const masterProductList = isRealEstate ? realEstateProductsList : (isMutualFund ? mutualFundProductsList : []);
+      const isProductPreset = rawProduct && masterProductList.some(
+        opt => !isOtherValue(opt.productType) && opt.productType.toLowerCase() === rawProduct.toLowerCase()
       );
+
+      const rawIns = (lead.insuranceType || lead.productType || '').trim();
+      const isInsPreset = rawIns && insuranceProductsList.some(
+        opt => !isOtherValue(opt.productType) && opt.productType.toLowerCase() === rawIns.toLowerCase()
+      );
+
+      const rawSub = (lead.insuranceSubType || '').trim();
+      const isSubPreset = rawSub && insuranceSubProductsList.some(
+        opt => !isOtherValue(opt.subProductType) && opt.subProductType.toLowerCase() === rawSub.toLowerCase()
+      );
+
+      const req = (lead.requirement || '').trim();
+      const isReqPreset = req && requirementsList.some(
+        r => !isOtherValue(r.requirement) && r.requirement.toLowerCase() === req.toLowerCase()
+      );
+
       setFormData({
         status: '',
-        // Pre-fill with the lead's latest Hot/Warm/Cold so the caller only changes it when it moved
         customerStatus: lead.customerStatus || '',
         customerSaid: '',
         nextDate: '',
         requirement: req,
-        requirementOption: isPreset
+        requirementOption: isReqPreset
           ? requirementsList.find(r => r.requirement.toLowerCase() === req.toLowerCase())?.requirement
-          : (req ? 'Other' : ''),
-        customRequirement: isPreset ? '' : req,
-        productType: lead.productType || '',
-        insuranceType: lead.insuranceType || '',
-        insuranceSubType: lead.insuranceSubType || '',
+          : (req ? 'Others' : ''),
+        customRequirement: isReqPreset ? '' : req,
+        productType: isProductPreset ? rawProduct : (rawProduct ? 'Others' : ''),
+        customProductType: isProductPreset ? '' : rawProduct,
+        insuranceType: isInsPreset ? rawIns : (rawIns ? 'Others' : ''),
+        customInsuranceType: isInsPreset ? '' : rawIns,
+        insuranceSubType: isSubPreset ? rawSub : (rawSub ? 'Others' : ''),
+        customInsuranceSubType: isSubPreset ? '' : rawSub,
         investmentBudget: lead.investmentBudget || '',
         whenToBuyPlan: lead.whenToBuyPlan || ''
       });
     }
-  }, [isOpen, lead, requirementsList]);
+  }, [isOpen, lead, requirementsList, realEstateProductsList, mutualFundProductsList, insuranceProductsList, insuranceSubProductsList]);
 
   const handleChange = (field, value) => {
     setFormData(prev => {
@@ -118,8 +151,18 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       if (field === 'status' && !DATE_STATUSES.includes(value)) {
         updated.nextDate = '';
       }
+      if (field === 'productType' && !isOtherValue(value)) {
+        updated.customProductType = '';
+      }
       if (field === 'insuranceType') {
+        if (!isOtherValue(value)) {
+          updated.customInsuranceType = '';
+        }
         updated.insuranceSubType = '';
+        updated.customInsuranceSubType = '';
+      }
+      if (field === 'insuranceSubType' && !isOtherValue(value)) {
+        updated.customInsuranceSubType = '';
       }
       return updated;
     });
@@ -129,7 +172,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     setFormData(prev => ({
       ...prev,
       requirementOption: val,
-      requirement: val === 'Other' ? (prev.customRequirement || '') : val
+      requirement: isOtherValue(val) ? (prev.customRequirement || '') : val
     }));
   };
 
@@ -141,28 +184,56 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     }));
   };
 
-  const requirementOptions = requirementsList.map(r => ({ value: r.requirement, label: r.requirement }));
-  const realEstateProductOptions = realEstateProductsList.map(t => ({ value: t.productType, label: t.productType }));
-  const mutualFundProductOptions = mutualFundProductsList.map(t => ({ value: t.productType, label: t.productType }));
-  const insuranceProductOptions = insuranceProductsList.map(t => ({ value: t.productType, label: t.productType }));
-  const insuranceSubProductOptions = insuranceSubProductsList
-    .filter(s => s.productType === formData.insuranceType)
-    .map(s => ({ value: s.subProductType, label: s.subProductType }));
+  const requirementOptions = useMemo(() => {
+    const opts = (requirementsList || []).map(r => ({ value: r.requirement, label: r.requirement }));
+    if (!opts.some(o => isOtherValue(o.value))) {
+      opts.push({ value: 'Others', label: 'Others' });
+    }
+    return opts;
+  }, [requirementsList]);
+
+  const realEstateProductOptions = useMemo(() => {
+    const opts = (realEstateProductsList || []).map(t => ({ value: t.productType, label: t.productType }));
+    if (!opts.some(o => isOtherValue(o.value))) {
+      opts.push({ value: 'Others', label: 'Others' });
+    }
+    return opts;
+  }, [realEstateProductsList]);
+
+  const mutualFundProductOptions = useMemo(() => {
+    const opts = (mutualFundProductsList || []).map(t => ({ value: t.productType, label: t.productType }));
+    if (!opts.some(o => isOtherValue(o.value))) {
+      opts.push({ value: 'Others', label: 'Others' });
+    }
+    return opts;
+  }, [mutualFundProductsList]);
+
+  const insuranceProductOptions = useMemo(() => {
+    const opts = (insuranceProductsList || []).map(t => ({ value: t.productType, label: t.productType }));
+    if (!opts.some(o => isOtherValue(o.value))) {
+      opts.push({ value: 'Others', label: 'Others' });
+    }
+    return opts;
+  }, [insuranceProductsList]);
+
+  const insuranceSubProductOptions = useMemo(() => {
+    const currentInsType = isOtherValue(formData.insuranceType)
+      ? (formData.customInsuranceType || '')
+      : formData.insuranceType;
+    const opts = (insuranceSubProductsList || [])
+      .filter(s => s.productType?.toLowerCase().trim() === currentInsType?.toLowerCase().trim())
+      .map(s => ({ value: s.subProductType, label: s.subProductType }));
+    if (!opts.some(o => isOtherValue(o.value))) {
+      opts.push({ value: 'Others', label: 'Others' });
+    }
+    return opts;
+  }, [insuranceSubProductsList, formData.insuranceType, formData.customInsuranceType]);
+
   const investmentBudgetOptions = investmentBudgetsList.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
 
-  const isRealEstate =
-    (lead?.leadType || '').trim().toLowerCase() === 'real estate' ||
-    (lead?.leadNo || '').trim().toUpperCase().startsWith('LR');
-  const isMutualFund = (lead?.leadType || '').trim().toLowerCase() === 'mutual fund';
-  const isInsurance = (lead?.leadType || '').trim().toLowerCase().includes('insurance');
-
   // Read-only reference fields shown at the top of the form — everything NOT editable below
-  // (Product Type / Requirement / Sub Product Type / Investment Budget / When to Buy Plan are
-  // all editable further down instead).
   const infoFields = [
     { key: 'leadType', label: 'Lead Type' },
-    // Direct-created leads never collect a Team Member Name (Direct.jsx captures Caller Name
-    // instead) — show whichever one this lead actually has instead of a permanently blank field.
     lead?.processType === 'Direct'
       ? { key: 'callerAssigned', label: 'Caller Name' }
       : { key: 'leadReceiver', label: 'Team Member Name' },
@@ -196,22 +267,132 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     if (!formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
 
+    let finalProductType = formData.productType;
+    if ((isRealEstate || isMutualFund) && isOtherValue(formData.productType)) {
+      if (!formData.customProductType?.trim()) {
+        toast.error('Please enter the new product type');
+        return;
+      }
+      finalProductType = formData.customProductType.trim();
+    }
+
+    let finalInsuranceType = formData.insuranceType;
+    if (isInsurance && isOtherValue(formData.insuranceType)) {
+      if (!formData.customInsuranceType?.trim()) {
+        toast.error('Please enter the new product type');
+        return;
+      }
+      finalInsuranceType = formData.customInsuranceType.trim();
+    }
+
+    let finalRequirement = formData.requirement;
+    if (isRealEstate && isOtherValue(formData.requirementOption || formData.requirement)) {
+      if (!formData.customRequirement?.trim()) {
+        toast.error('Please enter the new requirement');
+        return;
+      }
+      finalRequirement = formData.customRequirement.trim();
+    }
+
+    let finalInsuranceSubType = formData.insuranceSubType;
+    if (isInsurance && isOtherValue(formData.insuranceSubType)) {
+      if (!formData.customInsuranceSubType?.trim()) {
+        toast.error('Please enter the new sub product type');
+        return;
+      }
+      finalInsuranceSubType = formData.customInsuranceSubType.trim();
+    }
+
     setLoading(true);
 
     try {
+      if (isRealEstate && isOtherValue(formData.productType) && finalProductType) {
+        const exists = (realEstateProductsList || []).some(
+          p => p.productType?.toLowerCase().trim() === finalProductType.toLowerCase()
+        );
+        if (!exists) {
+          try {
+            await masterApi.saveRealEstateProduct({ productType: finalProductType });
+          } catch (err) {
+            console.error('Failed to save new real estate product to master:', err);
+          }
+        }
+      }
+
+      if (isMutualFund && isOtherValue(formData.productType) && finalProductType) {
+        const exists = (mutualFundProductsList || []).some(
+          p => p.productType?.toLowerCase().trim() === finalProductType.toLowerCase()
+        );
+        if (!exists) {
+          try {
+            await masterApi.saveMutualFundProduct({ productType: finalProductType });
+          } catch (err) {
+            console.error('Failed to save new mutual fund product to master:', err);
+          }
+        }
+      }
+
+      if (isInsurance && isOtherValue(formData.insuranceType) && finalInsuranceType) {
+        const exists = (insuranceProductsList || []).some(
+          p => p.productType?.toLowerCase().trim() === finalInsuranceType.toLowerCase()
+        );
+        if (!exists) {
+          try {
+            await masterApi.saveInsuranceProduct({ productType: finalInsuranceType });
+          } catch (err) {
+            console.error('Failed to save new insurance product to master:', err);
+          }
+        }
+      }
+
+      if (isRealEstate && isOtherValue(formData.requirementOption || formData.requirement) && finalRequirement) {
+        const exists = (requirementsList || []).some(
+          r => r.requirement?.toLowerCase().trim() === finalRequirement.toLowerCase()
+        );
+        if (!exists) {
+          try {
+            await masterApi.saveRealEstateRequirement({ requirement: finalRequirement });
+          } catch (err) {
+            console.error('Failed to save new real estate requirement to master:', err);
+          }
+        }
+      }
+
+      if (isInsurance && isOtherValue(formData.insuranceSubType) && finalInsuranceSubType) {
+        const exists = (insuranceSubProductsList || []).some(
+          s => s.subProductType?.toLowerCase().trim() === finalInsuranceSubType.toLowerCase() &&
+               s.productType?.toLowerCase().trim() === finalInsuranceType.toLowerCase()
+        );
+        if (!exists) {
+          try {
+            await masterApi.saveInsuranceSubProduct({
+              productType: finalInsuranceType,
+              subProductType: finalInsuranceSubType
+            });
+          } catch (err) {
+            console.error('Failed to save new insurance sub product to master:', err);
+          }
+        }
+      }
+
       // 1. Persist any editable-field changes back to the lead itself
       const updates = {};
       if (formData.investmentBudget !== (lead.investmentBudget || '')) updates.investmentBudget = formData.investmentBudget;
       if (formData.whenToBuyPlan !== (lead.whenToBuyPlan || '')) updates.whenToBuyPlan = formData.whenToBuyPlan;
 
       if (isRealEstate) {
-        if (formData.requirement !== (lead.requirement || '')) updates.requirement = formData.requirement;
-        if (formData.productType !== (lead.productType || '')) updates.productType = formData.productType;
+        const reqToSave = isOtherValue(formData.requirementOption || formData.requirement) ? finalRequirement : formData.requirement;
+        const prodToSave = isOtherValue(formData.productType) ? finalProductType : formData.productType;
+        if (reqToSave !== (lead.requirement || '')) updates.requirement = reqToSave;
+        if (prodToSave !== (lead.productType || '')) updates.productType = prodToSave;
       } else if (isMutualFund) {
-        if (formData.productType !== (lead.productType || '')) updates.productType = formData.productType;
+        const prodToSave = isOtherValue(formData.productType) ? finalProductType : formData.productType;
+        if (prodToSave !== (lead.productType || '')) updates.productType = prodToSave;
       } else if (isInsurance) {
-        if (formData.insuranceType !== (lead.insuranceType || '')) updates.insuranceType = formData.insuranceType;
-        if (formData.insuranceSubType !== (lead.insuranceSubType || '')) updates.insuranceSubType = formData.insuranceSubType;
+        const insTypeToSave = isOtherValue(formData.insuranceType) ? finalInsuranceType : formData.insuranceType;
+        const subToSave = isOtherValue(formData.insuranceSubType) ? finalInsuranceSubType : formData.insuranceSubType;
+        if (insTypeToSave !== (lead.insuranceType || '')) updates.insuranceType = insTypeToSave;
+        if (subToSave !== (lead.insuranceSubType || '')) updates.insuranceSubType = subToSave;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -303,6 +484,18 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 onChange={(val) => handleChange('productType', val)}
                 placeholder="Select product type"
               />
+              {isOtherValue(formData.productType) && (
+                <div className="relative mt-1.5 animate-in fade-in duration-200">
+                  <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <input
+                    type="text"
+                    value={formData.customProductType}
+                    onChange={(e) => handleChange('customProductType', e.target.value)}
+                    placeholder="Enter new product type"
+                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                  />
+                </div>
+              )}
             </div>
             <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
               <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Requirement</label>
@@ -312,7 +505,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 onChange={handleRequirementOptionChange}
                 placeholder="Select requirement"
               />
-              {formData.requirementOption === 'Other' && (
+              {isOtherValue(formData.requirementOption) && (
                 <div className="relative mt-1.5 animate-in fade-in duration-200">
                   <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                   <input
@@ -338,6 +531,18 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
               onChange={(val) => handleChange('productType', val)}
               placeholder="Select product type"
             />
+            {isOtherValue(formData.productType) && (
+              <div className="relative mt-1.5 animate-in fade-in duration-200">
+                <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <input
+                  type="text"
+                  value={formData.customProductType}
+                  onChange={(e) => handleChange('customProductType', e.target.value)}
+                  placeholder="Enter new product type"
+                  className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -352,18 +557,41 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 onChange={(val) => handleChange('insuranceType', val)}
                 placeholder="Select product type"
               />
+              {isOtherValue(formData.insuranceType) && (
+                <div className="relative mt-1.5 animate-in fade-in duration-200">
+                  <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <input
+                    type="text"
+                    value={formData.customInsuranceType}
+                    onChange={(e) => handleChange('customInsuranceType', e.target.value)}
+                    placeholder="Enter new product type"
+                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                  />
+                </div>
+              )}
             </div>
-            {insuranceSubProductOptions.length > 0 && (
-              <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Sub Product Type</label>
-                <SearchableDropdown
-                  options={insuranceSubProductOptions}
-                  value={formData.insuranceSubType}
-                  onChange={(val) => handleChange('insuranceSubType', val)}
-                  placeholder={`Select ${formData.insuranceType} sub type`}
-                />
-              </div>
-            )}
+
+            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Sub Product Type</label>
+              <SearchableDropdown
+                options={insuranceSubProductOptions}
+                value={formData.insuranceSubType}
+                onChange={(val) => handleChange('insuranceSubType', val)}
+                placeholder={`Select ${isOtherValue(formData.insuranceType) ? (formData.customInsuranceType || 'product') : formData.insuranceType} sub type`}
+              />
+              {isOtherValue(formData.insuranceSubType) && (
+                <div className="relative mt-1.5 animate-in fade-in duration-200">
+                  <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                  <input
+                    type="text"
+                    value={formData.customInsuranceSubType}
+                    onChange={(e) => handleChange('customInsuranceSubType', e.target.value)}
+                    placeholder="Enter new sub product type"
+                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                  />
+                </div>
+              )}
+            </div>
           </>
         )}
 

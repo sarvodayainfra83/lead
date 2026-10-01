@@ -20,6 +20,7 @@ import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
 const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Deal Closed': 'bg-purple-50 text-purple-700 border-purple-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
@@ -40,6 +41,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'All Status' },
   { value: 'Pending', label: 'Pending (Not Called)' },
   { value: 'Interested', label: 'Interested' },
+  { value: 'Deal Closed', label: 'Deal Closed' },
   { value: 'Future Plan Date', label: 'Future Plan Date' },
   { value: 'Site Visit/Meeting', label: 'Site Visit/Meeting' },
   { value: 'Not Interested', label: 'Not Interested' }

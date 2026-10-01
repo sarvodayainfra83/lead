@@ -41,7 +41,7 @@ const Header = ({ sidebarOpen, onMenuClick, user }) => {
                 {user?.name || 'Admin'}
               </p>
               <p className="text-[10px] uppercase font-bold text-indigo-600 tracking-wider">
-                {user?.role === 'ADMIN' ? 'Administrator' : 'Employee'}
+                {user?.role === 'ADMIN' ? 'Administrator' : user?.role === 'HR' ? 'HR Manager' : 'Employee'}
               </p>
             </div>
             <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center group-hover:bg-indigo-200 transition-all overflow-hidden shadow-sm border border-indigo-300">
@@ -80,7 +80,7 @@ const Header = ({ sidebarOpen, onMenuClick, user }) => {
                 <div className="min-w-0">
                   <p className="text-base font-bold text-gray-900 truncate">{user?.name || '-'}</p>
                   <span className="inline-flex items-center gap-1 mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    <ShieldCheck size={11} /> {user?.role === 'ADMIN' ? 'Administrator' : 'Employee'}
+                    <ShieldCheck size={11} /> {user?.role === 'ADMIN' ? 'Administrator' : user?.role === 'HR' ? 'HR Manager' : 'Employee'}
                   </span>
                 </div>
               </div>

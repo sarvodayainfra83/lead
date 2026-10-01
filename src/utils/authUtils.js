@@ -11,6 +11,14 @@ export const isUserAdmin = (user) => {
 };
 
 /**
+ * Check if the given user has an HR role or position (case-insensitive).
+ */
+export const isUserHR = (user) => {
+  if (!user) return false;
+  return (user.role || '').toUpperCase() === 'HR' || (user.position || '').toUpperCase() === 'HR';
+};
+
+/**
  * Check if an item (lead, call tracker, customer record, or caller string)
  * is assigned to the current user.
  * 
@@ -170,7 +178,14 @@ export const getPageAccess = (user, pageKey) => {
   }
 
   if (level === 'edit') return 'full';
-  return level === 'full' || level === 'view' ? level : 'none';
+  if (level === 'full' || level === 'view') return level;
+
+  // HR users default to full access for Attendance & Attendance Report unless explicitly set to 'none'
+  if (isUserHR(user) && (pageKey === 'attendance' || pageKey === 'attendanceReport')) {
+    return level === 'none' ? 'none' : 'full';
+  }
+
+  return 'none';
 };
 
 /** Can the user open the page at all (view or full)? */

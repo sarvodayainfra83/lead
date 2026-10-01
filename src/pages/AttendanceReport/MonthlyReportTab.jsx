@@ -6,7 +6,7 @@ import { authApi } from '../../api/authApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin } from '../../utils/authUtils';
+import { isUserAdmin, isUserHR } from '../../utils/authUtils';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -71,7 +71,7 @@ const getEmployeeDepartment = (user) => {
 
 export default function MonthlyReportTab({ tabBar }) {
   const { user } = useAuthStore();
-  const isAdmin = isUserAdmin(user);
+  const isAdminOrHR = isUserAdmin(user) || isUserHR(user);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [reportRows, setReportRows] = useState([]);
@@ -198,7 +198,7 @@ export default function MonthlyReportTab({ tabBar }) {
 
       // Calculate Present, Half Day, Absent, and Consistency %
       const activeUsers = usersList.filter(u => u.name);
-      const scopedUsers = isAdmin
+      const scopedUsers = isAdminOrHR
         ? activeUsers
         : activeUsers.filter(u =>
             (user?.name && u.name.toLowerCase() === user.name.toLowerCase()) ||

@@ -311,13 +311,17 @@ CREATE TABLE IF NOT EXISTS users (
     number TEXT,
     gmail TEXT,
     password TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER')),
+    role TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER', 'HR')),
     position TEXT,
     lead_type_id UUID REFERENCES master_lead_types(id) ON DELETE SET NULL,
     access_pages JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Update check constraint for existing installations to support 'HR' role
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN', 'USER', 'HR'));
 
 -- 3. MASTER LEAD SOURCES TABLE
 CREATE TABLE IF NOT EXISTS master_lead_sources (
@@ -499,7 +503,7 @@ CREATE TABLE IF NOT EXISTS call_trackers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
     lead_no TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting')),
+    status TEXT NOT NULL CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Deal Closed')),
     customer_said TEXT,
     next_date DATE,
     timestamp TEXT NOT NULL,
@@ -508,11 +512,11 @@ CREATE TABLE IF NOT EXISTS call_trackers (
 );
 
 -- Installs where this table already existed under the old 5-status scheme: replace the CHECK
--- constraint with the new 4-status one, and make next_date nullable again (Interested / Not
+-- constraint with the new 5-status one, and make next_date nullable again (Interested / Deal Closed / Not
 -- Interested carry no date — only Future Plan Date / Site Visit/Meeting do).
 ALTER TABLE call_trackers DROP CONSTRAINT IF EXISTS call_trackers_status_check;
 ALTER TABLE call_trackers ADD CONSTRAINT call_trackers_status_check
-    CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting'));
+    CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Deal Closed'));
 ALTER TABLE call_trackers ALTER COLUMN next_date DROP NOT NULL;
 
 -- Customer temperature (Hot / Warm / Cold), admin remark per call row, and last-updated time

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
-import { Download } from 'lucide-react';
+import { Download, Share2 } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
@@ -110,6 +110,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
   const [leadType, setLeadType] = useState(() => defaultLeadType || user?.leadType || '');
   const [leadReceiver, setLeadReceiver] = useState('');
   const [leadSource, setLeadSource] = useState('');
+  const [customLeadSource, setCustomLeadSource] = useState('');
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
@@ -145,7 +146,13 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
   }, [isOpen, defaultLeadType]);
 
   const leadTypeOptions = leadTypesMaster.map(t => ({ value: t.leadType, label: t.leadType }));
-  const leadSourceOptions = leadSourcesMaster.map(s => ({ value: s.leadSource, label: s.leadSource }));
+  const leadSourceOptions = useMemo(() => {
+    const opts = (leadSourcesMaster || []).map(s => ({ value: s.leadSource, label: s.leadSource }));
+    if (!opts.some(o => o.value === 'Other')) {
+      opts.push({ value: 'Other', label: 'Other' });
+    }
+    return opts;
+  }, [leadSourcesMaster]);
   const receiverOptions = leadReceiversMaster
     .filter(r => !leadType || r.leadType === leadType)
     .map(r => ({ value: r.personName, label: r.personName }));
@@ -166,6 +173,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
     setLeadType(resolveUserLeadType());
     setLeadReceiver('');
     setLeadSource('');
+    setCustomLeadSource('');
     setFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -188,9 +196,32 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
 
     if (!leadType) { toast.error('Lead Type is required'); return; }
     if (!leadSource) { toast.error('Lead Source is required'); return; }
+
+    let finalLeadSource = leadSource;
+    if (leadSource === 'Other') {
+      if (!customLeadSource?.trim()) {
+        toast.error('Please enter the new lead source');
+        return;
+      }
+      finalLeadSource = customLeadSource.trim();
+    }
+
     if (!file) { toast.error('Please choose an Excel file to import'); return; }
 
     setLoading(true);
+
+    if (leadSource === 'Other' && finalLeadSource) {
+      const exists = (leadSourcesMaster || []).some(
+        s => s.leadSource?.toLowerCase().trim() === finalLeadSource.toLowerCase()
+      );
+      if (!exists) {
+        try {
+          await masterApi.saveLeadSource({ leadSource: finalLeadSource });
+        } catch (err) {
+          console.error('Failed to save new lead source to master:', err);
+        }
+      }
+    }
 
     const isInsurance = leadType.toLowerCase().includes('insurance');
     const productMaster = productMasterFor(leadType);
@@ -246,7 +277,7 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
             timestamp,
             leadType,
             leadReceiver,
-            leadSource,
+            leadSource: finalLeadSource,
             personName: String(mapped.personName ?? '').trim(),
             number: numberValue,
             email: String(mapped.email ?? '').trim(),
@@ -336,9 +367,24 @@ export default function BulkUploadLead({ isOpen, onClose, onImported, defaultLea
             <SearchableDropdown
               options={leadSourceOptions}
               value={leadSource}
-              onChange={setLeadSource}
+              onChange={(val) => {
+                setLeadSource(val);
+                if (val !== 'Other') setCustomLeadSource('');
+              }}
               placeholder="Select lead source"
             />
+            {leadSource === 'Other' && (
+              <div className="relative mt-1.5 animate-in fade-in duration-200">
+                <Share2 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <input
+                  type="text"
+                  value={customLeadSource}
+                  onChange={(e) => setCustomLeadSource(e.target.value)}
+                  placeholder="Enter new lead source"
+                  className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                />
+              </div>
+            )}
           </div>
         </div>
 

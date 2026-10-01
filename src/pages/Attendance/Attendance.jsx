@@ -18,11 +18,12 @@ import AttendanceModal from "./AttendanceModal";
 import PhotoViewModal from "./PhotoViewModal";
 import AttendanceEdit from "./AttendanceEdit";
 import { useAuthStore } from "../../store/authStore";
-import { isUserAdmin, hasFullAccess } from "../../utils/authUtils";
+import { isUserAdmin, isUserHR, hasFullAccess } from "../../utils/authUtils";
 
 export default function Attendance() {
   const { user } = useAuthStore();
   const isAdmin = isUserAdmin(user);
+  const isHR = isUserHR(user);
   const canEdit = hasFullAccess(user, "attendance");
 
   const [logs, setLogs] = useState([]);
@@ -100,7 +101,7 @@ export default function Attendance() {
     setLoading(true);
     try {
       const allLogs = await attendanceApi.getAttendanceLogs();
-      const userLogs = isAdmin
+      const userLogs = (isAdmin || isHR)
         ? allLogs
         : allLogs.filter(
           (l) =>
