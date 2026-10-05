@@ -163,7 +163,7 @@ export const buildEmployeeRows = ({ employees, leads, calls, attendance, visits,
     Object.values(row.lastCallByLead || {}).forEach(c => {
       if (c.status === 'Interested') row.interested += 1;
       if (c.status === 'Future Plan Date') row.futurePlan += 1;
-      if (c.status === 'Site Visit/Meeting') row.siteVisit += 1;
+      if (c.status === 'Site Visit/Meeting' || c.status === 'Meeting') row.siteVisit += 1;
       if (c.status === 'Not Interested') row.notInterested += 1;
     });
     delete row.lastCallByLead;
@@ -264,7 +264,7 @@ export const buildDailyBreakdown = ({ employeeName, leads, calls, attendance, ra
     d.calls += 1;
     if (c.status === 'Interested') d.interested += 1;
     if (c.status === 'Future Plan Date') d.futurePlan += 1;
-    if (c.status === 'Site Visit/Meeting') d.siteVisit += 1;
+    if (c.status === 'Site Visit/Meeting' || c.status === 'Meeting') d.siteVisit += 1;
     if (c.status === 'Not Interested') d.notInterested += 1;
   });
   leads.filter(l => normName(l.callerAssigned) === key && l.createdDate).forEach(l => {

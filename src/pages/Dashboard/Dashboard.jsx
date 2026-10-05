@@ -38,7 +38,8 @@ const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200'
+  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
 
 const CHART_COLORS = { assigned: '#c7d2fe', calls: '#4f46e5', converted: '#10b981', newLeads: '#a5b4fc' };
@@ -364,7 +365,7 @@ export default function Dashboard() {
         todayCalls: callList.filter(c => c.timestampMs >= todayMs).length,
         futurePlan: byStatus('Future Plan Date'),
         converted,
-        siteVisit: byStatus('Site Visit/Meeting'),
+        siteVisit: byStatus('Site Visit/Meeting') + byStatus('Meeting'),
         notInterested: byStatus('Not Interested'),
         notCalled: list.filter(l => l.trackers.length === 0).length,
         hot: list.filter(l => l.customerStatus === 'Hot').length,
@@ -417,7 +418,7 @@ export default function Dashboard() {
       if (inRange(l.lastActivityMs) && l.trackers.length > 0) {
         if (l.status === 'Interested') row.interested += 1;
         if (l.status === 'Future Plan Date') row.futurePlan += 1;
-        if (l.status === 'Site Visit/Meeting') row.siteVisit += 1;
+        if (l.status === 'Site Visit/Meeting' || l.status === 'Meeting') row.siteVisit += 1;
         if (l.status === 'Not Interested') row.notInterested += 1;
         if (l.customerStatus === 'Hot') row.hot += 1;
         if (l.customerStatus === 'Warm') row.warm += 1;

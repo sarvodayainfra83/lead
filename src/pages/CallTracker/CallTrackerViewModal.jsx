@@ -20,6 +20,7 @@ const STATUS_STYLES = {
   'Not Interested': 'bg-rose-50 text-rose-700 border-rose-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   'Under Review': 'bg-purple-50 text-purple-700 border-purple-200',
   Pending: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   Unassigned: 'bg-gray-100 text-gray-600 border-gray-200'

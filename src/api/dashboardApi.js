@@ -143,12 +143,15 @@ export const dashboardApi = {
     const pendingCount = leads.filter(l => isLeadPending(trackers, l)).length;
     const conversionRate = totalLeads > 0 ? Math.round((convertedCount / totalLeads) * 100) : 0;
 
-    // Site Visit/Meeting leads — latest tracker status is 'Site Visit/Meeting'
-    const siteVisitCount = leadsWithStatus.filter(l => l._status === 'Site Visit/Meeting').length;
+    // Site Visit/Meeting leads — latest tracker status is 'Site Visit/Meeting' or 'Meeting'
+    const siteVisitCount = leadsWithStatus.filter(l => l._status === 'Site Visit/Meeting' || l._status === 'Meeting').length;
 
     // Build site visit/meeting leads list with their date & caller
     const siteVisitLeads = leads
-      .filter(l => getLeadStatus(trackers, l.id) === 'Site Visit/Meeting')
+      .filter(l => {
+        const s = getLeadStatus(trackers, l.id);
+        return s === 'Site Visit/Meeting' || s === 'Meeting';
+      })
       .map(l => {
         const list = (trackers.filter(t => t.leadId === l.id))
           .sort((a, b) => a.timestampMs - b.timestampMs);

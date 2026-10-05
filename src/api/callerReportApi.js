@@ -114,7 +114,7 @@ export const callerReportApi = {
       interested: leadRows.filter(l => l.latestStatus === 'Interested').length,
       futurePlan: leadRows.filter(l => l.latestStatus === 'Future Plan Date').length,
       notInterested: leadRows.filter(l => l.latestStatus === 'Not Interested').length,
-      siteVisit: leadRows.filter(l => l.latestStatus === 'Site Visit/Meeting').length
+      siteVisit: leadRows.filter(l => l.latestStatus === 'Site Visit/Meeting' || l.latestStatus === 'Meeting').length
     };
 
     return {

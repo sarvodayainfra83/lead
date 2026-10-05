@@ -23,6 +23,7 @@ const STATUS_STYLES = {
   'Future Plan': 'bg-amber-50 text-amber-700 border-amber-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Assigned: 'bg-sky-50 text-sky-700 border-sky-200',
   'Pending Assignment': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Did Not Show': 'bg-slate-100 text-slate-700 border-slate-300',

@@ -4,7 +4,7 @@ export const ENQUIRY_STATUSES = ['Interested', 'Not Interested', 'Future Plan Da
 
 // All four resolve a lead — it leaves the Pending call queue. Only Future Plan Date leaves
 // it open, awaiting a further call on the date given.
-export const TERMINAL_STATUSES = ['Interested', 'Not Interested', 'Site Visit/Meeting', 'Deal Closed'];
+export const TERMINAL_STATUSES = ['Interested', 'Not Interested', 'Site Visit/Meeting', 'Meeting', 'Deal Closed'];
 
 // Which terminal outcomes convert the lead into a Customer Master record.
 // Site Visit/Meeting moves to Assign Visitor stage instead of Customer Master.
@@ -12,7 +12,7 @@ export const CONVERTED_STATUSES = ['Interested', 'Deal Closed'];
 
 // Statuses that also collect a date — Future Plan Date's next-call-on date, or the scheduled
 // Site Visit/Meeting date.
-export const DATE_STATUSES = ['Future Plan Date', 'Site Visit/Meeting'];
+export const DATE_STATUSES = ['Future Plan Date', 'Site Visit/Meeting', 'Meeting'];
 
 // Customer temperature captured per call (call_trackers.customer_status)
 export const CUSTOMER_STATUSES = ['Hot', 'Warm', 'Cold'];

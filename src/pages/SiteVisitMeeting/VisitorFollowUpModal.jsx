@@ -344,15 +344,17 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
           {/* Activity Type: Site Visited & Meeting Checkboxes */}
           <div className="flex items-center gap-3 sm:gap-4 bg-slate-50 border border-slate-200 rounded-lg p-2 sm:p-2.5">
             <span className="font-semibold text-gray-700 text-[11px] sm:text-xs">Activity:</span>
-            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-gray-700 select-none">
-              <input
-                type="checkbox"
-                checked={Boolean(visitMeet['site-visit'])}
-                onChange={(e) => setVisitMeet(prev => ({ ...prev, 'site-visit': e.target.checked }))}
-                className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
-              />
-              <span>Site Visited</span>
-            </label>
+            {(!lead?.leadType || lead?.leadType?.toLowerCase().includes('real') || (lead?.leadNo || '').toUpperCase().startsWith('LR')) && (
+              <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-gray-700 select-none">
+                <input
+                  type="checkbox"
+                  checked={Boolean(visitMeet['site-visit'])}
+                  onChange={(e) => setVisitMeet(prev => ({ ...prev, 'site-visit': e.target.checked }))}
+                  className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                />
+                <span>Site Visited</span>
+              </label>
+            )}
             <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-gray-700 select-none">
               <input
                 type="checkbox"

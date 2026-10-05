@@ -269,20 +269,31 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
     return opts;
   }, [visitorsMaster, formData.leadType, user]);
 
+  const isRealEstate = formData.leadType === 'Real Estate';
+  const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');
+  const isMutualFund = formData.leadType === 'Mutual Fund';
+  const isReferenceSource = formData.leadSource?.toLowerCase() === 'reference';
+
+  const statusOptions = useMemo(() => {
+    const isNonRealEstate = isInsurance || isMutualFund;
+    return ENQUIRY_STATUSES.map(v => {
+      if (v === 'Site Visit/Meeting' && isNonRealEstate) {
+        return { value: 'Meeting', label: 'Meeting' };
+      }
+      return { value: v, label: v };
+    });
+  }, [isInsurance, isMutualFund]);
+
   // Default assignedVisitor to logged in user or first visitor option
   useEffect(() => {
-    if (formData.status === 'Site Visit/Meeting' && !formData.assignedVisitor) {
+    const isMeeting = formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting';
+    if (isMeeting && !formData.assignedVisitor) {
       setFormData(prev => ({
         ...prev,
         assignedVisitor: user?.name || (visitorOptions[0]?.value || '')
       }));
     }
   }, [formData.status, visitorOptions, user, formData.assignedVisitor]);
-
-  const isRealEstate = formData.leadType === 'Real Estate';
-  const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');
-  const isMutualFund = formData.leadType === 'Mutual Fund';
-  const isReferenceSource = formData.leadSource?.toLowerCase() === 'reference';
 
   const realEstateProductOptions = useMemo(() => {
     return (realEstateProductsMaster || [])
@@ -337,6 +348,14 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         if ((value === 'Insurance' || value?.toLowerCase().includes('insurance')) && !updated.insuranceType) {
           updated.insuranceType = 'Life Insurance';
         }
+        if (value === 'Insurance' || value?.toLowerCase().includes('insurance') || value === 'Mutual Fund') {
+          if (updated.status === 'Site Visit/Meeting') {
+            updated.status = 'Meeting';
+          }
+          updated.siteVisited = false;
+        } else if (value === 'Real Estate' && updated.status === 'Meeting') {
+          updated.status = 'Site Visit/Meeting';
+        }
       }
       if (field === 'productType' && !isOtherValue(value)) {
         updated.customProductType = '';
@@ -362,7 +381,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       if (field === 'investmentBudget' && !isOtherValue(value)) {
         updated.customInvestmentBudget = '';
       }
-      if (field === 'status' && !DATE_STATUSES.includes(value)) {
+      if (field === 'status' && !DATE_STATUSES.includes(value) && value !== 'Meeting') {
         updated.nextCallDate = '';
       }
       return updated;
@@ -601,13 +620,13 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       status: formData.status,
       customerStatus: formData.customerStatus,
       customerSaid: formData.customerSaid,
-      nextDate: DATE_STATUSES.includes(formData.status) ? formData.nextCallDate : '',
+      nextDate: (DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') ? formData.nextCallDate : '',
       timestamp,
       timestampMs: now.getTime()
     });
 
-    // Auto-create assigned visitor & visitor follow-up record if status is Site Visit/Meeting
-    if (formData.status === 'Site Visit/Meeting') {
+    // Auto-create assigned visitor & visitor follow-up record if status is Site Visit/Meeting or Meeting
+    if (formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') {
       const chosenVisitorName = formData.assignedVisitor || user?.name || '';
       const matchedVisitor = (visitorsMaster || []).find(
         v => String(v.personName || v.name || v.visitorName || '').trim().toLowerCase() === chosenVisitorName.trim().toLowerCase()
@@ -637,7 +656,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       // 2. Save visitor follow-up record
       try {
         const visitMeet = {
-          'site-visit': Boolean(formData.siteVisited),
+          'site-visit': isRealEstate ? Boolean(formData.siteVisited) : false,
           'meeting': Boolean(formData.meeting)
         };
         const closingAmt = formData.dealStatus === 'Closed' ? (formData.exactBudget || finalInvestmentBudget || '') : '';
@@ -655,7 +674,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
           visitMeet,
           visit_meet: visitMeet,
           visitDate: visitDate,
-          whatHappened: formData.customerSaid || 'Direct lead created with Site Visit/Meeting',
+          whatHappened: formData.customerSaid || `Direct lead created with ${formData.status}`,
           customerStatus: formData.customerStatus || 'Hot',
           salesExecutive: chosenVisitorName || formData.callerAssigned || user?.name || '',
           visitorName: chosenVisitorName,
@@ -669,8 +688,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
 
     if (formData.status === 'Interested' || formData.status === 'Deal Closed') {
       toast.success(`Lead ${leadNo} added and moved to Customer Master.`);
-    } else if (formData.status === 'Site Visit/Meeting') {
-      toast.success(`Lead ${leadNo} added with Site Visit / Meeting details.`);
+    } else if (formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') {
+      toast.success(`Lead ${leadNo} added with ${isInsurance || isMutualFund ? 'Meeting' : 'Site Visit / Meeting'} details.`);
     } else if (formData.status === 'Not Interested') {
       toast.success(`Lead ${leadNo} added and logged to History.`);
     } else {
@@ -1076,10 +1095,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         </div>
 
         {/* Status */}
-        <div className={`space-y-1 ${DATE_STATUSES.includes(formData.status) ? 'col-span-1' : 'col-span-2 sm:col-span-1'}`}>
+        <div className={`space-y-1 ${(DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') ? 'col-span-1' : 'col-span-2 sm:col-span-1'}`}>
           <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Status *</label>
           <SearchableDropdown
-            options={ENQUIRY_STATUSES.map(v => ({ value: v, label: v }))}
+            options={statusOptions}
             value={formData.status}
             onChange={(val) => handleChange('status', val)}
             placeholder="Select status"
@@ -1089,10 +1108,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         {formData.status && (
           <>
             {/* Date — Future Plan Date's next-call date, or the Site Visit/Meeting date */}
-            {DATE_STATUSES.includes(formData.status) && (
+            {(DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') && (
               <div className="space-y-1 col-span-1 animate-in fade-in duration-200">
                 <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                  {formData.status === 'Future Plan Date' ? 'Future Plan Date' : 'Visit/Meeting Date'}
+                  {formData.status === 'Future Plan Date' ? 'Future Plan Date' : ((isInsurance || isMutualFund) ? 'Meeting Date' : 'Visit/Meeting Date')}
                 </label>
                 <input
                   type="date"
@@ -1103,25 +1122,27 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
               </div>
             )}
 
-            {/* When status is Site Visit/Meeting: Checkboxes (Site Visited, Meeting), Deal Status dropdown, Assigned Visitor, and Budget */}
-            {formData.status === 'Site Visit/Meeting' && (
+            {/* When status is Site Visit/Meeting or Meeting: Checkboxes (Site Visited, Meeting), Deal Status dropdown, Assigned Visitor, and Budget */}
+            {(formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') && (
               <div className="space-y-3 col-span-2 p-2.5 sm:p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl animate-in fade-in duration-200">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-center">
                   {/* Checkboxes: Site Visited & Meeting */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                      Visit / Meeting Type
+                      {isInsurance || isMutualFund ? 'Meeting' : 'Visit / Meeting Type'}
                     </label>
                     <div className="flex items-center gap-4 pt-1">
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
-                        <input
-                          type="checkbox"
-                          checked={formData.siteVisited}
-                          onChange={(e) => handleChange('siteVisited', e.target.checked)}
-                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                        />
-                        <span>Site Visited</span>
-                      </label>
+                      {isRealEstate && (
+                        <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
+                          <input
+                            type="checkbox"
+                            checked={formData.siteVisited}
+                            onChange={(e) => handleChange('siteVisited', e.target.checked)}
+                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                          />
+                          <span>Site Visited</span>
+                        </label>
+                      )}
                       <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
                         <input
                           type="checkbox"

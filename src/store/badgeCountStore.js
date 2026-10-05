@@ -59,7 +59,7 @@ export const useBadgeCountStore = create((set) => ({
         const isUserMatch = isAdmin || matchesUserAssignment(l, user) || matchesUserReceiver(l, user);
         if (!isUserMatch) return false;
         const status = getLeadStatus(allTrackers, l.id, l.leadNo);
-        return status === 'Site Visit/Meeting' && !assignedLeadSet.has(String(l.id)) && !assignedLeadSet.has(String(l.leadNo));
+        return (status === 'Site Visit/Meeting' || status === 'Meeting') && !assignedLeadSet.has(String(l.id)) && !assignedLeadSet.has(String(l.leadNo));
       }).length;
 
       // Pending visitor follow-ups

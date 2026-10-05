@@ -15,7 +15,8 @@ const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
-  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200'
+  'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
 
 export default function HistoryTracker({ tabBar }) {
@@ -49,7 +50,13 @@ export default function HistoryTracker({ tabBar }) {
 
   const filteredRows = historyRows.filter(r => {
     if (filters.leadType && r.leadType !== filters.leadType) return false;
-    if (filters.status && r.status !== filters.status) return false;
+    if (filters.status) {
+      if (filters.status === 'Site Visit/Meeting' || filters.status === 'Meeting') {
+        if (r.status !== 'Site Visit/Meeting' && r.status !== 'Meeting') return false;
+      } else if (r.status !== filters.status) {
+        return false;
+      }
+    }
     if (filters.callerAssigned && r.callerAssigned !== filters.callerAssigned) return false;
 
     if (filters.searchQuery) {

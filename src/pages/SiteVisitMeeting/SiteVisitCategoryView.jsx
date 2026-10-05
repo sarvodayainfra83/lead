@@ -65,6 +65,7 @@ const STATUS_STYLES = {
   'Future Plan': 'bg-amber-50 text-amber-700 border-amber-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Assigned: 'bg-sky-50 text-sky-700 border-sky-200',
   'Pending Assignment': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Did Not Show': 'bg-slate-100 text-slate-700 border-slate-300',
@@ -648,7 +649,7 @@ export default function SiteVisitCategoryView({
         key={leadKey}
         className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200'}`}
       >
-        {/* Card Header: Name, Lead # on left; Followup button on top right */}
+        {/* Card Header: Name, Lead # on left; Details dropdown on top right */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
             <h4
@@ -668,18 +669,27 @@ export default function SiteVisitCategoryView({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {onLogFollowUp && (
-              <button
-                type="button"
-                onClick={() => onLogFollowUp(item)}
-                className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
-              >
-                <MessageSquare size={12} />
-                <span>Followup</span>
-              </button>
+          <button
+            type="button"
+            onClick={() => toggleCardExpand(leadKey)}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer shrink-0 ${
+              isExpanded
+                ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+            }`}
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp size={13} />
+                <span>Hide</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown size={13} />
+                <span>Details</span>
+              </>
             )}
-          </div>
+          </button>
         </div>
 
         {/* Primary Row: Phone, Total Visits, Meeting Date, Next Meeting Date */}
@@ -795,31 +805,9 @@ export default function SiteVisitCategoryView({
           </div>
         )}
 
-        {/* Action & Status Row: Details dropdown on left, Meeting / Site Visited text on right */}
+        {/* Action & Status Row: Site-visit / Meeting text on bottom-left, Followup on bottom-right */}
         <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={() => toggleCardExpand(leadKey)}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer ${
-              isExpanded
-                ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
-            }`}
-          >
-            {isExpanded ? (
-              <>
-                <ChevronUp size={13} />
-                <span>Hide</span>
-              </>
-            ) : (
-              <>
-                <ChevronDown size={13} />
-                <span>Details</span>
-              </>
-            )}
-          </button>
-
-          <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-1 shrink-0 flex-wrap">
             {isAdmin && item.status && (
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                 {item.status}
@@ -834,6 +822,19 @@ export default function SiteVisitCategoryView({
               <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
                 <Check size={9} className="stroke-[2.5]" /> Meeting
               </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            {onLogFollowUp && (
+              <button
+                type="button"
+                onClick={() => onLogFollowUp(item)}
+                className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
+              >
+                <MessageSquare size={12} />
+                <span>Followup</span>
+              </button>
             )}
           </div>
         </div>

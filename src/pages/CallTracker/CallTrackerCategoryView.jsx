@@ -24,6 +24,7 @@ const STATUS_STYLES = {
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Pending: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   Unassigned: 'bg-gray-50 text-gray-500 border-gray-200'
 };
@@ -490,6 +491,8 @@ export default function CallTrackerCategoryView({
       if (statusFilter !== 'all') {
         if (statusFilter === 'Pending') {
           if (item.status !== 'Pending' && item.status !== 'Unassigned') return false;
+        } else if (statusFilter === 'Site Visit/Meeting' || statusFilter === 'Meeting') {
+          if (item.status !== 'Site Visit/Meeting' && item.status !== 'Meeting') return false;
         } else if (item.status !== statusFilter) {
           return false;
         }
@@ -1008,7 +1011,7 @@ export default function CallTrackerCategoryView({
         key={leadKey}
         className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200'}`}
       >
-        {/* Card Header: Name, Lead # on left; Followup & Remark buttons on top right */}
+        {/* Card Header: Name, Lead # on left; Details dropdown on top right */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
             <h4
@@ -1022,52 +1025,27 @@ export default function CallTrackerCategoryView({
                 #{item.leadNo}
               </span>
             )}
-            {item.visitorFollowUpCount > 0 && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setViewingLead(item);
-                }}
-                className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition shrink-0"
-                title={`Site Visit: ${item.siteVisitStatus || 'Recorded'} (${item.visitorFollowUpCount} visit follow-up${item.visitorFollowUpCount > 1 ? 's' : ''}) - Click to view`}
-              >
-                <MapPin size={9} className="text-emerald-600" />
-                <span>Visit: {item.siteVisitStatus || `${item.visitorFollowUpCount}`}</span>
-              </button>
-            )}
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => setCallingLead(item)}
-                className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
-              >
-                <Phone size={12} />
-                <span>Followup</span>
-              </button>
+          <button
+            type="button"
+            onClick={() => toggleCardExpand(leadKey)}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer shrink-0 ${isExpanded
+              ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+              : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+              }`}
+          >
+            {isExpanded ? (
+              <>
+                <ChevronUp size={13} />
+                <span>Hide</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown size={13} />
+                <span>Details</span>
+              </>
             )}
-            {(isAdmin || item.adminRemark) && (
-              <button
-                type="button"
-                onClick={() => openRemark(item)}
-                title={isAdmin ? (item.adminRemark ? 'Update admin remark' : 'Add admin remark') : (item.adminRemark ? 'Read admin remark & reply' : 'No remark from admin yet')}
-                className={`relative inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 whitespace-nowrap border cursor-pointer ${!isAdmin && item.hasNewAdminRemark
-                  ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
-                  : isAdmin && item.hasNewUserReply
-                    ? 'bg-emerald-600 text-white border-emerald-600'
-                    : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white'
-                  }`}
-              >
-                <MessageSquare size={11} />
-                <span>{isAdmin ? (item.hasNewUserReply ? 'Reply' : 'Remark') : (item.hasNewAdminRemark ? 'New' : 'Reply')}</span>
-                {((!isAdmin && item.hasNewAdminRemark) || (isAdmin && item.hasNewUserReply)) && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-                )}
-              </button>
-            )}
-          </div>
+          </button>
         </div>
 
         {/* Primary Row: Phone, Total Calls, Last Call, Next Call */}
@@ -1182,34 +1160,59 @@ export default function CallTrackerCategoryView({
           </div>
         )}
 
-        {/* Action & Status Row: Details dropdown on left, Status badge on right */}
+        {/* Action & Status Row: Status/badges on bottom-left, Followup & Remark on bottom-right */}
         <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={() => toggleCardExpand(leadKey)}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer ${isExpanded
-              ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-              : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
-              }`}
-          >
-            {isExpanded ? (
-              <>
-                <ChevronUp size={13} />
-                <span>Hide</span>
-              </>
-            ) : (
-              <>
-                <ChevronDown size={13} />
-                <span>Details</span>
-              </>
-            )}
-          </button>
-
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-1 shrink-0 flex-wrap">
             {item.status && (
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                 {item.status}
               </span>
+            )}
+            {item.visitorFollowUpCount > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setViewingLead(item);
+                }}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition shrink-0"
+                title={`Site Visit: ${item.siteVisitStatus || 'Recorded'} (${item.visitorFollowUpCount} visit follow-up${item.visitorFollowUpCount > 1 ? 's' : ''}) - Click to view`}
+              >
+                <MapPin size={9} className="text-emerald-600" />
+                <span>Visit: {item.siteVisitStatus || `${item.visitorFollowUpCount}`}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setCallingLead(item)}
+                className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
+              >
+                <Phone size={12} />
+                <span>Followup</span>
+              </button>
+            )}
+            {(isAdmin || item.adminRemark) && (
+              <button
+                type="button"
+                onClick={() => openRemark(item)}
+                title={isAdmin ? (item.adminRemark ? 'Update admin remark' : 'Add admin remark') : (item.adminRemark ? 'Read admin remark & reply' : 'No remark from admin yet')}
+                className={`relative inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 whitespace-nowrap border cursor-pointer ${!isAdmin && item.hasNewAdminRemark
+                  ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
+                  : isAdmin && item.hasNewUserReply
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white'
+                  }`}
+              >
+                <MessageSquare size={11} />
+                <span>{isAdmin ? (item.hasNewUserReply ? 'Reply' : 'Remark') : (item.hasNewAdminRemark ? 'New' : 'Reply')}</span>
+                {((!isAdmin && item.hasNewAdminRemark) || (isAdmin && item.hasNewUserReply)) && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                )}
+              </button>
             )}
           </div>
         </div>
