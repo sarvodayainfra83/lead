@@ -363,7 +363,6 @@ export default function SiteVisitCategoryView({
       'Assigned Visitor': item.assignedVisitor || '-',
       'Total Visits': item.followUpCount || 0,
       'Location': item.location || item.customerAddress || '-',
-      'Relationship Manager': item.relationshipManager || '-',
       'Remarks': item.leadRemarks || item.remarks || '-'
     }));
 
@@ -388,7 +387,6 @@ export default function SiteVisitCategoryView({
     "Assigned Visitor",
     "Total Visits",
     "Location",
-    "Relationship Manager",
     "Remarks"
   ];
 
@@ -549,7 +547,7 @@ export default function SiteVisitCategoryView({
           )}
         </td>
 
-        {/* 6. Latest Feedback */}
+        {/* 8. Latest Feedback */}
         <td className="px-3 py-2 text-left text-xs text-gray-700 max-w-[220px] truncate" title={item.whatHappened || item.visitorRemarks || ''}>
           {item.whatHappened || item.visitorRemarks ? (
             <span>"{item.whatHappened || item.visitorRemarks}"</span>
@@ -558,7 +556,7 @@ export default function SiteVisitCategoryView({
           )}
         </td>
 
-        {/* 7. Phone Number */}
+        {/* 9. Phone Number */}
         <td className="px-3 py-2 text-center text-xs text-gray-700 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
           {item.customerNumber || item.number ? (
             <div className="flex items-center justify-center gap-1.5">
@@ -577,7 +575,7 @@ export default function SiteVisitCategoryView({
           ) : '-'}
         </td>
 
-        {/* 8. Assigned Visitor */}
+        {/* 10. Assigned Visitor */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
           {item.assignedVisitor ? (
             <span
@@ -603,24 +601,19 @@ export default function SiteVisitCategoryView({
           )}
         </td>
 
-        {/* 9. Total Visits */}
+        {/* 11. Total Visits */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
             {item.followUpCount || 0} {item.followUpCount === 1 ? 'Visit' : 'Visits'}
           </span>
         </td>
 
-        {/* 10. Location */}
+        {/* 12. Location */}
         <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location || item.customerAddress}>
           {item.location || item.customerAddress || '-'}
         </td>
 
-        {/* 11. Relationship Manager */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">
-          {item.relationshipManager || '-'}
-        </td>
-
-        {/* 12. Remarks */}
+        {/* 13. Remarks */}
         <td className="px-3 py-2 text-center text-xs text-gray-500 whitespace-nowrap max-w-[160px] truncate" title={item.leadRemarks || item.remarks}>
           {item.leadRemarks || item.remarks || '-'}
         </td>
