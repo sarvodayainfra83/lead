@@ -50,9 +50,9 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead, onCallN
   const trackers = lead.trackers || [];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-[1px] flex items-center justify-center z-[100] p-2 sm:p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[100] p-3.5 sm:p-5 md:p-6 animate-in fade-in duration-200">
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl lg:max-w-3xl max-h-[92dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-200"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl lg:max-w-3xl max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-gray-100/80 ring-1 ring-black/5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

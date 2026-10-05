@@ -192,7 +192,15 @@ export default function CallerReport() {
   const renderRow = (item, idx) => {
     const srNo = (currentPage - 1) * itemsPerPage + idx + 1;
     return (
-      <tr key={item.leadId || item.leadNo || idx} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
+      <tr
+        key={item.leadId || item.leadNo || idx}
+        onClick={(e) => {
+          if (!e.currentTarget.contains(e.target)) return;
+          if (e.target.closest('button, a, input, select, label, [role="combobox"], [role="listbox"]')) return;
+          setSelectedLead(item);
+        }}
+        className="group cursor-pointer hover:bg-indigo-50/30 transition-colors border-b border-gray-100"
+      >
         <td className="px-4 py-3 text-center whitespace-nowrap">
           <button
             onClick={() => setSelectedLead(item)}

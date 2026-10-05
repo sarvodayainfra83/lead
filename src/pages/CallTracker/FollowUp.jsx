@@ -47,24 +47,27 @@ export default function FollowUp() {
   const [allLeads, setAllLeads] = useState([]);
   const [allTrackers, setAllTrackers] = useState([]);
   const [allVisitorFollowUps, setAllVisitorFollowUps] = useState([]);
+  const [allAssignedVisitors, setAllAssignedVisitors] = useState([]);
   const [callersMaster, setCallersMaster] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showDirectForm, setShowDirectForm] = useState(false);
 
-  // Load all leads, call trackers, visitor follow-ups, and caller master data
+  // Load all leads, call trackers, visitor follow-ups, assigned visitors, and caller master data
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [leads, trackers, callers, visitorFollowUps] = await Promise.all([
+      const [leads, trackers, callers, visitorFollowUps, assignedVisitors] = await Promise.all([
         leadApi.getLeads(),
         callTrackerApi.getCallTrackers(),
         masterApi.getCallerNames(),
-        siteVisitMeetingApi.getVisitorFollowUps().catch(() => [])
+        siteVisitMeetingApi.getVisitorFollowUps().catch(() => []),
+        siteVisitMeetingApi.getAssignedVisitors().catch(() => [])
       ]);
       setAllLeads(leads || []);
       setAllTrackers(trackers || []);
       setCallersMaster(callers || []);
       setAllVisitorFollowUps(visitorFollowUps || []);
+      setAllAssignedVisitors(assignedVisitors || []);
     } catch (err) {
       console.error('Error loading Call Tracker data:', err);
     } finally {
@@ -154,6 +157,7 @@ export default function FollowUp() {
         leads={currentCategoryLeads}
         trackers={allTrackers}
         visitorFollowUps={allVisitorFollowUps}
+        assignedVisitors={allAssignedVisitors}
         loading={loading}
         callersMaster={callersMaster}
         canEdit={canEdit}

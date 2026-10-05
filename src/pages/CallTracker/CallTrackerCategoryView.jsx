@@ -14,7 +14,7 @@ import CallTrackerViewModal from './CallTrackerViewModal';
 import RemarkThreadModal from './RemarkThreadModal';
 import { formatIST, leadApi } from '../../api/leadApi';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin } from '../../utils/authUtils';
+import { isUserAdmin, matchesUserAssignment } from '../../utils/authUtils';
 import { TERMINAL_STATUSES, getTrackersForLead, CUSTOMER_STATUS_STYLES, formatDateTime } from './callTrackerConstants';
 import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
@@ -105,6 +105,7 @@ export default function CallTrackerCategoryView({
   leads = [],
   trackers = [],
   visitorFollowUps = [],
+  assignedVisitors = [],
   loading = false,
   callersMaster = [],
   canEdit = false,
@@ -114,12 +115,15 @@ export default function CallTrackerCategoryView({
   openRemarkLeadId, // open this lead's remark conversation (from a navbar notification)
   openRemarkNonce // changes on every notification click, so the same lead can be reopened
 }) {
+  const user = useAuthStore(state => state.user);
+  const isAdmin = isUserAdmin(user);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || 'all');
   // Reveal the filter bar when a Dashboard card pre-applied a status
   const [showFilters, setShowFilters] = useState(Boolean(initialStatusFilter));
-  const [dateFilter, setDateFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState(!isAdmin ? 'today' : 'all');
   const [customDate, setCustomDate] = useState('');
   const [callerFilter, setCallerFilter] = useState('all');
 
@@ -132,8 +136,6 @@ export default function CallTrackerCategoryView({
   const [viewingLead, setViewingLead] = useState(null);
 
   // Lead-level remark thread (leads.admin_remark / leads.user_remark)
-  const user = useAuthStore(state => state.user);
-  const isAdmin = isUserAdmin(user);
   const [remarkLead, setRemarkLead] = useState(null);
   // Remarks saved in this session, applied on top of the loaded leads until the next refresh
   const [remarkOverrides, setRemarkOverrides] = useState({});
@@ -163,19 +165,19 @@ export default function CallTrackerCategoryView({
 
   // Count active dropdown filters
   const activeFilterCount = (statusFilter !== 'all' ? 1 : 0) +
-    (dateFilter !== 'all' ? 1 : 0) +
+    (!isAdmin ? (dateFilter !== 'today' ? 1 : 0) : (dateFilter !== 'all' ? 1 : 0)) +
     (callerFilter !== 'all' ? 1 : 0);
 
   // Reset all filters & search
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setStatusFilter('all');
-    setDateFilter('all');
+    setDateFilter(!isAdmin ? 'today' : 'all');
     setCustomDate('');
     setCallerFilter('all');
     setCurrentPage(1);
     toast.success('Filters cleared');
-  }, []);
+  }, [isAdmin]);
 
   // Prepare full caller report & tracker connected records for each lead
   const enrichedLeads = useMemo(() => {
@@ -191,6 +193,22 @@ export default function CallTrackerCategoryView({
       if (keyNo) {
         if (!followUpsByLead[keyNo]) followUpsByLead[keyNo] = [];
         followUpsByLead[keyNo].push(f);
+      }
+    });
+
+    // Map assigned visitors by lead_id (UUID) and lead_no
+    const assignmentsByLead = {};
+    (assignedVisitors || []).forEach(a => {
+      if (a.status === 'Cancelled') return;
+      const keyId = String(a.leadId || a.lead_id || '').trim();
+      const keyNo = String(a.leadNo || a.lead_no || '').trim().toLowerCase();
+      if (keyId) {
+        if (!assignmentsByLead[keyId]) assignmentsByLead[keyId] = [];
+        assignmentsByLead[keyId].push(a);
+      }
+      if (keyNo) {
+        if (!assignmentsByLead[keyNo]) assignmentsByLead[keyNo] = [];
+        assignmentsByLead[keyNo].push(a);
       }
     });
 
@@ -217,6 +235,14 @@ export default function CallTrackerCategoryView({
         .sort((a, b) => (Number(a.timestampMs || a.timestamp_ms || 0)) - (Number(b.timestampMs || b.timestamp_ms || 0)));
       const latestVisitorFollowUp = leadFollowUps.length > 0 ? leadFollowUps[leadFollowUps.length - 1] : null;
       const siteVisitStatus = latestVisitorFollowUp?.status || '';
+
+      // Assigned Visitor
+      const leadAssignments = [
+        ...(lKeyId && assignmentsByLead[lKeyId] ? assignmentsByLead[lKeyId] : []),
+        ...(lKeyNo && assignmentsByLead[lKeyNo] ? assignmentsByLead[lKeyNo] : [])
+      ].sort((a, b) => new Date(b.timestamp || b.created_at || 0) - new Date(a.timestamp || a.created_at || 0));
+      const latestAssignment = leadAssignments[0] || null;
+      const assignedVisitor = latestAssignment?.visitorName || latestVisitorFollowUp?.visitorName || lead.assignedVisitor || '';
 
       // Determine date of call (from latest call tracker if any)
       let dateOfCall = '';
@@ -257,6 +283,7 @@ export default function CallTrackerCategoryView({
         status,
         latestStatus: status,
         customerStatus,
+        assignedVisitor,
         // Lead-level remark thread (falls back to the latest per-call admin remark for older data)
         ...(() => {
           const o = remarkOverrides[String(lead.id)] || {};
@@ -290,13 +317,13 @@ export default function CallTrackerCategoryView({
         visitorFollowUpCount: leadFollowUps.length,
         latestVisitorFollowUp,
         siteVisitStatus,
-        siteVisitDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || '',
+        siteVisitDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || '',
         nextVisitDate: latestVisitorFollowUp?.nextVisitDate || latestVisitorFollowUp?.next_visit_date || '',
         latestActivityTime,
         latestTracker
       };
     });
-  }, [leads, trackers, visitorFollowUps, category, remarkOverrides]);
+  }, [leads, trackers, visitorFollowUps, assignedVisitors, category, remarkOverrides]);
 
   // Arriving from a navbar notification: open that lead's conversation once its data is loaded
   useEffect(() => {
@@ -309,8 +336,15 @@ export default function CallTrackerCategoryView({
     }
   }, [openRemarkLeadId, openRemarkNonce, enrichedLeads, openedFromNotification]);
 
-  // Distinct callers for filtering
+  // Distinct callers for filtering (for regular USER, only show logged-in user's identity)
   const callerOptions = useMemo(() => {
+    if (!isAdmin) {
+      const userName = user?.name || user?.id || '';
+      return [
+        { value: 'all', label: 'All Callers' },
+        ...(userName ? [{ value: userName, label: userName }] : [])
+      ];
+    }
     const names = new Set();
     enrichedLeads.forEach(l => {
       if (l.callerAssigned) names.add(l.callerAssigned);
@@ -323,7 +357,7 @@ export default function CallTrackerCategoryView({
       { value: 'all', label: 'All Callers' },
       ...Array.from(names).sort().map(name => ({ value: name, label: name }))
     ];
-  }, [enrichedLeads, callersMaster]);
+  }, [enrichedLeads, callersMaster, isAdmin, user]);
 
   // Today and yesterday benchmarks for date filter
   const today = useMemo(() => {
@@ -337,9 +371,104 @@ export default function CallTrackerCategoryView({
     return y;
   }, [today]);
 
+  // Check if a date string/timestamp corresponds to today's date
+  const isToday = useCallback((dateVal) => {
+    if (!dateVal) return false;
+    const d = parseTrackerDateStr(dateVal);
+    if (!d) return false;
+    return d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate();
+  }, [today]);
+
+  // Base accessible leads for the current user in this category
+  const accessibleEnrichedLeads = useMemo(() => {
+    return enrichedLeads.filter(item => {
+      if (!isAdmin && !matchesUserAssignment(item, user)) return false;
+      return true;
+    });
+  }, [enrichedLeads, isAdmin, user]);
+
+  // Live counts for each date filter
+  const dateCounts = useMemo(() => {
+    const todayTime = today.getTime();
+    const yesterdayTime = yesterday.getTime();
+
+    let allCount = accessibleEnrichedLeads.length;
+    let todayCount = 0;
+    let yesterdayCount = 0;
+    let overdueCount = 0;
+    let upcomingCount = 0;
+    let customCount = 0;
+
+    let chosenCustomTime = null;
+    if (customDate) {
+      const [cy, cm, cd] = customDate.split('-').map(Number);
+      if (cy && cm && cd) {
+        chosenCustomTime = new Date(cy, cm - 1, cd).getTime();
+      }
+    }
+
+    accessibleEnrichedLeads.forEach(item => {
+      const targetStr = item.nextCallDate || item.dateOfCallRaw || item.timestamp;
+      const d = parseTrackerDateStr(targetStr);
+      if (!d) return;
+      const targetTime = d.getTime();
+
+      if (targetTime === todayTime) {
+        todayCount++;
+      } else if (targetTime === yesterdayTime) {
+        yesterdayCount++;
+      }
+
+      if (targetTime < todayTime && !TERMINAL_STATUSES.includes(item.status)) {
+        overdueCount++;
+      } else if (targetTime > todayTime) {
+        upcomingCount++;
+      }
+
+      if (chosenCustomTime !== null && targetTime === chosenCustomTime) {
+        customCount++;
+      }
+    });
+
+    return {
+      all: allCount,
+      today: todayCount,
+      yesterday: yesterdayCount,
+      overdue: overdueCount,
+      upcoming: upcomingCount,
+      custom: customCount
+    };
+  }, [accessibleEnrichedLeads, today, yesterday, customDate]);
+
+  // Dynamic Date Filter Options with live counts for all dates
+  const dateFilterOptions = useMemo(() => {
+    return [
+      { value: 'all', label: `All Dates (${dateCounts.all})` },
+      { value: 'today', label: `Today's Followup (${dateCounts.today})` },
+      { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
+      { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
+      { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
+      { value: 'custom', label: customDate ? `Custom Date (${dateCounts.custom})` : 'Custom Date' }
+    ];
+  }, [dateCounts, customDate]);
+
+  // Dropdown options for All Dates and other timeframes (excluding separate Today's Followup tab)
+  const allDatesFilterOptions = useMemo(() => {
+    return [
+      { value: 'all', label: `All Dates (${dateCounts.all})` },
+      { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
+      { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
+      { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
+      { value: 'custom', label: customDate ? `Custom Date (${dateCounts.custom})` : 'Custom Date' }
+    ];
+  }, [dateCounts, customDate]);
+
   // Filter leads
   const filteredLeads = useMemo(() => {
-    return enrichedLeads.filter(item => {
+    return accessibleEnrichedLeads.filter(item => {
+
       // "New remarks" chip: unread admin remarks for users, new user replies for admins
       if (newRemarksOnly && !(isAdmin ? item.hasNewUserReply : item.hasNewAdminRemark)) return false;
 
@@ -406,21 +535,47 @@ export default function CallTrackerCategoryView({
 
       return true;
     });
-  }, [enrichedLeads, callerFilter, statusFilter, dateFilter, customDate, searchQuery, today, yesterday, newRemarksOnly, isAdmin]);
+  }, [accessibleEnrichedLeads, callerFilter, statusFilter, dateFilter, customDate, searchQuery, today, yesterday, newRemarksOnly, isAdmin]);
 
-  // Guaranteed newest / latest updated or added record at top
+  // Guaranteed newest / latest updated or added record at top (from top to bottom showing latest call dates first)
   const sortedLeads = useMemo(() => {
+    const getLeadCallMs = (item) => {
+      if (item.latestTracker?.timestampMs) return Number(item.latestTracker.timestampMs);
+      if (item.dateOfCallRaw) {
+        const d = parseTrackerDateStr(item.dateOfCallRaw);
+        if (d) return d.getTime();
+      }
+      if (item.latestTracker?.timestamp) {
+        const d = new Date(item.latestTracker.timestamp);
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+      if (item.nextCallDate) {
+        const d = parseTrackerDateStr(item.nextCallDate);
+        if (d) return d.getTime();
+      }
+      if (item.latestActivityTime) return item.latestActivityTime;
+      const rawDate = item.timestamp || item.created_at || item.date;
+      if (rawDate) {
+        const d = parseTrackerDateStr(rawDate);
+        if (d) return d.getTime();
+      }
+      return 0;
+    };
+
     const remarkMs = (l) => Math.max(
       l.adminRemarkDate ? new Date(l.adminRemarkDate).getTime() || 0 : 0,
       l.userRemarkDate ? new Date(l.userRemarkDate).getTime() || 0 : 0
     );
+
     return [...filteredLeads].sort((a, b) => {
       if (!isAdmin && a.hasNewAdminRemark !== b.hasNewAdminRemark) return a.hasNewAdminRemark ? -1 : 1;
       if (isAdmin && a.hasNewUserReply !== b.hasNewUserReply) return a.hasNewUserReply ? -1 : 1;
-      // Latest call or remark activity first
-      const timeB = Math.max(b.latestActivityTime || 0, remarkMs(b));
-      const timeA = Math.max(a.latestActivityTime || 0, remarkMs(a));
+
+      // Latest call or remark activity first (newest at top)
+      const timeB = Math.max(getLeadCallMs(b), remarkMs(b));
+      const timeA = Math.max(getLeadCallMs(a), remarkMs(a));
       if (timeB !== timeA) return timeB - timeA;
+
       return (b.id || 0) - (a.id || 0);
     });
   }, [filteredLeads, isAdmin]);
@@ -465,7 +620,8 @@ export default function CallTrackerCategoryView({
       'Investment Budget': item.investmentBudget || '-',
       'Customer Address': item.location || '-',
       'When to Buy Plan': item.whenToBuyPlan || '-',
-      'Caller Assigned': item.callerAssigned || '-',
+      'Visitor Assigned': item.assignedVisitor || '-',
+      ...(isAdmin ? { 'Caller Assigned': item.callerAssigned || '-' } : {}),
       'Remarks': item.remarks || '-'
     }));
 
@@ -495,7 +651,8 @@ export default function CallTrackerCategoryView({
     "Investment Budget",
     "Customer Address",
     "When to Buy Plan",
-    "Caller Assigned",
+    "Visitor Assigned",
+    ...(isAdmin ? ["Caller Assigned"] : []),
     "Remarks"
   ];
 
@@ -504,7 +661,15 @@ export default function CallTrackerCategoryView({
     const leadKey = item.id || item.leadNo || idx;
 
     return (
-      <tr key={leadKey} className="group hover:bg-indigo-50/40 transition-colors border-b border-gray-100">
+      <tr
+        key={leadKey}
+        onClick={(e) => {
+          if (!e.currentTarget.contains(e.target)) return;
+          if (e.target.closest('button, a, input, select, label, [role="combobox"], [role="listbox"]')) return;
+          setViewingLead(item);
+        }}
+        className="group cursor-pointer hover:bg-indigo-50/40 transition-colors border-b border-gray-100"
+      >
         {/* Action column: compact icon buttons (tooltips carry the labels) */}
         <td className="px-2 py-1.5 text-center whitespace-nowrap">
           <div className="flex items-center justify-center gap-1">
@@ -561,10 +726,18 @@ export default function CallTrackerCategoryView({
         {/* 1. Last Date of Call */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
           {item.dateOfCall ? (
-            <span className="inline-flex items-center gap-1 text-gray-700 font-medium">
-              <Calendar size={12} className="text-gray-400" />
-              {item.dateOfCall}
-            </span>
+            isToday(item.dateOfCallRaw || item.dateOfCall) ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-600 text-white shadow-2xs">
+                <Calendar size={11} className="text-white" />
+                <span>{item.dateOfCall}</span>
+                <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-white/20 text-white font-extrabold">Today</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-gray-700 font-medium">
+                <Calendar size={12} className="text-gray-400" />
+                {item.dateOfCall}
+              </span>
+            )
           ) : (
             <span className="text-gray-400 italic text-xs">-</span>
           )}
@@ -573,10 +746,18 @@ export default function CallTrackerCategoryView({
         {/* 2. Next Date of Call */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
           {item.nextCallDate ? (
-            <span className={`inline-flex items-center gap-1 font-semibold ${NEXT_DATE_CLASS}`}>
-              <Calendar size={12} />
-              {formatDate(item.nextCallDate)}
-            </span>
+            isToday(item.nextCallDate) ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-rose-600 text-white shadow-2xs">
+                <Clock size={11} className="text-white" />
+                <span>{formatDate(item.nextCallDate)}</span>
+                <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-white/20 text-white font-extrabold">Today</span>
+              </span>
+            ) : (
+              <span className={`inline-flex items-center gap-1 font-semibold ${NEXT_DATE_CLASS}`}>
+                <Calendar size={12} />
+                {formatDate(item.nextCallDate)}
+              </span>
+            )
           ) : (
             <span className="text-gray-400 italic text-xs">-</span>
           )}
@@ -751,19 +932,33 @@ export default function CallTrackerCategoryView({
         {/* 14. When to Buy Plan */}
         <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
 
-        {/* 15. Caller Assigned */}
+        {/* 15. Visitor Assigned */}
         <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
-          {item.callerAssigned ? (
-            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-xs font-semibold">
-              <UserCheck size={11} className="text-amber-600" />
-              {item.callerAssigned}
+          {item.assignedVisitor ? (
+            <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded text-xs font-semibold">
+              <UserCheck size={11} className="text-indigo-600" />
+              {item.assignedVisitor}
             </span>
           ) : (
-            <span className="text-gray-400 italic">Unassigned</span>
+            <span className="text-gray-400 italic">-</span>
           )}
         </td>
 
-        {/* 16. Remarks */}
+        {/* 16. Caller Assigned (ADMIN / Tester only) */}
+        {isAdmin && (
+          <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
+            {item.callerAssigned ? (
+              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-xs font-semibold">
+                <UserCheck size={11} className="text-amber-600" />
+                {item.callerAssigned}
+              </span>
+            ) : (
+              <span className="text-gray-400 italic">Unassigned</span>
+            )}
+          </td>
+        )}
+
+        {/* Remarks */}
         <td className="px-3 py-2 text-center text-xs text-gray-500 whitespace-nowrap max-w-[160px] truncate" title={item.remarks}>
           {item.remarks || '-'}
         </td>
@@ -791,7 +986,8 @@ export default function CallTrackerCategoryView({
     if (isValid(item.investmentBudget)) details.push({ label: 'Budget', value: item.investmentBudget, icon: IndianRupee });
     if (isValid(item.location)) details.push({ label: 'Address', value: item.location, icon: MapPin, isLong: true });
     if (isValid(item.whenToBuyPlan)) details.push({ label: 'When to Buy', value: item.whenToBuyPlan, icon: Clock });
-    if (isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
+    if (isValid(item.assignedVisitor)) details.push({ label: 'Visitor Assigned', value: item.assignedVisitor, icon: UserCheck });
+    if (isAdmin && isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
     if (isValid(item.remarks)) details.push({ label: 'Remarks', value: item.remarks, icon: MessageSquare, isLong: true });
 
     return (
@@ -862,7 +1058,14 @@ export default function CallTrackerCategoryView({
                 <Calendar size={10} className="text-gray-400" />
                 Last Call
               </span>
-              <span className="font-medium text-gray-700 mt-0.5 inline-block">{item.dateOfCall}</span>
+              {isToday(item.dateOfCallRaw || item.dateOfCall) ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-indigo-600 text-white mt-0.5">
+                  {item.dateOfCall}
+                  <span className="text-[8px] uppercase px-1 py-0.2 rounded bg-white/20 font-extrabold">Today</span>
+                </span>
+              ) : (
+                <span className="font-medium text-gray-700 text-xs mt-0.5 inline-block">{item.dateOfCall}</span>
+              )}
             </div>
           )}
 
@@ -872,9 +1075,16 @@ export default function CallTrackerCategoryView({
                 <Clock size={10} className="text-amber-600" />
                 Next Call
               </span>
-              <span className={`font-bold mt-0.5 inline-block ${NEXT_DATE_CLASS}`}>
-                {formatDate(item.nextCallDate)}
-              </span>
+              {isToday(item.nextCallDate) ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-600 text-white mt-0.5">
+                  {formatDate(item.nextCallDate)}
+                  <span className="text-[8px] uppercase px-1 py-0.2 rounded bg-white/20 font-extrabold">Today</span>
+                </span>
+              ) : (
+                <span className={`font-bold text-xs mt-0.5 inline-block ${NEXT_DATE_CLASS}`}>
+                  {formatDate(item.nextCallDate)}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -1111,31 +1321,92 @@ export default function CallTrackerCategoryView({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-1">
-      {/* Header Bar: Mobile = 2 Clean Single Rows (Row 1: Tabs, Row 2: All Other Controls); Desktop = 1 Row */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full flex-shrink-0">
-        {/* Row 1 on Mobile / Left on Desktop: Lead Category Button Tabs + Direct Button (Strictly Single Row) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+      {/* Header Bar: Row 1 = Lead Category Tabs (Top); Row 2 = Dates & Add Lead; Row 3 = Search & Actions on Mobile / Unified on Desktop */}
+      <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
+        {/* Row 1: Lead Category Button Tabs (Always Top Row) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
           <PageTabs
             tabs={tabs.map(t => ({ ...t, count: categoryCounts[t.key] ?? 0 }))}
             activeKey={activeTab}
             onChange={(key) => { onTabChange(key); setCurrentPage(1); }}
           />
-
-          {canEdit && onOpenDirect && (
-            <button
-              onClick={() => onOpenDirect(activeTab || category)}
-              className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
-            >
-              <Plus size={14} className="shrink-0" />
-              <span>Add Lead</span>
-            </button>
-          )}
         </div>
 
-        {/* Row 2 on Mobile / Right on Desktop: All Other Controls (Search + Filter + Export + Refresh + Reset in a Single Row) */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
+        {/* Row 2 on Mobile / Main Controls Bar: Dates & Actions on Left, Search & Filters on Right */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
+          {/* Dates & Add Lead Controls */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+            {/* Dedicated Tab / Button for Today's Followup */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilter('today');
+                setCurrentPage(1);
+              }}
+              title="Show Today's Followups"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                dateFilter === 'today'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
+                  : 'bg-amber-50/90 text-amber-900 border-amber-300/80 hover:bg-amber-100 hover:border-amber-400 font-semibold'
+              }`}
+            >
+              <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-amber-700'} />
+              <span>Today's Followup</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-amber-200/90 text-amber-900'
+              }`}>
+                {dateCounts.today}
+              </span>
+            </button>
+
+            {/* Dropdown for All Dates & other date options */}
+            <div className="w-[145px] sm:w-[170px] shrink-0">
+              <SearchableDropdown
+                options={allDatesFilterOptions}
+                value={dateFilter === 'today' ? 'all' : dateFilter}
+                onChange={(val) => {
+                  setDateFilter(val);
+                  if (val === 'custom' && !customDate) {
+                    const now = new Date();
+                    setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+                  }
+                  setCurrentPage(1);
+                }}
+                placeholder="All Dates"
+                height="h-[34px]"
+                triggerClassName={dateFilter !== 'today' && dateFilter !== 'all' ? "w-full bg-slate-800 text-white border border-slate-800 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer shadow-sm h-[34px] font-semibold text-xs tracking-wide active:scale-[0.98]" : ""}
+                icon={Clock}
+              />
+            </div>
+
+            {/* Custom Date Input */}
+            {dateFilter === 'custom' && (
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => {
+                  setCustomDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-white border border-gray-300 rounded-lg px-2 text-xs h-[34px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium shrink-0 cursor-pointer"
+              />
+            )}
+
+            {canEdit && onOpenDirect && (
+              <button
+                onClick={() => onOpenDirect(activeTab || category)}
+                className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+              >
+                <Plus size={14} className="shrink-0" />
+                <span>Add Lead</span>
+              </button>
+            )}
+          </div>
+
+          {/* Search + Status Dropdown (USER) / Filter Button (ADMIN) + Export + Refresh + Reset */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
           {/* Individual Page Search Input */}
-          <div className="relative min-w-[120px] max-w-full sm:max-w-[220px] flex-1 shrink">
+          <div className="relative min-w-[120px] max-w-full sm:max-w-[200px] flex-1 shrink">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
             <input
               type="text"
@@ -1175,33 +1446,51 @@ export default function CallTrackerCategoryView({
             </button>
           )}
 
-          {/* Filter Toggle Button */}
-          <button
-            onClick={() => setShowFilters(prev => !prev)}
-            title={showFilters ? "Hide Filter Options" : "Show Filter Options"}
-            className={`flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 ${showFilters || activeFilterCount > 0
-              ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-xs font-bold'
-              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-              }`}
-          >
-            <Filter size={13} />
-            <span className="hidden xs:inline sm:inline">Filter</span>
-            {activeFilterCount > 0 && (
-              <span className="bg-indigo-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
+          {/* FOR USER ROLE: All Status Dropdown replaces Filter button */}
+          {!isAdmin ? (
+            <div className="w-[125px] sm:w-[145px] shrink-0">
+              <SearchableDropdown
+                options={STATUS_FILTER_OPTIONS}
+                value={statusFilter}
+                onChange={(val) => {
+                  setStatusFilter(val);
+                  setCurrentPage(1);
+                }}
+                placeholder="All Status"
+                height="h-[34px]"
+              />
+            </div>
+          ) : (
+            /* FOR ADMIN ROLE: Filter Toggle Button */
+            <button
+              onClick={() => setShowFilters(prev => !prev)}
+              title={showFilters ? "Hide Filter Options" : "Show Filter Options"}
+              className={`flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 ${showFilters || activeFilterCount > 0
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-xs font-bold'
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+            >
+              <Filter size={13} />
+              <span className="hidden xs:inline sm:inline">Filter</span>
+              {activeFilterCount > 0 && (
+                <span className="bg-indigo-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+          )}
 
-          {/* Export to Excel */}
-          <button
-            onClick={handleExportExcel}
-            title="Export to Excel"
-            className="flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold h-[34px] transition shrink-0 whitespace-nowrap active:scale-95"
-          >
-            <FileSpreadsheet size={14} />
-            <span className="hidden sm:inline">Export</span>
-          </button>
+          {/* Export to Excel (ADMIN / Tester only) */}
+          {isAdmin && (
+            <button
+              onClick={handleExportExcel}
+              title="Export to Excel"
+              className="flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold h-[34px] transition shrink-0 whitespace-nowrap active:scale-95"
+            >
+              <FileSpreadsheet size={14} />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+          )}
 
           {/* Refresh */}
           <button
@@ -1226,9 +1515,10 @@ export default function CallTrackerCategoryView({
           )}
         </div>
       </div>
+    </div>
 
-      {/* Collapsible Filter Bar (revealed only when Filter button is clicked) */}
-      {showFilters && (
+      {/* Collapsible Filter Bar (revealed only for ADMIN when Filter button is clicked) */}
+      {isAdmin && showFilters && (
         <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
           <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
             Filter Options:
@@ -1251,7 +1541,7 @@ export default function CallTrackerCategoryView({
           {/* Date Filter Dropdown */}
           <div className="w-[130px] lg:w-[150px]">
             <SearchableDropdown
-              options={DATE_FILTER_OPTIONS}
+              options={dateFilterOptions}
               value={dateFilter}
               onChange={(val) => {
                 setDateFilter(val);
@@ -1294,13 +1584,7 @@ export default function CallTrackerCategoryView({
           {/* Quick Clear Filters Link */}
           {activeFilterCount > 0 && (
             <button
-              onClick={() => {
-                setStatusFilter('all');
-                setDateFilter('all');
-                setCustomDate('');
-                setCallerFilter('all');
-                setCurrentPage(1);
-              }}
+              onClick={handleClearFilters}
               className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer"
             >
               Clear filters

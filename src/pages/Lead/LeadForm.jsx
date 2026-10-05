@@ -28,6 +28,7 @@ const initialFormData = {
   dob: '',
   occupation: '',
   investmentBudget: '',
+  customInvestmentBudget: '',
   customerAddress: '',
   whenToBuyPlan: '',
   // Real Estate / Mutual Fund field — Product Type master, filtered by Lead Type
@@ -266,7 +267,13 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
     return opts;
   }, [insuranceSubProductsMaster, formData.insuranceType, formData.customInsuranceType]);
 
-  const investmentBudgetOptions = investmentBudgetsMaster.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
+  const investmentBudgetOptions = useMemo(() => {
+    const opts = (investmentBudgetsMaster || []).map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
+    if (!opts.some(o => isOtherValue(o.value))) {
+      opts.push({ value: 'Others', label: 'Others' });
+    }
+    return opts;
+  }, [investmentBudgetsMaster]);
 
   const handleChange = (field, value) => {
     setFormData(prev => {
@@ -318,6 +325,12 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
             updated.assignedVisitor = user?.name || '';
           }
         }
+      }
+      if (field === 'leadSource' && !isOtherValue(value)) {
+        updated.customLeadSource = '';
+      }
+      if (field === 'investmentBudget' && !isOtherValue(value)) {
+        updated.customInvestmentBudget = '';
       }
       if (field === 'customLeadSource') {
         const clean = String(value || '').toLowerCase().trim();
@@ -404,6 +417,15 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         return;
       }
       finalInsuranceSubType = formData.customInsuranceSubType.trim();
+    }
+
+    let finalInvestmentBudget = formData.investmentBudget;
+    if (isOtherValue(formData.investmentBudget)) {
+      if (!formData.customInvestmentBudget?.trim()) {
+        toast.error('Please enter the new investment budget');
+        return;
+      }
+      finalInvestmentBudget = formData.customInvestmentBudget.trim();
     }
 
     if (isReferenceSource && !formData.referencerName.trim()) {
@@ -499,6 +521,22 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         }
       }
 
+      if (isOtherValue(formData.investmentBudget) && finalInvestmentBudget) {
+        const exists = (investmentBudgetsMaster || []).some(
+          b => b.investmentBudget?.toLowerCase().trim() === finalInvestmentBudget.toLowerCase()
+        );
+        if (!exists) {
+          try {
+            const savedBudget = await masterApi.saveInvestmentBudget({ investmentBudget: finalInvestmentBudget });
+            if (savedBudget) {
+              setInvestmentBudgetsMaster(prev => [...prev, savedBudget]);
+            }
+          } catch (err) {
+            console.error('Failed to save new investment budget to master:', err);
+          }
+        }
+      }
+
       const existingLeads = await leadApi.getAllLeads();
       const leadNo = generateLeadNo(formData.leadType, existingLeads);
       const timestamp = new Date().toISOString();
@@ -511,6 +549,7 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         timestamp,
         ...formData,
         leadSource: finalLeadSource,
+        investmentBudget: finalInvestmentBudget,
         productType: isInsurance ? finalInsuranceType : finalProductType,
         requirement: isRealEstate ? finalRequirement : formData.requirement,
         insuranceType: isInsurance ? finalInsuranceType : formData.insuranceType,
@@ -585,11 +624,11 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
       loading={loading}
       maxWidth="max-w-2xl"
     >
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-4">
+      <div className="grid grid-cols-2 gap-x-2.5 gap-y-2 sm:gap-x-3 sm:gap-y-2.5 md:gap-3.5">
 
         {/* Lead Type */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Lead Type *</label>
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Lead Type *</label>
           <SearchableDropdown
             options={leadTypeOptions}
             value={formData.leadType}
@@ -599,8 +638,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         </div>
 
         {/* Lead Receiver Name */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Team Member Name</label>
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Team Member Name</label>
           <SearchableDropdown
             options={receiverOptions}
             value={formData.leadReceiver}
@@ -610,8 +649,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         </div>
 
         {/* Lead Source */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Lead Source *</label>
+        <div className={`space-y-1 ${isOtherValue(formData.leadSource) ? 'col-span-2 sm:col-span-1' : 'col-span-1'}`}>
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Lead Source *</label>
           <SearchableDropdown
             options={leadSourceOptions}
             value={formData.leadSource}
@@ -619,14 +658,14 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
             placeholder="Select lead source"
           />
           {isOtherValue(formData.leadSource) && (
-            <div className="relative mt-1.5 animate-in fade-in duration-200">
-              <Share2 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <div className="relative mt-1 animate-in fade-in duration-200">
+              <Share2 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
               <input
                 type="text"
                 value={formData.customLeadSource}
                 onChange={(e) => handleChange('customLeadSource', e.target.value)}
                 placeholder="Enter new lead source"
-                className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
               />
             </div>
           )}
@@ -634,16 +673,16 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
 
         {/* Referencer Name - ONLY visible when Lead Source is Reference */}
         {isReferenceSource && (
-          <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Referencer Name *</label>
+          <div className="space-y-1 col-span-1 animate-in fade-in duration-200">
+            <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Referencer Name *</label>
             <div className="relative">
-              <UserCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+              <UserCheck className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
               <input
                 type="text"
                 value={formData.referencerName}
                 onChange={(e) => handleChange('referencerName', e.target.value)}
                 placeholder="Enter referencer name"
-                className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
               />
             </div>
           </div>
@@ -651,27 +690,27 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
 
         {/* REAL ESTATE + WALK-IN ONLY: Site Visit & Assign Visitor */}
         {showSiteVisitOption && (
-          <div className="col-span-2 p-3 bg-gradient-to-r from-amber-50/90 via-orange-50/40 to-indigo-50/70 border border-amber-200 rounded-xl space-y-3 animate-in fade-in duration-200 shadow-2xs">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-700 shadow-2xs">
-                  <MapPin size={17} />
+          <div className="col-span-2 p-2.5 sm:p-3 bg-gradient-to-r from-amber-50/90 via-orange-50/40 to-indigo-50/70 border border-amber-200 rounded-xl space-y-2.5 animate-in fade-in duration-200 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-700 shadow-2xs">
+                  <MapPin size={15} />
                 </div>
                 <div>
-                  <div className="text-[12px] md:text-[13px] font-bold text-gray-800 flex items-center gap-1.5">
+                  <div className="text-[11.5px] md:text-[13px] font-bold text-gray-800 flex items-center gap-1.5">
                     <span>Site Visit</span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                    <span className="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
                       Real Estate Walk-in
                     </span>
                   </div>
-                  <p className="text-[11px] text-gray-500">
+                  <p className="text-[10.5px] text-gray-500">
                     Conduct or schedule a site visit / meeting for this walk-in lead?
                   </p>
                 </div>
               </div>
 
               {/* Radio / Checkbox toggle buttons */}
-              <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-lg border border-gray-200 shadow-2xs">
+              <div className="flex items-center gap-3 bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-2xs">
                 <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-700 hover:text-indigo-600 transition">
                   <input
                     type="radio"
@@ -707,9 +746,9 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
             </div>
 
             {formData.isSiteVisit && (
-              <div className="pt-2.5 border-t border-amber-200/70 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in duration-150">
+              <div className="pt-2 border-t border-amber-200/70 grid grid-cols-1 sm:grid-cols-2 gap-2.5 animate-in fade-in duration-150">
                 <div className="space-y-1 col-span-2 sm:col-span-1">
-                  <label className="block text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
+                  <label className="block text-[10.5px] sm:text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
                     Assign Visitor *
                   </label>
                   <SearchableDropdown
@@ -718,20 +757,20 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
                     onChange={(val) => handleChange('assignedVisitor', val)}
                     placeholder="Select assigned visitor"
                   />
-                  <p className="text-[10px] text-gray-500">
+                  <p className="text-[9.5px] text-gray-500">
                     Defaulted to logged-in user (<span className="font-semibold text-gray-700">{user?.name || 'Current User'}</span>). You can select any other team member.
                   </p>
                 </div>
 
                 <div className="space-y-1 col-span-2 sm:col-span-1">
-                  <label className="block text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
+                  <label className="block text-[10.5px] sm:text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
                     Site Visit Date
                   </label>
-                  <div className="flex items-center h-[30px] md:h-[34px] px-3 bg-white border border-gray-300 rounded text-[11px] md:text-[13px] text-gray-700 font-medium">
-                    <Calendar size={14} className="mr-2 text-indigo-500" />
+                  <div className="flex items-center h-[30px] md:h-[34px] px-2.5 bg-white border border-gray-300 rounded text-[11px] md:text-[13px] text-gray-700 font-medium">
+                    <Calendar size={13} className="mr-2 text-indigo-500" />
                     <span>{new Date().toLocaleDateString('en-GB')} (Today - Current Date)</span>
                   </div>
-                  <p className="text-[10px] text-gray-500">
+                  <p className="text-[9.5px] text-gray-500">
                     Directly updates the Site Visit / Meeting section with today's date.
                   </p>
                 </div>
@@ -743,8 +782,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         {/* REAL ESTATE SPECIFIC: Product Type & Requirement */}
         {isRealEstate && (
           <>
-            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type</label>
+            <div className={`space-y-1 ${isOtherValue(formData.productType) ? 'col-span-2 sm:col-span-1' : 'col-span-1'} animate-in fade-in duration-200`}>
+              <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Product Type</label>
               <SearchableDropdown
                 options={realEstateProductOptions}
                 value={formData.productType}
@@ -752,20 +791,20 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
                 placeholder="Select product type"
               />
               {isOtherValue(formData.productType) && (
-                <div className="relative mt-1.5 animate-in fade-in duration-200">
-                  <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <div className="relative mt-1 animate-in fade-in duration-200">
+                  <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
                     value={formData.customProductType}
                     onChange={(e) => handleChange('customProductType', e.target.value)}
                     placeholder="Enter new product type"
-                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                    className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
                   />
                 </div>
               )}
             </div>
-            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Requirement</label>
+            <div className={`space-y-1 ${isOtherValue(formData.requirementOption) ? 'col-span-2 sm:col-span-1' : 'col-span-1'} animate-in fade-in duration-200`}>
+              <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Requirement</label>
               <SearchableDropdown
                 options={realEstateRequirementOptions}
                 value={formData.requirementOption}
@@ -773,14 +812,14 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
                 placeholder="Select requirement"
               />
               {isOtherValue(formData.requirementOption) && (
-                <div className="relative mt-1.5 animate-in fade-in duration-200">
-                  <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <div className="relative mt-1 animate-in fade-in duration-200">
+                  <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
                     value={formData.customRequirement}
                     onChange={(e) => handleCustomRequirementChange(e.target.value)}
-                    placeholder="Specify other requirement (e.g. Duplex, Farmhouse)"
-                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                    placeholder="Specify other requirement"
+                    className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
                   />
                 </div>
               )}
@@ -790,8 +829,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
 
         {/* MUTUAL FUND SPECIFIC: Product Type */}
         {isMutualFund && (
-          <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type</label>
+          <div className={`space-y-1 ${isOtherValue(formData.productType) ? 'col-span-2 sm:col-span-1' : 'col-span-1'} animate-in fade-in duration-200`}>
+            <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Product Type</label>
             <SearchableDropdown
               options={mutualFundProductOptions}
               value={formData.productType}
@@ -799,14 +838,14 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
               placeholder="Select product type"
             />
             {isOtherValue(formData.productType) && (
-              <div className="relative mt-1.5 animate-in fade-in duration-200">
-                <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+              <div className="relative mt-1 animate-in fade-in duration-200">
+                <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                 <input
                   type="text"
                   value={formData.customProductType}
                   onChange={(e) => handleChange('customProductType', e.target.value)}
                   placeholder="Enter new product type"
-                  className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                  className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
                 />
               </div>
             )}
@@ -816,8 +855,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         {/* INSURANCE SPECIFIC: Product Type & Sub Product Type */}
         {isInsurance && (
           <>
-            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Product Type *</label>
+            <div className={`space-y-1 ${isOtherValue(formData.insuranceType) ? 'col-span-2 sm:col-span-1' : 'col-span-1'} animate-in fade-in duration-200`}>
+              <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Product Type *</label>
               <SearchableDropdown
                 options={insuranceProductOptions}
                 value={formData.insuranceType}
@@ -825,21 +864,21 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
                 placeholder="Select product type"
               />
               {isOtherValue(formData.insuranceType) && (
-                <div className="relative mt-1.5 animate-in fade-in duration-200">
-                  <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <div className="relative mt-1 animate-in fade-in duration-200">
+                  <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
                     value={formData.customInsuranceType}
                     onChange={(e) => handleChange('customInsuranceType', e.target.value)}
                     placeholder="Enter new product type"
-                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                    className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
                   />
                 </div>
               )}
             </div>
 
-            <div className="space-y-1 col-span-2 sm:col-span-1 animate-in fade-in duration-200">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Sub Product Type</label>
+            <div className={`space-y-1 ${isOtherValue(formData.insuranceSubType) ? 'col-span-2 sm:col-span-1' : 'col-span-1'} animate-in fade-in duration-200`}>
+              <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Sub Product Type</label>
               <SearchableDropdown
                 options={insuranceSubProductOptions}
                 value={formData.insuranceSubType}
@@ -847,14 +886,14 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
                 placeholder={`Select ${isOtherValue(formData.insuranceType) ? (formData.customInsuranceType || 'product') : formData.insuranceType} sub type`}
               />
               {isOtherValue(formData.insuranceSubType) && (
-                <div className="relative mt-1.5 animate-in fade-in duration-200">
-                  <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <div className="relative mt-1 animate-in fade-in duration-200">
+                  <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
                     value={formData.customInsuranceSubType}
                     onChange={(e) => handleChange('customInsuranceSubType', e.target.value)}
                     placeholder="Enter new sub product type"
-                    className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                    className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
                   />
                 </div>
               )}
@@ -863,25 +902,25 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         )}
 
         {/* Customer Name */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Name *</label>
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Name *</label>
           <div className="relative">
-            <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
             <input
               type="text"
               value={formData.customerName}
               onChange={(e) => handleChange('customerName', e.target.value)}
               placeholder="Enter customer name"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
             />
           </div>
         </div>
 
         {/* Customer Number */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Number *</label>
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Number *</label>
           <div className="relative">
-            <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
             <input
               type="tel"
               inputMode="numeric"
@@ -889,90 +928,101 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
               value={formData.customerNumber}
               onChange={(e) => handleChange('customerNumber', e.target.value.replace(/\D/g, '').slice(0, 10))}
               placeholder="Enter 10-digit number"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
             />
           </div>
         </div>
 
         {/* Customer Email */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Email</label>
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Email</label>
           <div className="relative">
-            <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
             <input
               type="email"
               value={formData.customerEmail}
               onChange={(e) => handleChange('customerEmail', e.target.value)}
               placeholder="Enter email address"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
             />
           </div>
         </div>
 
-        {/* DOB — no custom left icon: native date pickers paint their own opaque content over
-            the full input box, hiding an overlaid icon instead of showing it. */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer DOB</label>
+        {/* DOB */}
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer DOB</label>
           <input
             type="date"
             value={formData.dob}
             onChange={(e) => handleChange('dob', e.target.value)}
-            className="w-full border border-gray-300 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
+            className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
           />
         </div>
 
-        {/* Customer Address */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Address</label>
-          <div className="relative">
-            <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input
-              type="text"
-              value={formData.customerAddress}
-              onChange={(e) => handleChange('customerAddress', e.target.value)}
-              placeholder="Enter address"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
-        </div>
-
         {/* Occupation */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Customer Occupation</label>
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Occupation</label>
           <div className="relative">
-            <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
             <input
               type="text"
               value={formData.occupation}
               onChange={(e) => handleChange('occupation', e.target.value)}
               placeholder="Enter occupation"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
             />
           </div>
         </div>
 
-        {/* Investment Range */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Investment Budget</label>
+        {/* Investment Budget */}
+        <div className={`space-y-1 ${isOtherValue(formData.investmentBudget) ? 'col-span-2 sm:col-span-1' : 'col-span-1'}`}>
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Investment Budget</label>
           <SearchableDropdown
             options={investmentBudgetOptions}
             value={formData.investmentBudget}
             onChange={(val) => handleChange('investmentBudget', val)}
             placeholder="Select investment budget"
           />
+          {isOtherValue(formData.investmentBudget) && (
+            <div className="relative mt-1 animate-in fade-in duration-200">
+              <Wallet className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
+              <input
+                type="text"
+                value={formData.customInvestmentBudget}
+                onChange={(e) => handleChange('customInvestmentBudget', e.target.value)}
+                placeholder="Enter new budget range (e.g. 1 Cr - 2 Cr)"
+                className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              />
+            </div>
+          )}
         </div>
 
         {/* When to Buy Plan */}
-        <div className="space-y-1 col-span-2 sm:col-span-1">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">When to Buy Plan</label>
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">When to Buy Plan</label>
           <div className="relative">
-            <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
             <input
               type="text"
               value={formData.whenToBuyPlan}
               onChange={(e) => handleChange('whenToBuyPlan', e.target.value)}
               placeholder="e.g. Immediate / 3 Months"
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
+          </div>
+        </div>
+
+        {/* Customer Address */}
+        <div className="space-y-1 col-span-2">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Address</label>
+          <div className="relative">
+            <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
+            <input
+              type="text"
+              value={formData.customerAddress}
+              onChange={(e) => handleChange('customerAddress', e.target.value)}
+              placeholder="Enter address"
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
             />
           </div>
         </div>
@@ -980,15 +1030,15 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
         {/* INSURANCE SPECIFIC: Any Disease */}
         {isInsurance && (
           <div className="space-y-1 col-span-2 animate-in fade-in duration-200">
-            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Any Disease / Pre-existing Medical Condition</label>
+            <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Any Disease / Pre-existing Medical Condition</label>
             <div className="relative">
-              <Activity className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+              <Activity className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
               <input
                 type="text"
                 value={formData.anyDesease}
                 onChange={(e) => handleChange('anyDesease', e.target.value)}
                 placeholder="Mention any existing disease, medical history, or None"
-                className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+                className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
               />
             </div>
           </div>
@@ -996,15 +1046,15 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
 
         {/* Remarks */}
         <div className="space-y-1 col-span-2">
-          <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Remarks</label>
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Remarks</label>
           <div className="relative">
-            <MessageSquare className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
+            <MessageSquare className="absolute left-2.5 top-2.5 text-gray-400" size={13} />
             <textarea
               value={formData.remarks}
               onChange={(e) => handleChange('remarks', e.target.value)}
               placeholder="Enter remarks"
-              rows={3}
-              className="w-full border border-gray-300 rounded pl-8 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] resize-none"
+              rows={2}
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] resize-none"
             />
           </div>
         </div>

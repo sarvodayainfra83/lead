@@ -315,6 +315,7 @@ CREATE TABLE IF NOT EXISTS users (
     position TEXT,
     lead_type_id UUID REFERENCES master_lead_types(id) ON DELETE SET NULL,
     access_pages JSONB DEFAULT '{}'::jsonb,
+    avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -322,6 +323,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Update check constraint for existing installations to support 'HR' and 'TESTER' roles
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('ADMIN', 'USER', 'HR', 'TESTER'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
 
 -- 3. MASTER LEAD SOURCES TABLE
 CREATE TABLE IF NOT EXISTS master_lead_sources (
@@ -1014,6 +1016,41 @@ CREATE POLICY "Public Delete Access for Products"
 ON storage.objects FOR DELETE
 USING (bucket_id = 'products');
 
+-- Storage Bucket for User Profile Avatars / Photos
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'avatars',
+    'avatars',
+    true,
+    10485760, -- 10MB limit
+    ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
+)
+ON CONFLICT (id) DO UPDATE 
+SET public = true,
+    file_size_limit = 10485760,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+
+DROP POLICY IF EXISTS "Public Read Access for Avatars" ON storage.objects;
+CREATE POLICY "Public Read Access for Avatars"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "Public Insert Access for Avatars" ON storage.objects;
+CREATE POLICY "Public Insert Access for Avatars"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "Public Update Access for Avatars" ON storage.objects;
+CREATE POLICY "Public Update Access for Avatars"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "Public Delete Access for Avatars" ON storage.objects;
+CREATE POLICY "Public Delete Access for Avatars"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'avatars');
+
+
 
 
 -- =============================================================================
@@ -1151,12 +1188,14 @@ CREATE TABLE IF NOT EXISTS public.assigned_visitors (
 
 CREATE TABLE IF NOT EXISTS public.visitor_follow_ups (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
+  parent_id uuid NULL,
   lead_id uuid NOT NULL,
   lead_no text NOT NULL,
   assigned_visitor_id uuid NULL,
   visitor_name text NOT NULL,
   visitor_id uuid NULL,
   visit_date date NULL,
+  visit_meet jsonb NULL DEFAULT '{"site-visit": false, "meeting": false}'::jsonb,
   status text NOT NULL,
   interest_level text NULL,
   what_happened text NULL,
@@ -1173,28 +1212,17 @@ CREATE TABLE IF NOT EXISTS public.visitor_follow_ups (
   deal_remarks text NULL,
   customer_status text NULL,
   CONSTRAINT visitor_follow_ups_pkey PRIMARY KEY (id),
+  CONSTRAINT visitor_follow_ups_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES visitor_follow_ups (id) ON DELETE SET NULL,
   CONSTRAINT visitor_follow_ups_assigned_visitor_id_fkey FOREIGN KEY (assigned_visitor_id) REFERENCES assigned_visitors (id) ON DELETE SET NULL,
   CONSTRAINT visitor_follow_ups_lead_id_fkey FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE CASCADE,
-  CONSTRAINT visitor_follow_ups_visitor_id_fkey FOREIGN KEY (visitor_id) REFERENCES users (id) ON DELETE SET NULL,
-  CONSTRAINT visitor_follow_ups_interest_level_check CHECK (
-    (
-      interest_level = ANY (ARRAY['High'::text, 'Medium'::text, 'Low'::text])
-    )
-  ),
-  CONSTRAINT visitor_follow_ups_status_check CHECK (
-    (
-      status = ANY (
-        ARRAY[
-          'Interested'::text,
-          'Not Interested'::text,
-          'Future Plan'::text,
-          'Did Not Show'::text
-        ]
-      )
-    )
-  )
+  CONSTRAINT visitor_follow_ups_visitor_id_fkey FOREIGN KEY (visitor_id) REFERENCES users (id) ON DELETE SET NULL
 );
 
+-- Migration query if table already exists in Supabase:
+ALTER TABLE public.visitor_follow_ups ADD COLUMN IF NOT EXISTS parent_id uuid REFERENCES public.visitor_follow_ups(id) ON DELETE SET NULL;
+ALTER TABLE public.visitor_follow_ups ADD COLUMN IF NOT EXISTS visit_meet jsonb DEFAULT '{"site-visit": false, "meeting": false}'::jsonb;
+
+CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_parent_id ON public.visitor_follow_ups USING btree (parent_id);
 CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_lead_id ON public.visitor_follow_ups USING btree (lead_id);
 CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_lead_no ON public.visitor_follow_ups USING btree (lead_no);
 CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_assigned_visitor_id ON public.visitor_follow_ups USING btree (assigned_visitor_id);

@@ -19,11 +19,11 @@ export default function PhotoViewModal({ isOpen, onClose, log }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh] border border-gray-100"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[88dvh] sm:max-h-[85vh] border border-gray-100/80 ring-1 ring-black/5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

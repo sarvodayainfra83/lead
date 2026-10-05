@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Calendar, CheckCircle, Clock, AlertCircle, UserCheck,
-  MapPin, MessageSquare, IndianRupee, Tag, Shield
+  MapPin, MessageSquare, IndianRupee, Tag, Shield, Check
 } from 'lucide-react';
 import { siteVisitMeetingApi } from '../api/siteVisitMeetingApi';
 import { CUSTOMER_STATUS_STYLES } from '../pages/CallTracker/callTrackerConstants';
@@ -214,6 +214,8 @@ export default function SiteVisitFollowUpReport({ leadId, leadNo, initialFollowU
                   <th className="px-2.5 py-1.5 text-center whitespace-nowrap">Visit Date</th>
                   <th className="px-2.5 py-1.5 text-center whitespace-nowrap">Visitor Name</th>
                   <th className="px-2.5 py-1.5 text-center whitespace-nowrap">Visit Status</th>
+                  <th className="px-2.5 py-1.5 text-center whitespace-nowrap">Site Visited</th>
+                  <th className="px-2.5 py-1.5 text-center whitespace-nowrap">Meeting</th>
                   <th className="px-2.5 py-1.5 text-center whitespace-nowrap">Customer Status</th>
                   <th className="px-2.5 py-1.5 min-w-[200px]">Customer Feedback / What Happened</th>
                   <th className="px-2.5 py-1.5 text-center whitespace-nowrap">Next Scheduled Visit</th>
@@ -227,11 +229,16 @@ export default function SiteVisitFollowUpReport({ leadId, leadNo, initialFollowU
                     dot: 'bg-gray-400'
                   };
                   const custStatus = fu.customerStatus || fu.customer_status || fu.interestLevel || '';
+                  const hasSiteVisited = Boolean(fu.visitMeet?.['site-visit'] ?? fu.visitMeet?.siteVisit ?? fu.visitMeet?.site_visit);
+                  const hasMeeting = Boolean(fu.visitMeet?.meeting);
 
                   return (
                     <tr key={fu.id || idx} className="hover:bg-emerald-50/20 transition-colors">
                       <td className="px-2.5 py-1.5 text-center font-bold text-emerald-700 whitespace-nowrap">
-                        #{fu.followUpNo || idx + 1}
+                        <div>#{fu.followUpNo || idx + 1}</div>
+                        {(fu.parentId || fu.parent_id) && (
+                          <div className="text-[9px] font-normal text-slate-500">↳ Linked</div>
+                        )}
                       </td>
                       <td className="px-2.5 py-1.5 text-center text-gray-700 font-medium whitespace-nowrap font-mono text-[11px]">
                         {formatDate(fu.visitDate || fu.createdAt)}
@@ -244,6 +251,26 @@ export default function SiteVisitFollowUpReport({ leadId, leadNo, initialFollowU
                           <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
                           {fu.status || '-'}
                         </span>
+                      </td>
+                      {/* Site Visited */}
+                      <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
+                        {hasSiteVisited ? (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <Check size={10} className="stroke-[2.5]" /> Yes
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">-</span>
+                        )}
+                      </td>
+                      {/* Meeting */}
+                      <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
+                        {hasMeeting ? (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                            <Check size={10} className="stroke-[2.5]" /> Yes
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">-</span>
+                        )}
                       </td>
                       <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
                         {custStatus ? (
@@ -274,7 +301,7 @@ export default function SiteVisitFollowUpReport({ leadId, leadNo, initialFollowU
                               <span className="font-bold text-emerald-800 block">{fu.dealOutcome}</span>
                             )}
                             {fu.closingAmount && (
-                              <span className="text-gray-600 block">₹ {fu.closingAmount}</span>
+                              <span className="text-emerald-700 font-semibold block">₹ {fu.closingAmount}</span>
                             )}
                             {fu.salesExecutive && (
                               <span className="text-gray-500 block text-[10px]">Exec: {fu.salesExecutive}</span>

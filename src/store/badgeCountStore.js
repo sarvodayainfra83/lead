@@ -96,6 +96,22 @@ export const useBadgeCountStore = create((set) => ({
         return CUSTOMER_MASTER_STATUSES.includes(getLatestCustomerStatus(allTrackers, l.id, l.leadNo));
       }).length;
 
+      // Non-interested customers count
+      const nonInterestedCount = userLeads.filter(l => {
+        const leadFollowUps = (followUpsByLead[String(l.id)] || followUpsByLead[String(l.leadNo)] || [])
+          .sort((x, y) => (x.timestampMs || 0) - (y.timestampMs || 0));
+        const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
+        if (latestFollowUp?.status === 'Not Interested' || latestFollowUp?.dealOutcome === 'Rejected (Lost)' || latestFollowUp?.dealOutcome === 'Not Interested') {
+          return true;
+        }
+        const leadTrackers = userTrackers.filter(t => String(t.leadId) === String(l.id) || String(t.leadNo) === String(l.leadNo));
+        const latestTracker = leadTrackers[leadTrackers.length - 1];
+        if (latestTracker?.status === 'Not Interested' || latestTracker?.customerStatus === 'Not Interested') {
+          return true;
+        }
+        return l.status === 'Not Interested' || l.status === 'Rejected';
+      }).length;
+
       // Distinct leads with call activity in caller report
       const callerReportCount = new Set(userTrackers.map(t => t.leadId || t.leadNo)).size;
 
@@ -106,6 +122,7 @@ export const useBadgeCountStore = create((set) => ({
         pendingVisitorFollowUpCount,
         pendingSiteVisitMeetingCount: pendingVisitorCount + pendingVisitorFollowUpCount,
         customerCount,
+        nonInterestedCount,
         callerReportCount,
         loaded: true
       });

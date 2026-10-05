@@ -42,11 +42,11 @@ export const STATUS_FILTER_OPTIONS = [
 ];
 
 export const DATE_FILTER_OPTIONS = [
+  { value: 'today', label: "Today's Date" },
   { value: 'all', label: 'All Dates' },
-  { value: 'today', label: "Today's Visits" },
   { value: 'yesterday', label: 'Yesterday' },
-  { value: 'overdue', label: 'Overdue' },
   { value: 'upcoming', label: 'Upcoming' },
+  { value: 'overdue', label: 'Overdue' },
   { value: 'custom', label: 'Custom Date' },
 ];
 

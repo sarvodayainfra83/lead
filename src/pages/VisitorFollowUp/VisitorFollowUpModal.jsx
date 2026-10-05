@@ -151,12 +151,12 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden border border-gray-100/80 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-200">
 
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-          <h2 className="text-base sm:text-lg font-bold text-gray-800 tracking-wide uppercase">
+        <div className="px-4 sm:px-6 py-2.5 sm:py-3.5 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <h2 className="text-xs sm:text-base font-bold text-gray-800 tracking-wide uppercase truncate">
             VISITOR FOLLOW UP — {lead.customerName || lead.personName || 'Lead'} ({lead.leadNo})
           </h2>
           <button
@@ -168,14 +168,14 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} className="p-3.5 sm:p-5 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
 
           {/* Top Read-Only Summary Card matching Call Tracker */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 border border-gray-200 rounded p-3 text-xs mb-2 text-left">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-2 bg-gray-50 border border-gray-200 rounded-lg p-2.5 sm:p-3 text-xs mb-2 text-left">
             {leadInfoFields.map(f => (
               <div key={f.key || f.label} className="space-y-0.5">
-                <span className="text-[10px] text-gray-700 uppercase tracking-tight font-medium leading-none block">{f.label}</span>
-                <p className={`font-semibold truncate text-[11px] md:text-[12px] mt-0.5 ${f.highlight ? f.highlightClass : 'text-gray-900'}`} title={f.value || '-'}>
+                <span className="text-[9px] sm:text-[10px] text-gray-600 uppercase tracking-tight font-medium leading-none block">{f.label}</span>
+                <p className={`font-semibold truncate text-[11px] sm:text-[12px] mt-0.5 ${f.highlight ? f.highlightClass : 'text-gray-900'}`} title={f.value || '-'}>
                   {f.value || '-'}
                 </p>
               </div>
@@ -183,12 +183,12 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
           </div>
 
           {/* Form Fields */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
 
             {/* 1. Status & Interest Level Dropdowns (Always shown side-by-side) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+                <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight truncate">
                   STATUS *
                 </label>
                 <SearchableDropdown
@@ -196,48 +196,48 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                   value={formData.status}
                   onChange={(val) => handleChange('status', val)}
                   placeholder="Select status"
-                  height="h-[38px]"
+                  height="h-[34px] sm:h-[38px]"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
-                  CUSTOMER STATUS (HOT / WARM / COLD)
+                <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight truncate">
+                  CUSTOMER STATUS
                 </label>
                 <SearchableDropdown
                   options={CUSTOMER_STATUS_OPTIONS}
                   value={formData.customerStatus}
                   onChange={(val) => handleChange('customerStatus', val)}
-                  placeholder="Select Hot / Warm / Cold"
-                  height="h-[38px]"
+                  placeholder="Hot / Warm / Cold"
+                  height="h-[34px] sm:h-[38px]"
                 />
               </div>
             </div>
 
-            {/* 2. What Happened / Remarks (Shown when any status is selected) */}
+            {/* 2. What Happened / Remarks */}
             {formData.status && (
               <div className="space-y-1 animate-in fade-in duration-150">
-                <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+                <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
                   WHAT HAPPENED / CUSTOMER FEEDBACK *
                 </label>
                 <div className="relative">
                   <MessageSquare className="absolute left-3 top-3 text-gray-400" size={16} />
                   <textarea
-                    rows={3}
+                    rows={2.5}
                     required
                     placeholder="Customer likes, objections, notes..."
                     value={formData.whatHappened}
                     onChange={(e) => handleChange('whatHappened', e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs md:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
                   />
                 </div>
               </div>
             )}
 
-            {/* 3. Next Visit Date (Shown when status is Future Plan OR Did Not Show - Matches Screenshots 4 & 5) */}
+            {/* 3. Next Visit Date */}
             {(formData.status === 'Future Plan' || formData.status === 'Did Not Show') && (
               <div className="space-y-1 animate-in fade-in duration-150">
-                <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+                <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
                   NEXT VISIT DATE *
                 </label>
                 <div className="relative">
@@ -246,15 +246,15 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                     required
                     value={formData.nextVisitDate}
                     onChange={(e) => handleChange('nextVisitDate', e.target.value)}
-                    className="w-full px-3 py-2 text-xs md:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[38px]"
+                    className="w-full px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[34px] sm:h-[38px]"
                   />
                 </div>
               </div>
             )}
 
-            {/* 4. Not Interested Notice Box (Matches Screenshot 3) */}
+            {/* 4. Not Interested Notice Box */}
             {formData.status === 'Not Interested' && (
-              <div className="bg-gray-50 border border-gray-200 text-gray-600 rounded-lg p-3 text-xs animate-in fade-in duration-150">
+              <div className="bg-gray-50 border border-gray-200 text-gray-600 rounded-lg p-2.5 sm:p-3 text-xs animate-in fade-in duration-150">
                 This will be recorded as a <span className="text-red-600 font-semibold">Rejected</span> deal (reason: Not Interested).
               </div>
             )}
@@ -262,19 +262,19 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100 shrink-0">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 pt-3 border-t border-gray-100 shrink-0">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-6 py-2.5 text-xs md:text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 uppercase transition-colors"
+              className="px-3.5 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 uppercase transition-colors"
             >
               CANCEL
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-8 py-2.5 text-xs md:text-sm font-bold text-white bg-[#002b49] hover:bg-[#001f35] rounded-lg shadow-sm uppercase transition-colors disabled:opacity-50"
+              className="px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-[#002b49] hover:bg-[#001f35] rounded-lg shadow-sm uppercase transition-colors disabled:opacity-50"
             >
               {loading ? 'SAVING...' : 'SAVE'}
             </button>

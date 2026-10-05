@@ -217,14 +217,36 @@ export const siteVisitMeetingApi = {
       else if (s === 'low' || s === 'cold') customerStatus = 'Cold';
     }
 
+    let visitMeet = { 'site-visit': false, meeting: false };
+    if (row.visit_meet) {
+      if (typeof row.visit_meet === 'object' && row.visit_meet !== null) {
+        visitMeet = {
+          'site-visit': Boolean(row.visit_meet['site-visit'] ?? row.visit_meet.siteVisit ?? row.visit_meet.site_visit),
+          meeting: Boolean(row.visit_meet.meeting)
+        };
+      } else if (typeof row.visit_meet === 'string') {
+        try {
+          const parsed = JSON.parse(row.visit_meet);
+          visitMeet = {
+            'site-visit': Boolean(parsed['site-visit'] ?? parsed.siteVisit ?? parsed.site_visit),
+            meeting: Boolean(parsed.meeting)
+          };
+        } catch {}
+      }
+    }
+
     return {
       id: row.id,
+      parentId: row.parent_id || row.parentId || null,
+      parent_id: row.parent_id || row.parentId || null,
       leadId: row.lead_id,
       leadNo: row.lead_no,
       assignedVisitorId: row.assigned_visitor_id,
       visitorName: row.visitor_name,
       visitorId: row.visitor_id,
       visitDate: row.visit_date,
+      visitMeet,
+      visit_meet: visitMeet,
       status: row.status,
       customerStatus: customerStatus || '',
       customer_status: customerStatus || '',
@@ -244,9 +266,17 @@ export const siteVisitMeetingApi = {
   },
 
   mapFollowUpToDb(entry, resolvedLeadId = null) {
-    const leadId = resolvedLeadId || (isUuid(entry.leadId) ? entry.leadId : null);
-    const assignedVisitorId = isUuid(entry.assignedVisitorId) ? entry.assignedVisitorId : null;
-    const visitorId = isUuid(entry.visitorId) ? entry.visitorId : null;
+    const rawLeadId = resolvedLeadId || entry.leadId || entry.lead_id;
+    const leadId = isUuid(rawLeadId) ? rawLeadId.trim() : null;
+
+    const rawParentId = entry.parentId || entry.parent_id;
+    const parentId = isUuid(rawParentId) ? rawParentId.trim() : null;
+
+    const rawAssignedVisitorId = entry.assignedVisitorId || entry.assigned_visitor_id;
+    const assignedVisitorId = isUuid(rawAssignedVisitorId) ? rawAssignedVisitorId.trim() : null;
+
+    const rawVisitorId = entry.visitorId || entry.visitor_id;
+    const visitorId = isUuid(rawVisitorId) ? rawVisitorId.trim() : null;
 
     const rawStatus = entry.customerStatus || entry.customer_status || entry.interestLevel || null;
     let customerStatus = normalizeCustomerStatus(rawStatus);
@@ -260,25 +290,38 @@ export const siteVisitMeetingApi = {
     // Map to old constraint values ('High', 'Medium', 'Low') for legacy interest_level column compatibility
     const legacyInterestLevel = customerStatus === 'Hot' ? 'High' : (customerStatus === 'Warm' ? 'Medium' : (customerStatus === 'Cold' ? 'Low' : null));
 
+    let visitMeet = entry.visitMeet || entry.visit_meet;
+    if (!visitMeet && (entry.siteVisited !== undefined || entry.meeting !== undefined)) {
+      visitMeet = {
+        'site-visit': Boolean(entry.siteVisited),
+        'meeting': Boolean(entry.meeting)
+      };
+    }
+    if (!visitMeet || typeof visitMeet !== 'object') {
+      visitMeet = { 'site-visit': false, 'meeting': false };
+    }
+
     return {
+      parent_id: parentId,
       lead_id: leadId,
-      lead_no: entry.leadNo,
+      lead_no: entry.leadNo || '',
       assigned_visitor_id: assignedVisitorId,
-      visitor_name: entry.visitorName,
+      visitor_name: entry.visitorName || entry.visitor_name || entry.salesExecutive || 'Assigned Visitor',
       visitor_id: visitorId,
       visit_date: formatDateForDb(entry.visitDate),
-      status: entry.status,
+      visit_meet: visitMeet,
+      status: entry.status || entry.dealOutcome || 'Interested',
       customer_status: customerStatus || null,
       interest_level: legacyInterestLevel,
-      what_happened: entry.whatHappened || '',
-      next_visit_date: formatDateForDb(entry.nextVisitDate),
-      deal_outcome: entry.dealOutcome || null,
-      rejection_reason: entry.rejectionReason || entry.reason || null,
-      sales_executive: entry.salesExecutive || null,
+      what_happened: entry.whatHappened || entry.what_happened || '',
+      next_visit_date: formatDateForDb(entry.nextVisitDate || entry.next_visit_date),
+      deal_outcome: entry.dealOutcome || entry.deal_outcome || null,
+      rejection_reason: entry.rejectionReason || entry.reason || entry.rejection_reason || null,
+      sales_executive: entry.salesExecutive || entry.sales_executive || entry.visitorName || null,
       closing_amount: entry.closingAmount !== null && entry.closingAmount !== undefined && String(entry.closingAmount).trim() !== '' ? String(entry.closingAmount).trim() : null,
-      reference_no: entry.referenceNo || null,
-      deal_remarks: entry.dealRemarks || null,
-      follow_up_no: entry.followUpNo || 1,
+      reference_no: entry.referenceNo || entry.reference_no || null,
+      deal_remarks: entry.dealRemarks || entry.deal_remarks || null,
+      follow_up_no: Number(entry.followUpNo || entry.follow_up_no) || 1,
       timestamp_ms: entry.timestampMs || Date.now()
     };
   },
@@ -296,7 +339,29 @@ export const siteVisitMeetingApi = {
       console.error('Error fetching visitor follow ups from Supabase:', error);
       return getLocalVisitorFollowUps();
     }
-    return data.map(this.mapFollowUpFromDb);
+
+    const localFollowUps = getLocalVisitorFollowUps() || [];
+    const localById = Object.fromEntries(localFollowUps.map(f => [String(f.id), f]));
+    const localByLead = {};
+    localFollowUps.forEach(f => {
+      const key = String(f.leadId || f.leadNo);
+      if (!localByLead[key] || (f.visitMeet?.['site-visit'] || f.visitMeet?.meeting)) {
+        localByLead[key] = f;
+      }
+    });
+
+    return data.map(row => {
+      const mapped = this.mapFollowUpFromDb(row);
+      // Fallback to local storage if DB column visit_meet is not yet migrated
+      if (!mapped.visitMeet?.['site-visit'] && !mapped.visitMeet?.meeting) {
+        const local = localById[String(mapped.id)] || localByLead[String(mapped.leadId)] || localByLead[String(mapped.leadNo)];
+        if (local?.visitMeet?.['site-visit'] || local?.visitMeet?.meeting) {
+          mapped.visitMeet = local.visitMeet;
+          mapped.visit_meet = local.visitMeet;
+        }
+      }
+      return mapped;
+    });
   },
 
   async getVisitorFollowUpsByLeadId(leadId, leadNo = null) {
@@ -326,7 +391,28 @@ export const siteVisitMeetingApi = {
         .filter(f => (leadId && String(f.leadId) === String(leadId)) || (leadNo && String(f.leadNo) === String(leadNo)))
         .sort((a, b) => (Number(a.timestampMs) || 0) - (Number(b.timestampMs) || 0));
     }
-    return data.map(this.mapFollowUpFromDb);
+
+    const localFollowUps = getLocalVisitorFollowUps() || [];
+    const localById = Object.fromEntries(localFollowUps.map(f => [String(f.id), f]));
+    const localByLead = {};
+    localFollowUps.forEach(f => {
+      const key = String(f.leadId || f.leadNo);
+      if (!localByLead[key] || (f.visitMeet?.['site-visit'] || f.visitMeet?.meeting)) {
+        localByLead[key] = f;
+      }
+    });
+
+    return data.map(row => {
+      const mapped = this.mapFollowUpFromDb(row);
+      if (!mapped.visitMeet?.['site-visit'] && !mapped.visitMeet?.meeting) {
+        const local = localById[String(mapped.id)] || localByLead[String(mapped.leadId)] || localByLead[String(mapped.leadNo)];
+        if (local?.visitMeet?.['site-visit'] || local?.visitMeet?.meeting) {
+          mapped.visitMeet = local.visitMeet;
+          mapped.visit_meet = local.visitMeet;
+        }
+      }
+      return mapped;
+    });
   },
 
   async saveVisitorFollowUp(entry) {
@@ -381,31 +467,134 @@ export const siteVisitMeetingApi = {
           .select('id')
           .eq('lead_no', normalizedEntry.leadNo)
           .maybeSingle();
-        if (leadRow?.id) leadId = leadRow.id;
+        if (leadRow?.id && isUuid(leadRow.id)) {
+          leadId = leadRow.id;
+        }
       } catch (e) {
         console.warn('Could not resolve lead_id by lead_no:', e);
       }
     }
 
-    const payload = this.mapFollowUpToDb(normalizedEntry, leadId);
-    let { data, error } = await supabase
-      .from('visitor_follow_ups')
-      .insert(payload)
-      .select()
-      .single();
+    let payload = this.mapFollowUpToDb(normalizedEntry, leadId);
 
-    // Fallback: if Supabase doesn't have customer_status column yet
-    if (error && error.message && error.message.includes('customer_status')) {
-      const fallbackPayload = { ...payload };
-      delete fallbackPayload.customer_status;
-      const retry = await supabase
-        .from('visitor_follow_ups')
-        .insert(fallbackPayload)
-        .select()
-        .single();
-      if (!retry.error) {
-        data = retry.data;
+    // Auto-resolve parent_id and follow_up_no from previous record if not provided
+    if (!payload.parent_id && (leadId || normalizedEntry.leadNo)) {
+      try {
+        let parentQuery = supabase.from('visitor_follow_ups').select('id, follow_up_no');
+        if (leadId && normalizedEntry.leadNo) {
+          parentQuery = parentQuery.or(`lead_id.eq.${leadId},lead_no.eq.${normalizedEntry.leadNo}`);
+        } else if (leadId) {
+          parentQuery = parentQuery.eq('lead_id', leadId);
+        } else if (normalizedEntry.leadNo) {
+          parentQuery = parentQuery.eq('lead_no', normalizedEntry.leadNo);
+        }
+        const { data: prevRows } = await parentQuery.order('created_at', { ascending: false }).limit(1);
+        if (prevRows && prevRows.length > 0 && isUuid(prevRows[0].id)) {
+          payload.parent_id = prevRows[0].id;
+          if (!payload.follow_up_no || payload.follow_up_no <= 1) {
+            payload.follow_up_no = (Number(prevRows[0].follow_up_no) || 1) + 1;
+          }
+        }
+      } catch (parentErr) {
+        console.warn('Could not auto-resolve parent_id for visitor follow up:', parentErr);
+      }
+    }
+
+    // Auto-resolve assigned_visitor_id from assigned_visitors table if not provided
+    if (!payload.assigned_visitor_id && (leadId || normalizedEntry.leadNo)) {
+      try {
+        let assignQuery = supabase.from('assigned_visitors').select('id');
+        if (leadId && normalizedEntry.leadNo) {
+          assignQuery = assignQuery.or(`lead_id.eq.${leadId},lead_no.eq.${normalizedEntry.leadNo}`);
+        } else if (leadId) {
+          assignQuery = assignQuery.eq('lead_id', leadId);
+        } else if (normalizedEntry.leadNo) {
+          assignQuery = assignQuery.eq('lead_no', normalizedEntry.leadNo);
+        }
+        const { data: assignRows } = await assignQuery.order('created_at', { ascending: false }).limit(1);
+        if (assignRows && assignRows.length > 0 && isUuid(assignRows[0].id)) {
+          payload.assigned_visitor_id = assignRows[0].id;
+        }
+      } catch (assignLookupErr) {
+        console.warn('Could not auto-resolve assigned_visitor_id for visitor follow up:', assignLookupErr);
+      }
+    }
+
+    // Dynamic multi-try insertion to ensure database compatibility with schema
+    let data = null;
+    let error = null;
+
+    const tryInsert = async (p) => {
+      return await supabase.from('visitor_follow_ups').insert(p).select().single();
+    };
+
+    let res = await tryInsert(payload);
+    data = res.data;
+    error = res.error;
+
+    if (error) {
+      console.warn('Initial insert into visitor_follow_ups failed:', error.message);
+      let retryPayload = { ...payload };
+
+      // Handle missing optional columns or foreign key issues gracefully
+      if (error.message?.includes('parent_id') || error.code === '23503') {
+        retryPayload.parent_id = null;
+      }
+      if (error.message?.includes('assigned_visitor_id')) {
+        retryPayload.assigned_visitor_id = null;
+      }
+      if (error.message?.includes('visitor_id')) {
+        retryPayload.visitor_id = null;
+      }
+      if (error.message?.includes('visit_meet') || error.message?.includes('schema cache')) {
+        delete retryPayload.visit_meet;
+      }
+      if (error.message?.includes('customer_status')) {
+        delete retryPayload.customer_status;
+      }
+      if (error.message?.includes('deal_outcome')) {
+        delete retryPayload.deal_outcome;
+      }
+      if (error.message?.includes('closing_amount')) {
+        delete retryPayload.closing_amount;
+      }
+      if (error.message?.includes('sales_executive')) {
+        delete retryPayload.sales_executive;
+      }
+      if (error.message?.includes('reference_no')) {
+        delete retryPayload.reference_no;
+      }
+      if (error.message?.includes('deal_remarks')) {
+        delete retryPayload.deal_remarks;
+      }
+
+      res = await tryInsert(retryPayload);
+      if (!res.error) {
+        data = { ...res.data, visit_meet: payload.visit_meet, parent_id: payload.parent_id };
         error = null;
+      } else {
+        // Fallback to core base schema columns
+        const minimalPayload = {
+          lead_id: retryPayload.lead_id,
+          lead_no: retryPayload.lead_no,
+          visitor_name: retryPayload.visitor_name,
+          visitor_id: retryPayload.visitor_id,
+          visit_date: retryPayload.visit_date,
+          status: retryPayload.status,
+          interest_level: retryPayload.interest_level,
+          what_happened: retryPayload.what_happened,
+          next_visit_date: retryPayload.next_visit_date,
+          follow_up_no: retryPayload.follow_up_no,
+          timestamp_ms: retryPayload.timestamp_ms
+        };
+        const minRes = await tryInsert(minimalPayload);
+        if (!minRes.error) {
+          data = { ...minRes.data, visit_meet: payload.visit_meet, parent_id: payload.parent_id };
+          error = null;
+        } else {
+          error = minRes.error;
+          console.error('All insert attempts to visitor_follow_ups failed:', error);
+        }
       }
     }
 
@@ -550,21 +739,37 @@ export const siteVisitMeetingApi = {
     const leadsById = Object.fromEntries(leads.map(l => [String(l.id), l]));
     const leadsByNo = Object.fromEntries(leads.map(l => [String(l.leadNo), l]));
 
-    // Group assigned visitors by lead
-    const assignmentsByLead = {};
+    // Group assigned visitors by lead (both leadId and leadNo)
+    const assignmentsByLeadId = {};
+    const assignmentsByLeadNo = {};
     assignedVisitors.forEach(a => {
       if (a.status === 'Cancelled') return;
-      const key = String(a.leadId || a.leadNo);
-      if (!assignmentsByLead[key]) assignmentsByLead[key] = [];
-      assignmentsByLead[key].push(a);
+      if (a.leadId) {
+        const idKey = String(a.leadId);
+        if (!assignmentsByLeadId[idKey]) assignmentsByLeadId[idKey] = [];
+        assignmentsByLeadId[idKey].push(a);
+      }
+      if (a.leadNo) {
+        const noKey = String(a.leadNo);
+        if (!assignmentsByLeadNo[noKey]) assignmentsByLeadNo[noKey] = [];
+        assignmentsByLeadNo[noKey].push(a);
+      }
     });
 
-    // Group follow-ups by lead
-    const followUpsByLead = {};
+    // Group follow-ups by lead (both leadId and leadNo)
+    const followUpsByLeadId = {};
+    const followUpsByLeadNo = {};
     followUps.forEach(f => {
-      const key = String(f.leadId || f.leadNo);
-      if (!followUpsByLead[key]) followUpsByLead[key] = [];
-      followUpsByLead[key].push(f);
+      if (f.leadId) {
+        const idKey = String(f.leadId);
+        if (!followUpsByLeadId[idKey]) followUpsByLeadId[idKey] = [];
+        followUpsByLeadId[idKey].push(f);
+      }
+      if (f.leadNo) {
+        const noKey = String(f.leadNo);
+        if (!followUpsByLeadNo[noKey]) followUpsByLeadNo[noKey] = [];
+        followUpsByLeadNo[noKey].push(f);
+      }
     });
 
     // Map of leads that qualify for Site Visit / Meeting
@@ -610,20 +815,44 @@ export const siteVisitMeetingApi = {
     const unifiedList = [];
 
     candidateLeadsMap.forEach((lead) => {
-      const leadKeyId = String(lead.id);
-      const leadKeyNo = String(lead.leadNo);
+      const leadKeyId = String(lead.id || '');
+      const leadKeyNo = String(lead.leadNo || '');
 
       // Latest tracker
       const latestTracker = getLatestTrackerForLead(trackers, lead.id, lead.leadNo);
 
-      // All assignments for this lead (sorted latest first)
-      const leadAssignments = (assignmentsByLead[leadKeyId] || assignmentsByLead[leadKeyNo] || [])
-        .sort((a, b) => new Date(b.timestamp || b.created_at || 0) - new Date(a.timestamp || a.created_at || 0));
+      // All assignments for this lead (deduplicated and sorted latest first)
+      const seenAssignmentIds = new Set();
+      const leadAssignments = [];
+      const assignmentCandidates = [
+        ...(leadKeyId && assignmentsByLeadId[leadKeyId] ? assignmentsByLeadId[leadKeyId] : []),
+        ...(leadKeyNo && assignmentsByLeadNo[leadKeyNo] ? assignmentsByLeadNo[leadKeyNo] : [])
+      ];
+      assignmentCandidates.forEach(a => {
+        const aid = a.id || `${a.leadNo}-${a.timestamp || a.created_at}`;
+        if (!seenAssignmentIds.has(aid)) {
+          seenAssignmentIds.add(aid);
+          leadAssignments.push(a);
+        }
+      });
+      leadAssignments.sort((a, b) => new Date(b.timestamp || b.created_at || 0) - new Date(a.timestamp || a.created_at || 0));
       const latestAssignment = leadAssignments[0] || null;
 
-      // All follow-ups for this lead (sorted chronologically)
-      const leadFollowUps = (followUpsByLead[leadKeyId] || followUpsByLead[leadKeyNo] || [])
-        .sort((a, b) => (a.timestampMs || 0) - (b.timestampMs || 0));
+      // All follow-ups for this lead (deduplicated and sorted chronologically)
+      const seenFollowUpIds = new Set();
+      const leadFollowUps = [];
+      const followUpCandidates = [
+        ...(leadKeyId && followUpsByLeadId[leadKeyId] ? followUpsByLeadId[leadKeyId] : []),
+        ...(leadKeyNo && followUpsByLeadNo[leadKeyNo] ? followUpsByLeadNo[leadKeyNo] : [])
+      ];
+      followUpCandidates.forEach(f => {
+        const fid = f.id || `${f.leadNo}-${f.timestampMs || f.createdAt}`;
+        if (!seenFollowUpIds.has(fid)) {
+          seenFollowUpIds.add(fid);
+          leadFollowUps.push(f);
+        }
+      });
+      leadFollowUps.sort((a, b) => (Number(a.timestampMs) || new Date(a.createdAt || 0).getTime()) - (Number(b.timestampMs) || new Date(b.createdAt || 0).getTime()));
       const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
 
       // Determine computed overall status
@@ -688,6 +917,10 @@ export const siteVisitMeetingApi = {
         followUpCount: leadFollowUps.length,
         followUpNo: leadFollowUps.length,
         latestFollowUp,
+        visitMeet: latestFollowUp?.visitMeet || latestFollowUp?.visit_meet || (leadFollowUps.find(f => f.visitMeet || f.visit_meet)?.visitMeet) || lead.visitMeet || lead.visit_meet || null,
+        visit_meet: latestFollowUp?.visitMeet || latestFollowUp?.visit_meet || (leadFollowUps.find(f => f.visitMeet || f.visit_meet)?.visitMeet) || lead.visitMeet || lead.visit_meet || null,
+        parentId: latestFollowUp?.parentId || latestFollowUp?.parent_id || null,
+        parent_id: latestFollowUp?.parentId || latestFollowUp?.parent_id || null,
         // Computed lifecycle status
         status: computedStatus,
         customerStatus: latestFollowUp?.customerStatus || latestFollowUp?.customer_status || latestTracker?.customerStatus || '',

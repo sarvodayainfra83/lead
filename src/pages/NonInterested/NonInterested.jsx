@@ -1,31 +1,25 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Building2, ShieldCheck, TrendingUp } from 'lucide-react';
-import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
+import { nonInterestedApi } from '../../api/nonInterestedApi';
 import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
-import { hasFullAccess, getUserLeadTypeScope, isUserAdmin } from '../../utils/authUtils';
-import SiteVisitCategoryView from './SiteVisitCategoryView';
-import AssignVisitorModal from './AssignVisitorModal';
-import VisitorFollowUpModal from './VisitorFollowUpModal';
-import VisitHistoryModal from './VisitHistoryModal';
+import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, matchesUserAssignment, matchesUserReceiver } from '../../utils/authUtils';
+import NonInterestedCategoryView from './NonInterestedCategoryView';
+import AssignVisitorModal from '../SiteVisitMeeting/AssignVisitorModal';
+import VisitorFollowUpModal from '../SiteVisitMeeting/VisitorFollowUpModal';
+import VisitHistoryModal from '../SiteVisitMeeting/VisitHistoryModal';
 import { useLocation } from 'react-router-dom';
 
 /**
- * SiteVisitMeeting
- * Unified interface merging Assign Visitor and Visitor Follow Up into a single
- * dedicated module with 3 category tabs:
- * - Real Estate
- * - Insurance
- * - Mutual Fund
- *
- * Displays all site visit and meeting leads with their complete lifecycle status:
- * Pending Assignment -> Visitor Assigned -> Future Plan -> Closed Won / Lost.
+ * NonInterested
+ * Dedicated sidebar section displaying all Non-interested customers across
+ * Real Estate, Insurance, and Mutual Fund.
+ * Tables and columns match the Site Visit / Meeting module.
  */
-export default function SiteVisitMeeting() {
+export default function NonInterested() {
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
-  // Full Access on Site Visit / Meeting = can assign visitors & log follow-ups; View = read-only
-  const canEdit = hasFullAccess(user, 'siteVisitMeeting');
+  const canEdit = hasFullAccess(user, 'nonInterested') || hasFullAccess(user, 'siteVisitMeeting');
   const navState = useLocation().state || {};
 
   // Determine initial tab from nav state or user's assigned lead type
@@ -52,18 +46,18 @@ export default function SiteVisitMeeting() {
   const [followUpModalLead, setFollowUpModalLead] = useState(null);
   const [historyModalLead, setHistoryModalLead] = useState(null);
 
-  // Load all site visit / meeting leads and visitors
+  // Load all non-interested leads and visitors
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [leads, visitors] = await Promise.all([
-        siteVisitMeetingApi.getAllSiteVisitMeetingLeads(),
+        nonInterestedApi.getNonInterestedLeads(),
         masterApi.getVisitors()
       ]);
       setAllLeads(leads || []);
       setVisitorsMaster(visitors || []);
     } catch (err) {
-      console.error('Failed to load site visit / meeting leads:', err);
+      console.error('Failed to load non-interested leads:', err);
     } finally {
       setLoading(false);
     }
@@ -73,15 +67,19 @@ export default function SiteVisitMeeting() {
     loadData();
   }, [loadData, user]);
 
-  // For USER role (non-admin): only fetch/show assigned records, hide non-assigned
+  // For USER role (non-admin): show assigned records matching user as caller, visitor, or receiver
   const displayLeads = useMemo(() => {
-    if (isAdmin) return allLeads;
+    if (isAdmin || canEdit) return allLeads;
     return allLeads.filter(l => {
-      const status = String(l.status || '').trim();
-      const visitor = String(l.assignedVisitor || '').trim();
-      return status !== 'Pending Assignment' && status !== 'Unassigned' && visitor !== '' && visitor.toLowerCase() !== 'unassigned';
+      if (matchesUserAssignment(l, user)) return true;
+      if (matchesUserReceiver(l, user)) return true;
+      const visitorNorm = (l.assignedVisitor || l.visitorName || l.visitorId || '').trim().toLowerCase();
+      const userNameNorm = (user?.name || '').trim().toLowerCase();
+      const userIdNorm = (user?.id || '').trim().toLowerCase();
+      if (visitorNorm && (visitorNorm === userNameNorm || visitorNorm === userIdNorm)) return true;
+      return false;
     });
-  }, [allLeads, isAdmin]);
+  }, [allLeads, isAdmin, canEdit, user]);
 
   // Partition leads by the 3 category tables
   const realEstateLeads = useMemo(() => {
@@ -136,7 +134,7 @@ export default function SiteVisitMeeting() {
     }
   ];
 
-  // Role USER gets tabs of all their assigned lead types (both/all tabs if multiple)
+  // Role USER gets tabs of all their assigned lead types
   const scope = getUserLeadTypeScope(user);
   const visibleTabs = scope?.categories?.length > 0
     ? tabs.filter(t => scope.categories.includes(t.key))
@@ -147,7 +145,7 @@ export default function SiteVisitMeeting() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Category View Panel */}
-      <SiteVisitCategoryView
+      <NonInterestedCategoryView
         key={currentTabObj.key}
         category={currentTabObj.key}
         tabs={visibleTabs}

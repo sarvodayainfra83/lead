@@ -18,7 +18,8 @@ import {
   Fingerprint,
   ClipboardCheck,
   Layers,
-  FileBarChart
+  FileBarChart,
+  UserX
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
@@ -29,7 +30,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuthStore();
-  const { pendingLeadCount, pendingTrackerCount, pendingVisitorCount, pendingVisitorFollowUpCount, pendingSiteVisitMeetingCount, customerCount, refresh } = useBadgeCountStore();
+  const { pendingLeadCount, pendingTrackerCount, pendingVisitorCount, pendingVisitorFollowUpCount, pendingSiteVisitMeetingCount, customerCount, nonInterestedCount, refresh } = useBadgeCountStore();
 
   useEffect(() => {
     refresh();
@@ -56,6 +57,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     { path: '/call-tracker', icon: PhoneCall, label: 'Lead & Followup', pageKey: 'callTracker', badgeCount: pendingTrackerCount },
     { path: '/site-visit-meeting', icon: MapPin, label: 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: pendingSiteVisitMeetingCount ?? (pendingVisitorCount + pendingVisitorFollowUpCount) },
     { path: '/customer-master', icon: Users, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount },
+    { path: '/non-interested', icon: UserX, label: 'Non-interested', pageKey: 'nonInterested', badgeCount: nonInterestedCount },
     // { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
     { path: '/mis-report', icon: FileBarChart, label: 'MIS Report', pageKey: 'misReport' },
     { path: '/attendance', icon: Fingerprint, label: 'Attendance', pageKey: 'attendance' },

@@ -30,16 +30,18 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
 
   // Filter visitors based on the lead's leadType
   const leadTypeClean = String(lead?.leadType || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const filteredVisitors = (visitorsMaster || []).filter(v => {
+  const matchingVisitors = (visitorsMaster || []).filter(v => {
     if (!leadTypeClean) return true;
     const vTypeClean = String(v.leadType || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    return vTypeClean === leadTypeClean;
+    return !vTypeClean || vTypeClean === leadTypeClean || vTypeClean.includes(leadTypeClean) || leadTypeClean.includes(vTypeClean);
   });
+
+  const pool = matchingVisitors.length > 0 ? matchingVisitors : (visitorsMaster || []);
 
   const seen = new Set();
   const visitorOptions = [];
-  (filteredVisitors.length > 0 ? filteredVisitors : (visitorsMaster || [])).forEach(v => {
-    const raw = v?.personName;
+  pool.forEach(v => {
+    const raw = v?.personName || v?.name || v?.visitorName || v?.visitor_name;
     if (!raw) return;
     const clean = String(raw).replace(/\s+/g, ' ').trim();
     const lower = clean.toLowerCase();
@@ -68,9 +70,13 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
   };
 
   const handleVisitorChange = (val) => {
+    const matched = (visitorsMaster || []).find(
+      v => String(v.personName || v.name || v.visitorName || '').trim().toLowerCase() === String(val).trim().toLowerCase()
+    );
     setFormData(prev => ({
       ...prev,
-      visitorName: val
+      visitorName: val,
+      visitorId: matched?.id || ''
     }));
   };
 
@@ -145,12 +151,12 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden border border-gray-100/80 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-200">
         
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-          <h2 className="text-base sm:text-lg font-bold text-gray-800 tracking-wide uppercase">
+        <div className="px-4 sm:px-6 py-2.5 sm:py-3.5 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <h2 className="text-xs sm:text-base font-bold text-gray-800 tracking-wide uppercase truncate">
             ASSIGN VISITOR — {lead.customerName || lead.personName || 'Lead'} ({lead.leadNo})
           </h2>
           <button
@@ -161,14 +167,14 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} className="p-3.5 sm:p-5 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
           
           {/* Top Read-Only Summary Card matching Call Tracker */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50 border border-gray-200 rounded p-3 text-xs mb-2 text-left">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-2 bg-gray-50 border border-gray-200 rounded-lg p-2.5 sm:p-3 text-xs mb-2 text-left">
             {leadInfoFields.map(f => (
               <div key={f.key || f.label} className="space-y-0.5">
-                <span className="text-[10px] text-gray-700 uppercase tracking-tight font-medium leading-none block">{f.label}</span>
-                <p className={`font-semibold truncate text-[11px] md:text-[12px] mt-0.5 ${f.highlight ? f.highlightClass : 'text-gray-900'}`} title={f.value || '-'}>
+                <span className="text-[9px] sm:text-[10px] text-gray-600 uppercase tracking-tight font-medium leading-none block">{f.label}</span>
+                <p className={`font-semibold truncate text-[11px] sm:text-[12px] mt-0.5 ${f.highlight ? f.highlightClass : 'text-gray-900'}`} title={f.value || '-'}>
                   {f.value || '-'}
                 </p>
               </div>
@@ -176,11 +182,11 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
           </div>
 
           {/* Form Fields */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             
             {/* Assign Visitor Dropdown */}
             <div className="space-y-1">
-              <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+              <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
                 ASSIGN VISITOR *
               </label>
               <SearchableDropdown
@@ -188,14 +194,14 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
                 value={formData.visitorName}
                 onChange={handleVisitorChange}
                 placeholder="Select visitor / sales rep"
-                height="h-[38px]"
+                height="h-[34px] sm:h-[38px]"
               />
             </div>
 
-            {/* Visit Date & Location */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Visit Date & Location (2-column on mobile) */}
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+                <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
                   VISIT DATE *
                 </label>
                 <div className="relative">
@@ -204,23 +210,23 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
                     required
                     value={formData.visitDate}
                     onChange={(e) => handleChange('visitDate', e.target.value)}
-                    className="w-full px-3 py-2 text-xs md:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[38px]"
+                    className="w-full px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[34px] sm:h-[38px]"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+                <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight truncate">
                   LOCATION
                 </label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
                   <input
                     type="text"
-                    placeholder="Site / meeting address"
+                    placeholder="Site address"
                     value={formData.location}
                     onChange={(e) => handleChange('location', e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs md:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[38px]"
+                    className="w-full pl-8 sm:pl-9 pr-2.5 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[34px] sm:h-[38px]"
                   />
                 </div>
               </div>
@@ -228,17 +234,17 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
 
             {/* Remarks */}
             <div className="space-y-1">
-              <label className="block text-[11px] md:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+              <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
                 REMARKS
               </label>
               <div className="relative">
-                <MessageSquare className="absolute left-3 top-3 text-gray-400" size={16} />
+                <MessageSquare className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
                 <textarea
-                  rows={3}
+                  rows={2.5}
                   placeholder="Notes for the visitor"
                   value={formData.remarks}
                   onChange={(e) => handleChange('remarks', e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs md:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full pl-8 sm:pl-9 pr-2.5 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 resize-none"
                 />
               </div>
             </div>
@@ -246,19 +252,19 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 pt-3 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="px-5 py-2 text-xs md:text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 uppercase transition-colors"
+              className="px-3.5 sm:px-5 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 uppercase transition-colors"
             >
               CANCEL
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2 text-xs md:text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm uppercase transition-colors disabled:opacity-50"
+              className="px-4 sm:px-6 py-1.5 sm:py-2 text-xs sm:text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm uppercase transition-colors disabled:opacity-50"
             >
               {loading ? 'SAVING...' : 'SAVE'}
             </button>

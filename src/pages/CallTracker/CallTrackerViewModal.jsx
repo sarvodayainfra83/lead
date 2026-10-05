@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import {
   X, Phone, Calendar, Clock, Mail, MapPin, Briefcase,
-  FileText, IndianRupee, MessageSquare, UserCheck, Shield, ShieldCheck, Pencil, Thermometer, Share2
+  FileText, IndianRupee, MessageSquare, UserCheck, Shield, ShieldCheck, Pencil, Thermometer, Share2, User
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { buildShareClient } from '../../utils/productShare';
@@ -53,7 +53,7 @@ const formatDate = (val) => {
  * CallTrackerViewModal Component
  * Pure compact, fully responsive popup modal mounted via createPortal directly on document.body
  * with z-[100] to always sit cleanly above the sidebar, header, and all layouts.
- * Keeps customer information cards neatly on a single row in desktop mode.
+ * Shows all lead and customer columns corresponding to the front table.
  */
 export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup, onRemarkSaved }) {
   const user = useAuthStore(state => state.user);
@@ -103,129 +103,148 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
     return s !== '' && s !== '-' && s !== 'null' && s !== 'undefined';
   };
 
-  const fields = [];
+  const formatVal = (val) => {
+    if (!isValid(val)) return '-';
+    return String(val).trim();
+  };
 
-  if (isValid(lead.number || lead.customerNumber)) {
-    fields.push({
+  const isInsurance = (lead.leadType || lead.category || '').toLowerCase().includes('insurance');
+  const isRealEstate = (lead.leadType || lead.category || '').toLowerCase().includes('real') ||
+    (lead.leadType || lead.category || '').toLowerCase().includes('estate') ||
+    (lead.leadNo && String(lead.leadNo).startsWith('LR'));
+
+  const fields = [
+    {
       label: 'Phone Number',
-      value: lead.number || lead.customerNumber,
+      value: formatVal(lead.number || lead.customerNumber),
       icon: Phone,
       isPhone: true
-    });
-  }
-
-  if (isValid(lead.email || lead.customerEmail)) {
-    fields.push({
+    },
+    {
       label: 'Email',
-      value: lead.email || lead.customerEmail,
+      value: formatVal(lead.email || lead.customerEmail),
       icon: Mail,
       isEmail: true
-    });
-  }
-
-  if (isValid(lead.dob) && formatDate(lead.dob) !== '-') {
-    fields.push({
+    },
+    {
       label: 'DOB',
-      value: formatDate(lead.dob),
+      value: isValid(lead.dob) ? formatDate(lead.dob) : '-',
       icon: Calendar
-    });
-  }
-
-  if (isValid(lead.occupation)) {
-    fields.push({
+    },
+    {
       label: 'Occupation',
-      value: lead.occupation,
+      value: formatVal(lead.occupation),
       icon: Briefcase
-    });
-  }
-
-  if (isValid(lead.insuranceType || lead.productType)) {
-    fields.push({
+    },
+    {
       label: 'Product Type',
-      value: lead.insuranceType || lead.productType,
+      value: formatVal(lead.insuranceType || lead.productType),
       icon: Shield
-    });
-  }
+    }
+  ];
 
-  if (isValid(lead.insuranceSubType)) {
+  if (isInsurance || isValid(lead.insuranceSubType)) {
     fields.push({
       label: 'Sub Product Type',
-      value: lead.insuranceSubType,
+      value: formatVal(lead.insuranceSubType),
       icon: ShieldCheck
     });
   }
 
-  if (isValid(lead.anyDesease)) {
+  if (isInsurance || isValid(lead.anyDesease)) {
     fields.push({
       label: 'Medical Condition',
-      value: lead.anyDesease,
+      value: formatVal(lead.anyDesease),
       icon: FileText
     });
   }
 
-  if (isValid(lead.requirement)) {
+  fields.push({
+    label: 'Requirement',
+    value: formatVal(lead.requirement),
+    icon: FileText
+  });
+
+  if (isRealEstate || isValid(lead.siteLocation)) {
     fields.push({
-      label: 'Requirement',
-      value: lead.requirement,
-      icon: FileText
+      label: 'Site Location',
+      value: formatVal(lead.siteLocation),
+      icon: MapPin
     });
   }
 
-  if (isValid(lead.investmentBudget)) {
-    fields.push({
+  fields.push(
+    {
       label: 'Investment Budget',
-      value: lead.investmentBudget,
+      value: formatVal(lead.investmentBudget),
       icon: IndianRupee
+    },
+    {
+      label: 'When to Buy Plan',
+      value: formatVal(lead.whenToBuyPlan),
+      icon: Clock
+    },
+    {
+      label: 'Visitor Assigned',
+      value: formatVal(lead.assignedVisitor),
+      icon: UserCheck
+    },
+    {
+      label: 'Caller Assigned',
+      value: formatVal(lead.callerAssigned),
+      icon: UserCheck
+    }
+  );
+
+  if (isValid(lead.leadSource)) {
+    fields.push({
+      label: 'Lead Source',
+      value: formatVal(lead.leadSource),
+      icon: FileText
     });
   }
 
-  if (isValid(lead.location || lead.customerAddress)) {
+  if (isValid(lead.leadReceiver)) {
     fields.push({
+      label: 'Team Member',
+      value: formatVal(lead.leadReceiver),
+      icon: User
+    });
+  }
+
+  if (isValid(lead.referencerName)) {
+    fields.push({
+      label: 'Referencer Name',
+      value: formatVal(lead.referencerName),
+      icon: User
+    });
+  }
+
+  fields.push(
+    {
       label: 'Customer Address',
-      value: lead.location || lead.customerAddress,
+      value: formatVal(lead.location || lead.customerAddress),
       icon: MapPin,
       isLong: true
-    });
-  }
-
-  if (isValid(lead.whenToBuyPlan)) {
-    fields.push({
-      label: 'When to Buy Plan',
-      value: lead.whenToBuyPlan,
-      icon: Clock
-    });
-  }
-
-  if (isValid(lead.remarks)) {
-    fields.push({
+    },
+    {
       label: 'Remarks',
-      value: lead.remarks,
+      value: formatVal(lead.remarks),
       icon: MessageSquare,
       isLong: true
-    });
-  }
+    }
+  );
 
   const lastDateOfCall = lead.dateOfCall || (lead.latestTracker?.timestamp ? formatDate(lead.latestTracker.timestamp) : null);
   const nextDateOfCall = lead.nextCallDate ? formatDate(lead.nextCallDate) : (lead.latestTracker?.nextDate ? formatDate(lead.latestTracker.nextDate) : null);
 
-  // Desktop grid columns: keeps cards on a single row when count is <= 6
-  const desktopGridClass = (() => {
-    if (fields.length === 1) return 'md:grid-cols-1';
-    if (fields.length === 2) return 'md:grid-cols-2';
-    if (fields.length === 3) return 'md:grid-cols-3';
-    if (fields.length === 4) return 'md:grid-cols-4';
-    if (fields.length === 5) return 'md:grid-cols-5';
-    if (fields.length === 6) return 'md:grid-cols-6';
-    return 'md:grid-cols-3 lg:grid-cols-4';
-  })();
-
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto animate-in fade-in duration-150"
+      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-5 md:p-6 overflow-y-auto animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-2xl w-full max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col border border-gray-200 overflow-hidden max-h-[92vh] sm:max-h-[88vh] animate-in zoom-in-95 duration-150 my-auto"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col border border-gray-100/80 ring-1 ring-black/5 overflow-hidden max-h-[88dvh] sm:max-h-[85vh] animate-in zoom-in-95 duration-150 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Compact Modal Header */}
@@ -288,31 +307,27 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
 
         {/* Scrollable Compact Body */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-white">
-          {/* Top Quick Highlights (only show populated items) */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2">
-            {lastDateOfCall && lastDateOfCall !== '-' && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                  <Calendar size={11} className="text-gray-400 shrink-0" />
-                  <span className="truncate">Last Call</span>
-                </span>
-                <p className="text-xs font-bold text-gray-800 mt-0.5 truncate">
-                  {lastDateOfCall}
-                </p>
-              </div>
-            )}
+          {/* Top Quick Highlights */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <Calendar size={11} className="text-gray-400 shrink-0" />
+                <span className="truncate">Last Call</span>
+              </span>
+              <p className="text-xs font-bold text-gray-800 mt-0.5 truncate">
+                {lastDateOfCall && lastDateOfCall !== '-' ? lastDateOfCall : '-'}
+              </p>
+            </div>
 
-            {nextDateOfCall && nextDateOfCall !== '-' && (
-              <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-2 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
-                  <Clock size={11} className="text-amber-600 shrink-0" />
-                  <span className="truncate">Next Call</span>
-                </span>
-                <p className={`text-xs font-bold mt-0.5 truncate ${NEXT_DATE_CLASS}`}>
-                  {nextDateOfCall}
-                </p>
-              </div>
-            )}
+            <div className="bg-amber-50/60 border border-amber-200 rounded-lg p-2 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+                <Clock size={11} className="text-amber-600 shrink-0" />
+                <span className="truncate">Next Call</span>
+              </span>
+              <p className={`text-xs font-bold mt-0.5 truncate ${nextDateOfCall && nextDateOfCall !== '-' ? NEXT_DATE_CLASS : 'text-gray-400'}`}>
+                {nextDateOfCall && nextDateOfCall !== '-' ? nextDateOfCall : '-'}
+              </p>
+            </div>
 
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between">
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
@@ -320,75 +335,92 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
                 <span className="truncate">Total Calls</span>
               </span>
               <p className="text-xs font-bold text-indigo-600 mt-0.5">
-                {lead.followUpCount || trackers.length} {lead.followUpCount === 1 ? 'Call' : 'Calls'}
+                {lead.followUpCount || trackers.length} {(lead.followUpCount || trackers.length) === 1 ? 'Call' : 'Calls'}
               </p>
             </div>
 
-            {latestCustomerStatus && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                  <Thermometer size={11} className="text-gray-400 shrink-0" />
-                  <span className="truncate">Customer Status</span>
-                </span>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <Thermometer size={11} className="text-gray-400 shrink-0" />
+                <span className="truncate">Customer Status</span>
+              </span>
+              {latestCustomerStatus ? (
                 <span className={`self-start mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${CUSTOMER_STATUS_STYLES[latestCustomerStatus] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                   {latestCustomerStatus}
                 </span>
-              </div>
-            )}
+              ) : (
+                <p className="text-xs font-medium text-gray-400 mt-0.5">-</p>
+              )}
+            </div>
 
-            {lead.callerAssigned && (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                  <UserCheck size={11} className="text-gray-400 shrink-0" />
-                  <span className="truncate">Assigned To</span>
-                </span>
-                <p className="text-xs font-bold text-gray-800 mt-0.5 truncate" title={lead.callerAssigned}>
-                  {lead.callerAssigned}
-                </p>
-              </div>
-            )}
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between col-span-2 sm:col-span-1">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <UserCheck size={11} className="text-gray-400 shrink-0" />
+                <span className="truncate">Assigned To</span>
+              </span>
+              <p className="text-xs font-bold text-gray-800 mt-0.5 truncate" title={lead.callerAssigned || 'Unassigned'}>
+                {lead.callerAssigned || <span className="text-gray-400 font-normal italic">Unassigned</span>}
+              </p>
+            </div>
           </div>
 
-          {/* Customer Details Grid (ONLY fields with values, single row on desktop) */}
-          {fields.length > 0 && (
-            <div className="border border-gray-200 rounded-lg p-3 bg-slate-50/50 space-y-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
-                <span>Customer Information</span>
-                <span className="text-gray-400 font-normal">({fields.length} fields)</span>
-              </div>
-              <div className={`grid grid-cols-1 sm:grid-cols-2 ${desktopGridClass} gap-2`}>
-                {fields.map((col, cIdx) => {
-                  const Icon = col.icon;
-                  return (
-                    <div
-                      key={cIdx}
-                      className={`bg-white border border-gray-200 rounded p-2 shadow-2xs flex flex-col justify-between transition-colors hover:border-indigo-200 ${
-                        col.isLong ? 'col-span-1 sm:col-span-2 md:col-span-1' : 'col-span-1'
-                      }`}
-                    >
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                        {Icon && <Icon size={11} className="text-gray-400 shrink-0" />}
-                        <span className="truncate" title={col.label}>{col.label}</span>
-                      </div>
-                      <div className="text-xs font-medium text-gray-800 break-words leading-snug" title={typeof col.value === 'string' ? col.value : undefined}>
-                        {col.isPhone ? (
-                          <a href={`tel:${col.value}`} className="text-indigo-600 hover:underline font-semibold">
-                            {col.value}
-                          </a>
-                        ) : col.isEmail ? (
-                          <a href={`mailto:${col.value}`} className="text-indigo-600 hover:underline break-all">
-                            {col.value}
-                          </a>
-                        ) : (
-                          col.value
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+          {/* Customer Details Grid (all columns corresponding to the front table) */}
+          <div className="border border-gray-200 rounded-lg p-3 bg-slate-50/50 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+              <span>Customer Information</span>
+              <span className="text-gray-400 font-normal">({fields.length} fields)</span>
             </div>
-          )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {fields.map((col, cIdx) => {
+                const Icon = col.icon;
+                const isPlaceholder = !col.value || col.value === '-' || col.value === 'null';
+                return (
+                  <div
+                    key={cIdx}
+                    className={`bg-white border border-gray-200 rounded p-2 shadow-2xs flex flex-col justify-between transition-colors hover:border-indigo-200 ${
+                      col.isLong ? 'col-span-1 sm:col-span-2 md:col-span-2' : 'col-span-1'
+                    }`}
+                  >
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-1">
+                      {Icon && <Icon size={11} className="text-gray-400 shrink-0" />}
+                      <span className="truncate" title={col.label}>{col.label}</span>
+                    </div>
+                    <div className="text-xs font-medium text-gray-800 break-words leading-snug" title={typeof col.value === 'string' ? col.value : undefined}>
+                      {col.isPhone && !isPlaceholder ? (
+                        <div className="flex items-center justify-between gap-1">
+                          <a href={`tel:${col.value}`} className="text-indigo-600 hover:underline font-semibold truncate">
+                            {col.value}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const cleanPhone = String(col.value).replace(/[^0-9+]/g, '');
+                              const phoneWithCountry = cleanPhone.startsWith('91') || cleanPhone.startsWith('+') ? cleanPhone.replace('+', '') : `91${cleanPhone}`;
+                              const message = encodeURIComponent(`Hello ${lead.personName || lead.customerName || 'Customer'}, greeting from Sarvodaya Infracon regarding your inquiry for ${lead.leadType || 'our services'}.`);
+                              window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, '_blank');
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 transition inline-flex items-center gap-0.5 shrink-0"
+                            title="Chat on WhatsApp"
+                          >
+                            <MessageSquare size={10} />
+                            <span>WA</span>
+                          </button>
+                        </div>
+                      ) : col.isEmail && !isPlaceholder ? (
+                        <a href={`mailto:${col.value}`} className="text-indigo-600 hover:underline break-all">
+                          {col.value}
+                        </a>
+                      ) : isPlaceholder ? (
+                        <span className="text-gray-400 font-normal italic">-</span>
+                      ) : (
+                        col.value
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
           {/* All Call Records / History Table */}
           <div className="space-y-1.5">
@@ -417,7 +449,8 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
                       <th className="px-2.5 py-1.5 min-w-[160px]">What did Customer Said</th>
                       <th className="px-2.5 py-1.5 text-center w-24 whitespace-nowrap">Next Call</th>
                       <th className="px-2.5 py-1.5 text-center w-28 whitespace-nowrap">Caller</th>
-                      <th className="px-2.5 py-1.5 min-w-[200px]">Admin Remark</th>
+                      <th className="px-2.5 py-1.5 min-w-[180px]">Admin Remark</th>
+                      <th className="px-2.5 py-1.5 min-w-[180px]">User Remark</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -506,6 +539,22 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
                                 </button>
                               )}
                             </div>
+                          )}
+                        </td>
+                        <td className="px-2.5 py-1.5 align-top">
+                          {t.userRemark || (idx === trackers.length - 1 && lead.userRemark ? lead.userRemark : '') ? (
+                            <div className="min-w-0">
+                              <p className="text-gray-800 leading-snug whitespace-pre-wrap break-words">
+                                {t.userRemark || (idx === trackers.length - 1 && lead.userRemark ? lead.userRemark : '')}
+                              </p>
+                              {(t.userRemarkDate || (idx === trackers.length - 1 && lead.userRemarkDate ? lead.userRemarkDate : null)) && (
+                                <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                                  <Clock size={9} /> {formatDateTime(t.userRemarkDate || lead.userRemarkDate)}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-300">-</span>
                           )}
                         </td>
                       </tr>

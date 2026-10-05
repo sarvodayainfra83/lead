@@ -25,15 +25,15 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-2xl max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100/80 ring-1 ring-black/5 w-full max-w-2xl max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex-shrink-0 px-5 py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="text-sm sm:text-base font-bold tracking-tight text-white bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/20 font-mono">
+        <div className="flex-shrink-0 px-4 sm:px-5 py-2.5 sm:py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs sm:text-base font-bold tracking-tight text-white bg-white/10 px-2 py-0.5 rounded-lg border border-white/20 font-mono">
               {lead.leadNo || 'Lead'}
             </span>
-            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getLeadTypeBadgeClass(lead.leadType)}`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold ${getLeadTypeBadgeClass(lead.leadType)}`}>
               {lead.leadType || 'Real Estate'}
             </span>
             <span className="hidden sm:inline-block text-xs text-gray-300 font-medium truncate max-w-[200px]">
@@ -50,7 +50,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
         </div>
 
         {/* Client & Visit Overview Bar */}
-        <div className="flex-shrink-0 p-4 bg-slate-50 border-b border-gray-200 text-xs">
+        <div className="flex-shrink-0 p-3 sm:p-4 bg-slate-50 border-b border-gray-200 text-xs">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">Customer</span>
@@ -146,12 +146,17 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                       key={fu.id || idx}
                       className="bg-white rounded-xl border border-gray-200/90 shadow-2xs p-3.5 space-y-2 hover:border-gray-300 transition"
                     >
-                      {/* Top Row: #, Status, Date */}
-                      <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
-                        <div className="flex items-center gap-2">
+                      {/* Top Row: #, Status, Type Badges, Date */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-bold text-gray-900 text-xs">
                             Follow-Up #{fu.followUpNo || idx + 1}
                           </span>
+                          {(fu.parentId || fu.parent_id) && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600 border border-slate-200" title={`Parent Follow-up ID: ${fu.parentId || fu.parent_id}`}>
+                              ↳ Followup Call
+                            </span>
+                          )}
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusCfg.badge}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
                             {fu.status}
@@ -159,6 +164,18 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                           {(fu.customerStatus || fu.customer_status || fu.interestLevel) && (
                             <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${CUSTOMER_STATUS_STYLES[fu.customerStatus || fu.customer_status || fu.interestLevel] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                               {fu.customerStatus || fu.customer_status || fu.interestLevel}
+                            </span>
+                          )}
+
+                          {/* Site Visited & Meeting Checkbox Badges */}
+                          {fu.visitMeet?.['site-visit'] && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <CheckCircle size={10} /> Site Visited
+                            </span>
+                          )}
+                          {fu.visitMeet?.meeting && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                              <CheckCircle size={10} /> Meeting
                             </span>
                           )}
                         </div>

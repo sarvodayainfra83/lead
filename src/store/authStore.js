@@ -38,6 +38,7 @@ const isSameUser = (a, b) => {
     a.leadType === b.leadType &&
     a.number === b.number &&
     a.gmail === b.gmail &&
+    (a.avatarUrl || a.avatar_url || '') === (b.avatarUrl || b.avatar_url || '') &&
     JSON.stringify(a.accessPages || {}) === JSON.stringify(b.accessPages || {})
   );
 };
@@ -60,6 +61,12 @@ const useAuthStore = create((set, get) => ({
     const { password, ...safe } = userData || {};
     localStorage.setItem(SESSION_KEY, JSON.stringify({ id: safe.id }));
     set({ user: safe, isAuthenticated: true, checking: false });
+  },
+
+  updateUser: (updatedData) => {
+    const current = get().user || {};
+    const merged = { ...current, ...updatedData };
+    set({ user: merged });
   },
 
   logout: () => {

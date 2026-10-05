@@ -302,53 +302,155 @@ export const masterApi = {
     deleteLocalCaller(id);
   },
 
-  // --- VISITOR NAMES (Queried from users table with position = 'Visitor') ---
+  // --- VISITOR NAMES (Queried from users table with position = 'Visitor' with multi-tier fallback) ---
   async getVisitors() {
     if (!isSupabaseConfigured) return getLocalVisitors();
-    const { data, error } = await supabase
-      .from('users')
-      .select('*, master_lead_types!lead_type_id(id, lead_type)')
-      .ilike('position', '%Visitor%')
-      .order('name', { ascending: true });
 
-    if (error) {
-      console.warn('Error fetching visitors from users table:', error.message);
-      return getLocalVisitors();
+    let leadTypeMap = {};
+    try {
+      const { data: ltData } = await supabase.from('master_lead_types').select('id, lead_type');
+      if (ltData) ltData.forEach(t => { leadTypeMap[t.id] = t.lead_type; });
+    } catch (e) {}
+
+    // 1. Try querying users table where position ILIKE '%Visitor%'
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .ilike('position', '%Visitor%')
+        .order('name', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        return data.map((d, idx) => ({
+          id: d.id,
+          userId: d.username,
+          serialNo: idx + 1,
+          leadTypeId: d.lead_type_id,
+          leadType: (d.lead_type_id && leadTypeMap[d.lead_type_id]) || d.lead_type || '',
+          personName: d.name
+        }));
+      }
+    } catch (err) {
+      console.warn('Error querying users with position=Visitor:', err);
     }
-    return data.map((d, idx) => ({
-      id: d.id,
-      userId: d.username,
-      serialNo: idx + 1,
-      leadTypeId: d.lead_type_id,
-      leadType: d.master_lead_types?.lead_type || '',
-      personName: d.name
-    }));
+
+    // 2. Fallback: Query all users from users table
+    try {
+      const { data: allUsers, error: usersErr } = await supabase
+        .from('users')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (!usersErr && allUsers && allUsers.length > 0) {
+        return allUsers.map((d, idx) => ({
+          id: d.id,
+          userId: d.username,
+          serialNo: idx + 1,
+          leadTypeId: d.lead_type_id,
+          leadType: (d.lead_type_id && leadTypeMap[d.lead_type_id]) || d.lead_type || '',
+          personName: d.name
+        }));
+      }
+    } catch (err) {
+      console.warn('Error querying all users as visitor fallback:', err);
+    }
+
+    // 3. Fallback: Query distinct assigned visitors from assigned_visitors table
+    try {
+      const { data: avData, error: avErr } = await supabase
+        .from('assigned_visitors')
+        .select('visitor_name, visitor_id')
+        .not('visitor_name', 'is', null);
+
+      if (!avErr && avData && avData.length > 0) {
+        const unique = [];
+        const seen = new Set();
+        avData.forEach(r => {
+          const name = (r.visitor_name || '').trim();
+          if (name && !seen.has(name.toLowerCase())) {
+            seen.add(name.toLowerCase());
+            unique.push({
+              id: r.visitor_id || `av-${unique.length + 1}`,
+              serialNo: unique.length + 1,
+              personName: name,
+              leadType: ''
+            });
+          }
+        });
+        if (unique.length > 0) return unique;
+      }
+    } catch (err) {}
+
+    // 4. Final fallback to local storage
+    return getLocalVisitors();
   },
 
   async saveVisitor(visitorObj) {
     let leadTypeId = visitorObj.leadTypeId;
     if (!leadTypeId && visitorObj.leadType && isSupabaseConfigured) {
-      const { data: typeRow } = await supabase.from('master_lead_types').select('id').eq('lead_type', visitorObj.leadType).maybeSingle();
-      if (typeRow) leadTypeId = typeRow.id;
+      try {
+        const { data: typeRow } = await supabase.from('master_lead_types').select('id').eq('lead_type', visitorObj.leadType).maybeSingle();
+        if (typeRow) leadTypeId = typeRow.id;
+      } catch (e) {}
     }
 
     if (!isSupabaseConfigured) {
       return visitorObj.id ? updateLocalVisitor(visitorObj.id, visitorObj) : saveLocalVisitor(visitorObj);
     }
 
-    // Update user's position to Visitor
+    const cleanName = (visitorObj.personName || visitorObj.name || '').trim();
+
+    // If ID exists, update the user in Supabase
     if (visitorObj.id) {
-      await supabase
-        .from('users')
-        .update({ position: 'Visitor', lead_type_id: leadTypeId })
-        .eq('id', visitorObj.id);
+      try {
+        await supabase
+          .from('users')
+          .update({ position: 'Visitor', lead_type_id: leadTypeId })
+          .eq('id', visitorObj.id);
+      } catch (err) {
+        console.warn('Could not update user by id:', err);
+      }
+    } else {
+      // New visitor: check if user exists with matching name
+      try {
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .ilike('name', cleanName)
+          .maybeSingle();
+
+        if (existingUser?.id) {
+          await supabase
+            .from('users')
+            .update({ position: 'Visitor', lead_type_id: leadTypeId })
+            .eq('id', existingUser.id);
+        } else {
+          const username = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + Math.floor(1000 + Math.random() * 9000);
+          await supabase
+            .from('users')
+            .insert({
+              username,
+              name: cleanName,
+              password: 'user123',
+              role: 'USER',
+              position: 'Visitor',
+              lead_type_id: leadTypeId
+            });
+        }
+      } catch (err) {
+        console.warn('Could not create/update user for visitor:', err);
+      }
     }
+
+    saveLocalVisitor(visitorObj);
     return { ...visitorObj, leadTypeId };
   },
 
   async deleteVisitor(id) {
     if (!isSupabaseConfigured) return deleteLocalVisitor(id);
-    await supabase.from('users').update({ position: null }).eq('id', id);
+    try {
+      await supabase.from('users').update({ position: null }).eq('id', id);
+    } catch (e) {}
     deleteLocalVisitor(id);
   },
 

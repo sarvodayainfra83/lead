@@ -19,6 +19,7 @@ const SearchableDropdown = ({
   onAdd,
   placeholder = "Select option...",
   className = "",
+  triggerClassName = "",
   height = "h-[30px] md:h-[34px]",
   searchable = true,
   icon: Icon = null
@@ -209,17 +210,17 @@ const SearchableDropdown = ({
       <button
         type="button"
         onClick={handleToggle}
-        className={`w-full bg-white border border-gray-300 rounded px-2 py-1 flex justify-between items-center cursor-pointer hover:border-indigo-500 transition-all ${height} shadow-sm group outline-none focus:ring-1 focus:ring-indigo-500/30 active:scale-[0.98]`}
+        className={triggerClassName ? `${triggerClassName} ${height}` : `w-full bg-white border border-gray-300 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer hover:border-indigo-500 transition-all ${height} shadow-xs group outline-none focus:ring-1 focus:ring-indigo-500/30 active:scale-[0.98]`}
       >
         <span className="flex items-center gap-1.5 min-w-0">
-          {Icon && <Icon size={13} className="text-gray-400 group-hover:text-indigo-500 shrink-0" />}
-          <span className={`text-[11px] md:text-[13px] truncate ${selectedOption || value ? 'text-gray-900' : 'text-gray-400'}`}>
+          {Icon && <Icon size={13} className={`${triggerClassName ? 'text-white' : 'text-gray-400 group-hover:text-indigo-500'} shrink-0`} />}
+          <span className={`text-[11px] md:text-[13px] truncate ${triggerClassName ? 'text-white font-bold' : (selectedOption || value ? 'text-gray-900' : 'text-gray-400')}`}>
             {selectedOption ? selectedOption.label : (value || placeholder)}
           </span>
         </span>
         <ChevronDown
           size={14}
-          className={`text-gray-400 transition-transform duration-200 group-hover:text-indigo-500 shrink-0 ml-1.5 ${isOpen ? 'rotate-180' : ''}`}
+          className={`${triggerClassName ? 'text-white' : 'text-gray-400 group-hover:text-indigo-500'} transition-transform duration-200 shrink-0 ml-1.5 ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
 

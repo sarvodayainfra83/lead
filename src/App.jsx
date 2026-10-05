@@ -15,6 +15,7 @@ import Attendance from './pages/Attendance/Attendance';
 import AttendanceReport from './pages/AttendanceReport/AttendanceReport';
 import Products from './pages/Products/Products';
 import MISReport from './pages/MISReport/MISReport';
+import NonInterested from './pages/NonInterested/NonInterested';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import AccessGuard from './components/AccessGuard';
@@ -60,6 +61,7 @@ function App() {
             <Route path="assign-visitor" element={<Navigate to="/site-visit-meeting" replace />} />
             <Route path="visitor-follow-up" element={<Navigate to="/site-visit-meeting" replace />} />
             <Route path="customer-master" element={<AccessGuard pageKey="customerMaster"><Customermaster /></AccessGuard>} />
+            <Route path="non-interested" element={<AccessGuard pageKey="nonInterested"><NonInterested /></AccessGuard>} />
             <Route path="products" element={<AccessGuard pageKey="products"><Products /></AccessGuard>} />
             <Route path="caller-report" element={<AccessGuard pageKey="callerReport"><CallerReport /></AccessGuard>} />
             <Route path="attendance" element={<AccessGuard pageKey="attendance"><Attendance /></AccessGuard>} />

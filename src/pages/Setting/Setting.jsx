@@ -17,6 +17,7 @@ const APP_PAGES = [
   { key: 'callTracker', label: 'Call Followup' },
   { key: 'siteVisitMeeting', label: 'Site Visit / Meeting' },
   { key: 'customerMaster', label: 'Customer Master' },
+  { key: 'nonInterested', label: 'Non-interested' },
   { key: 'products', label: 'Products' },
   // { key: 'callerReport', label: 'Caller Report' },
   { key: 'misReport', label: 'MIS Report' },
@@ -355,7 +356,23 @@ export default function Setting({ setHeaderAction }) {
         </td>
       )}
       <td className="px-4 py-2.5 text-center text-[13px] text-indigo-600 font-bold whitespace-nowrap">{serialLabel(row)}</td>
-      <td className="px-4 py-2.5 text-center text-[13px] font-medium text-gray-900 whitespace-nowrap">{row.name}</td>
+      <td className="px-4 py-2.5 text-center text-[13px] font-medium text-gray-900 whitespace-nowrap">
+        <div className="flex items-center justify-center gap-2">
+          {row.avatarUrl || row.avatar_url ? (
+            <img
+              src={row.avatarUrl || row.avatar_url}
+              alt={row.name}
+              className="w-6 h-6 rounded-full object-cover border border-indigo-200 flex-shrink-0"
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          ) : (
+            <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-bold border border-indigo-100 flex-shrink-0">
+              {String(row.name || '?').charAt(0).toUpperCase()}
+            </div>
+          )}
+          <span>{row.name}</span>
+        </div>
+      </td>
       <td className="px-4 py-2.5 text-center text-[13px] whitespace-nowrap">
         {row.position ? (
           <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase border ${getPositionBadgeClass(row.position)}`}>
@@ -416,9 +433,18 @@ export default function Setting({ setHeaderAction }) {
     <div key={row.id} className="bg-white rounded-xl border border-gray-200 shadow-xs p-3 space-y-2.5">
       <div className="flex justify-between items-start gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold flex items-center justify-center flex-shrink-0">
-            {String(row.name || '?').trim().charAt(0).toUpperCase()}
-          </span>
+          {row.avatarUrl || row.avatar_url ? (
+            <img
+              src={row.avatarUrl || row.avatar_url}
+              alt={row.name}
+              className="w-9 h-9 rounded-full object-cover border border-indigo-200 flex-shrink-0"
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          ) : (
+            <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold flex items-center justify-center flex-shrink-0">
+              {String(row.name || '?').trim().charAt(0).toUpperCase()}
+            </span>
+          )}
           <div className="min-w-0">
             <h4 className="text-sm font-semibold text-gray-900 truncate">{row.name}</h4>
             <p className="text-[11px] text-indigo-500 font-medium">{serialLabel(row)}</p>

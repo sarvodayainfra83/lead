@@ -48,6 +48,11 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     referenceNo: ''
   });
 
+  const [visitMeet, setVisitMeet] = useState({
+    'site-visit': false,
+    meeting: false
+  });
+
   const [leadTypes, setLeadTypes] = useState([]);
 
   useEffect(() => {
@@ -98,6 +103,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
       const initialClosingAmount = lead.latestFollowUp?.closingAmount || lead.closingAmount || lead.investmentBudget || '';
       const initialSalesExecutive = lead.latestFollowUp?.salesExecutive || lead.salesExecutive || lead.assignedVisitor || '';
       const initialRef = lead.latestFollowUp?.referenceNo || lead.referenceNo || '';
+      const initialVisitMeet = lead.visitMeet || lead.latestFollowUp?.visitMeet || lead.visit_meet || lead.latestFollowUp?.visit_meet || {};
 
       setFormData({
         status: initialStatus,
@@ -108,6 +114,10 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         closingAmount: initialClosingAmount,
         salesExecutive: initialSalesExecutive,
         referenceNo: initialRef
+      });
+      setVisitMeet({
+        'site-visit': Boolean(initialVisitMeet['site-visit'] ?? initialVisitMeet.siteVisit ?? initialVisitMeet.site_visit),
+        meeting: Boolean(initialVisitMeet.meeting)
       });
       setShowManualDealDetails(Boolean(initialDealOutcome && initialDealOutcome !== 'Rejected (Lost)'));
     }
@@ -213,14 +223,20 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     try {
       const followUpCount = (lead.followUps?.length || 0) + 1;
       const isCloseDeal = isDealSectionVisible && formData.status !== 'Not Interested';
+      const previousFollowUp = lead.latestFollowUp || (lead.followUps?.length > 0 ? lead.followUps[lead.followUps.length - 1] : null);
+      const parentId = (previousFollowUp?.id && siteVisitMeetingApi.isUuid(previousFollowUp.id)) ? previousFollowUp.id : null;
 
       const entry = {
         leadId: lead.leadId || lead.id,
         leadNo: lead.leadNo,
+        parentId,
+        parent_id: parentId,
         assignedVisitorId: lead.assignedVisitorId || null,
         visitorName: lead.assignedVisitor || '',
         visitorId: lead.visitorId || null,
         visitDate: lead.visitDate || formatInputDate(new Date()),
+        visitMeet,
+        visit_meet: visitMeet,
         status: formData.status,
         customerStatus: formData.customerStatus || 'Warm',
         customer_status: formData.customerStatus || 'Warm',
@@ -252,18 +268,18 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 w-full max-w-xl max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100/80 ring-1 ring-black/5 w-full max-w-xl max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex-shrink-0 px-5 py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="text-sm font-bold tracking-tight text-white bg-white/10 px-2.5 py-0.5 rounded-lg border border-white/20 font-mono">
+        <div className="flex-shrink-0 px-4 sm:px-5 py-2.5 sm:py-3 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xs sm:text-sm font-bold tracking-tight text-white bg-white/10 px-2 py-0.5 rounded-lg border border-white/20 font-mono">
               {lead.leadNo || 'Lead'}
             </span>
-            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getLeadTypeBadgeClass(lead.leadType)}`}>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold ${getLeadTypeBadgeClass(lead.leadType)}`}>
               {lead.leadType || 'Real Estate'}
             </span>
-            <span className="text-sm font-bold text-white">
+            <span className="text-xs sm:text-sm font-bold text-white truncate">
               Log Visit Follow-Up
             </span>
           </div>
@@ -276,7 +292,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         </div>
 
         {/* Lead Context Summary */}
-        <div className="flex-shrink-0 px-5 py-3 bg-slate-50 border-b border-gray-200 text-xs flex flex-wrap gap-x-5 gap-y-1 text-gray-600">
+        <div className="flex-shrink-0 px-3.5 sm:px-5 py-2 sm:py-2.5 bg-slate-50 border-b border-gray-200 text-xs flex flex-wrap gap-x-4 sm:gap-x-5 gap-y-1 text-gray-600">
           <div>
             <span className="text-gray-400">Customer:</span>{' '}
             <span className="font-bold text-gray-900">{lead.customerName || lead.personName || '-'}</span>
@@ -297,11 +313,11 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
-          {/* Outcome Status & Interest Level */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3 sm:space-y-3.5 text-xs">
+          {/* Outcome Status & Interest Level (2-column on mobile) */}
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
             <div>
-              <label className="block font-semibold text-gray-700 mb-1">
+              <label className="block font-semibold text-gray-700 mb-1 text-[11px] sm:text-xs">
                 Visit Outcome Status <span className="text-red-500">*</span>
               </label>
               <SearchableDropdown
@@ -313,8 +329,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
             </div>
 
             <div>
-              <label className="block font-semibold text-gray-700 mb-1">
-                Customer Status <span className="text-gray-400 font-normal">(HOT / Warm / Cold)</span>
+              <label className="block font-semibold text-gray-700 mb-1 text-[11px] sm:text-xs truncate">
+                Customer Status <span className="text-gray-400 font-normal hidden sm:inline">(HOT / Warm / Cold)</span>
               </label>
               <SearchableDropdown
                 options={CUSTOMER_STATUS_OPTIONS}
@@ -325,14 +341,37 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
             </div>
           </div>
 
+          {/* Activity Type: Site Visited & Meeting Checkboxes */}
+          <div className="flex items-center gap-3 sm:gap-4 bg-slate-50 border border-slate-200 rounded-lg p-2 sm:p-2.5">
+            <span className="font-semibold text-gray-700 text-[11px] sm:text-xs">Activity:</span>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-gray-700 select-none">
+              <input
+                type="checkbox"
+                checked={Boolean(visitMeet['site-visit'])}
+                onChange={(e) => setVisitMeet(prev => ({ ...prev, 'site-visit': e.target.checked }))}
+                className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+              />
+              <span>Site Visited</span>
+            </label>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-gray-700 select-none">
+              <input
+                type="checkbox"
+                checked={Boolean(visitMeet.meeting)}
+                onChange={(e) => setVisitMeet(prev => ({ ...prev, meeting: e.target.checked }))}
+                className="rounded text-violet-600 focus:ring-violet-500 w-4 h-4 cursor-pointer"
+              />
+              <span>Meeting</span>
+            </label>
+          </div>
+
           {/* Conditional Next Visit Schedule (only when Future Plan or Did Not Show) */}
           {(formData.status === 'Future Plan' || formData.status === 'Did Not Show') && (
-            <div className="p-3.5 bg-purple-50/60 rounded-xl border border-purple-200 space-y-2">
+            <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 space-y-2">
               <h4 className="font-bold text-purple-800 text-xs flex items-center gap-1.5">
                 <Clock size={14} /> Next Visit / Follow-up Schedule
               </h4>
               <div>
-                <label className="block font-medium text-gray-700 mb-1">
+                <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
                   Next Scheduled Date <span className="text-red-500">*</span>
                 </label>
                 <div className="relative max-w-xs">
@@ -340,10 +379,10 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                     type="date"
                     value={formData.nextVisitDate}
                     onChange={(e) => handleChange('nextVisitDate', e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                    className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                     required
                   />
-                  <Calendar size={14} className="absolute left-3 top-2.5 text-gray-400 pointer-events-none" />
+                  <Calendar size={14} className="absolute left-3 top-2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
             </div>
@@ -351,7 +390,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
 
           {/* Deal Details (Brought back for Close Deal) */}
           {isDealSectionVisible && (
-            <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200/90 space-y-3 animate-in fade-in duration-150">
+            <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/90 space-y-2.5 animate-in fade-in duration-150">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-emerald-900 text-xs flex items-center gap-1.5">
                   <CheckCircle size={15} className="text-emerald-600" />
@@ -368,10 +407,10 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 {/* 1. Deal Outcome * */}
                 <div>
-                  <label className="block font-medium text-gray-700 mb-1">
+                  <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
                     Deal Outcome <span className="text-red-500">*</span>
                   </label>
                   <SearchableDropdown
@@ -384,33 +423,33 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
 
                 {/* 2. Closing Amount (₹) / Budget in Range */}
                 <div>
-                  <label className="block font-medium text-gray-700 mb-1">
+                  <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
                     Closing Amount (₹)
                   </label>
                   <SearchableDropdown
                     options={budgetRangeOptions}
                     value={formData.closingAmount}
                     onChange={(val) => handleChange('closingAmount', val)}
-                    placeholder="e.g. 50,00,000 or budget range"
+                    placeholder="e.g. 50,00,000"
                   />
                 </div>
 
-                {/* 3. Sales Executive (Filtered based on lead type & users) */}
+                {/* 3. Sales Executive */}
                 <div>
-                  <label className="block font-medium text-gray-700 mb-1">
+                  <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
                     Sales Executive
                   </label>
                   <SearchableDropdown
                     options={salesExecutiveOptions}
                     value={formData.salesExecutive}
                     onChange={(val) => handleChange('salesExecutive', val)}
-                    placeholder="Executive who closed/handled"
+                    placeholder="Executive"
                   />
                 </div>
 
                 {/* 4. Reference / Unit No */}
                 <div>
-                  <label className="block font-medium text-gray-700 mb-1">
+                  <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
                     Reference / Unit No
                   </label>
                   <input
@@ -418,7 +457,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                     value={formData.referenceNo}
                     onChange={(e) => handleChange('referenceNo', e.target.value)}
                     placeholder="e.g. Flat #302, Policy #..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                   />
                 </div>
               </div>
@@ -439,32 +478,32 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
 
           {/* What Happened / Feedback (Always Required) */}
           <div>
-            <label className="block font-semibold text-gray-700 mb-1">
+            <label className="block font-semibold text-gray-700 mb-1 text-[11px] sm:text-xs">
               What Happened / Customer Feedback <span className="text-red-500">*</span>
             </label>
             <textarea
-              rows={4}
+              rows={3}
               value={formData.whatHappened}
               onChange={(e) => handleChange('whatHappened', e.target.value)}
               placeholder="Enter customer feedback, points discussed, outcome details..."
-              className="w-full p-3 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+              className="w-full p-2.5 border border-gray-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
               required
             />
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-gray-100">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              className="px-3.5 py-1.5 text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
+              className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
             >
               <CheckCircle size={14} />
               {loading ? 'Saving...' : 'Save Follow-Up'}

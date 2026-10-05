@@ -78,9 +78,9 @@ export default function RemarkThreadModal({ isOpen, onClose, lead, isAdmin, onSa
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-3" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-5 md:p-6 animate-in fade-in duration-150" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md max-h-[calc(100dvh-1.5rem)] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100/80 ring-1 ring-black/5 w-full max-w-md max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

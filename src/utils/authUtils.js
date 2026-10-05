@@ -182,6 +182,10 @@ export const getPageAccess = (user, pageKey) => {
   } else if (pageKey === 'assignVisitor' || pageKey === 'visitorFollowUp') {
     // Old accounts stored one shared 'siteVisitMeeting' level for both visitor pages
     level = pages[pageKey] ?? pages.siteVisitMeeting;
+  } else if (pageKey === 'nonInterested') {
+    const niLevel = pages.nonInterested ?? pages.siteVisitMeeting ?? pages.callTracker;
+    if (niLevel === 'full' || niLevel === 'edit') return 'full';
+    return 'view'; // Show the Not-interested section to all user roles by default
   } else {
     level = pages[pageKey];
   }

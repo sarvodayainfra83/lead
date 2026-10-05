@@ -58,6 +58,8 @@ export const authApi = {
       name: data.name,
       number: data.number,
       gmail: data.gmail,
+      avatarUrl: data.avatar_url || data.profile_image || data.access_pages?.__avatar_url || '',
+      avatar_url: data.avatar_url || data.profile_image || data.access_pages?.__avatar_url || '',
       password: data.password,
       role: resolveUserRole(data.role, data.access_pages),
       position: data.position || '',
@@ -77,7 +79,12 @@ export const authApi = {
       const u = getLocalUsers().find(x => x.id?.toLowerCase() === cleanId.toLowerCase());
       if (!u) return null;
       const { password, ...rest } = u;
-      return { ...rest, accessPages: u.accessPages || {} };
+      return {
+        ...rest,
+        avatarUrl: u.avatarUrl || u.avatar_url || '',
+        avatar_url: u.avatarUrl || u.avatar_url || '',
+        accessPages: u.accessPages || {}
+      };
     }
 
     const { data, error } = await supabase
@@ -95,6 +102,8 @@ export const authApi = {
       name: data.name,
       number: data.number,
       gmail: data.gmail,
+      avatarUrl: data.avatar_url || data.profile_image || data.access_pages?.__avatar_url || '',
+      avatar_url: data.avatar_url || data.profile_image || data.access_pages?.__avatar_url || '',
       role: resolveUserRole(data.role, data.access_pages),
       position: data.position || '',
       leadTypeId: data.lead_type_id || null,
@@ -143,6 +152,8 @@ export const authApi = {
         name: u.name,
         number: u.number,
         gmail: u.gmail,
+        avatarUrl: u.avatar_url || u.profile_image || u.access_pages?.__avatar_url || '',
+        avatar_url: u.avatar_url || u.profile_image || u.access_pages?.__avatar_url || '',
         password: u.password,
         role: resolveUserRole(u.role, u.access_pages),
         position: u.position || '',
@@ -159,6 +170,8 @@ export const authApi = {
       name: u.name,
       number: u.number,
       gmail: u.gmail,
+      avatarUrl: u.avatar_url || u.profile_image || u.access_pages?.__avatar_url || '',
+      avatar_url: u.avatar_url || u.profile_image || u.access_pages?.__avatar_url || '',
       password: u.password,
       role: resolveUserRole(u.role, u.access_pages),
       position: u.position || '',
@@ -168,7 +181,217 @@ export const authApi = {
     }));
   },
 
-  // Save or update user
+  // Upload user profile avatar image to Supabase Storage 'avatars' bucket
+  async uploadAvatar(file, username) {
+    if (!file) return null;
+
+    if (!isSupabaseConfigured) {
+      if (typeof file === 'string') return file;
+      if (file instanceof File || file instanceof Blob) {
+        return new Promise((res) => {
+          const reader = new FileReader();
+          reader.onloadend = () => res(reader.result);
+          reader.readAsDataURL(file);
+        });
+      }
+      return null;
+    }
+
+    try {
+      let fileBlob = file;
+      let fileExt = 'jpg';
+      let contentType = file.type || 'image/jpeg';
+
+      if (typeof file === 'string' && file.startsWith('data:')) {
+        const arr = file.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) u8arr[n] = bstr.charCodeAt(n);
+        fileBlob = new Blob([u8arr], { type: mime });
+        contentType = mime;
+        fileExt = mime.split('/')[1] || 'jpg';
+      } else if (file.name) {
+        const parts = file.name.split('.');
+        if (parts.length > 1) fileExt = parts.pop().toLowerCase();
+      }
+
+      const cleanUser = String(username || 'user').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+      const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const fileName = `avatar_${cleanUser}_${uniqueSuffix}.${fileExt}`;
+      const filePath = `${cleanUser}/${fileName}`;
+
+      // Upload to 'avatars' bucket
+      let { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, fileBlob, {
+          contentType,
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      // Fallback: If 'avatars' bucket is missing or errors, try 'products' bucket as secondary fallback
+      if (uploadError) {
+        console.warn("Upload to 'avatars' bucket failed, attempting secondary storage fallback:", uploadError);
+        const fallbackRes = await supabase.storage
+          .from('products')
+          .upload(`avatars/${filePath}`, fileBlob, {
+            contentType,
+            cacheControl: '3600',
+            upsert: true
+          });
+
+        if (!fallbackRes.error) {
+          const { data: publicUrlData } = supabase.storage
+            .from('products')
+            .getPublicUrl(`avatars/${filePath}`);
+          if (publicUrlData?.publicUrl) return publicUrlData.publicUrl;
+        }
+
+        // If storage bucket fails completely, return inline base64 so user avatar still updates
+        if (file instanceof File || file instanceof Blob) {
+          return new Promise((res) => {
+            const reader = new FileReader();
+            reader.onloadend = () => res(reader.result);
+            reader.readAsDataURL(file);
+          });
+        }
+        if (typeof file === 'string') return file;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      return publicUrlData?.publicUrl || null;
+    } catch (err) {
+      console.error('Error uploading avatar:', err);
+      if (file instanceof File || file instanceof Blob) {
+        return new Promise((res) => {
+          const reader = new FileReader();
+          reader.onloadend = () => res(reader.result);
+          reader.readAsDataURL(file);
+        });
+      }
+      return typeof file === 'string' ? file : null;
+    }
+  },
+
+  // Update current user's profile (name, email, phone number, password, profile image)
+  async updateProfile(userIdCode, updates = {}) {
+    const cleanId = String(userIdCode || '').trim();
+    if (!cleanId) throw new Error('User ID is required');
+
+    let finalAvatarUrl = updates.avatarUrl !== undefined ? updates.avatarUrl : undefined;
+
+    // If an image file was provided, upload to Supabase avatars bucket first
+    if (updates.avatarFile) {
+      const uploaded = await this.uploadAvatar(updates.avatarFile, cleanId);
+      if (uploaded) finalAvatarUrl = uploaded;
+    }
+
+    if (!isSupabaseConfigured) {
+      const users = getLocalUsers();
+      const userIndex = users.findIndex(u => u.id?.toLowerCase() === cleanId.toLowerCase());
+      if (userIndex === -1) throw new Error('User not found');
+
+      const existing = users[userIndex];
+      const updated = {
+        ...existing,
+        name: updates.name !== undefined ? updates.name.trim() : existing.name,
+        gmail: updates.gmail !== undefined ? updates.gmail.trim() : existing.gmail,
+        number: updates.number !== undefined ? updates.number.trim() : existing.number,
+        avatarUrl: finalAvatarUrl !== undefined ? finalAvatarUrl : (existing.avatarUrl || ''),
+        avatar_url: finalAvatarUrl !== undefined ? finalAvatarUrl : (existing.avatar_url || '')
+      };
+
+      if (updates.password && updates.password.trim()) {
+        updated.password = updates.password.trim();
+      }
+
+      saveLocalUser(updated);
+      return updated;
+    }
+
+    // 1. Fetch current user from DB to preserve roles and access_pages
+    const { data: currentUser, error: fetchError } = await supabase
+      .from('users')
+      .select('*')
+      .ilike('username', cleanId)
+      .maybeSingle();
+
+    if (fetchError || !currentUser) {
+      throw new Error('User not found in database');
+    }
+
+    const accessPages = {
+      ...(currentUser.access_pages || {})
+    };
+
+    if (finalAvatarUrl !== undefined) {
+      accessPages.__avatar_url = finalAvatarUrl;
+    }
+
+    const payload = {
+      name: updates.name !== undefined ? updates.name.trim() : currentUser.name,
+      gmail: updates.gmail !== undefined ? updates.gmail.trim() : currentUser.gmail,
+      number: updates.number !== undefined ? updates.number.trim() : currentUser.number,
+      access_pages: accessPages,
+      updated_at: new Date().toISOString()
+    };
+
+    if (finalAvatarUrl !== undefined) {
+      payload.avatar_url = finalAvatarUrl;
+    }
+
+    if (updates.password && updates.password.trim()) {
+      payload.password = updates.password.trim();
+    }
+
+    let { data, error } = await supabase
+      .from('users')
+      .update(payload)
+      .eq('id', currentUser.id)
+      .select('*, master_lead_types!lead_type_id(id, lead_type)');
+
+    // Fallback if avatar_url column does not exist yet
+    if (error && (error.message?.includes('avatar_url') || error.code === 'PGRST204')) {
+      delete payload.avatar_url;
+      ({ data, error } = await supabase
+        .from('users')
+        .update(payload)
+        .eq('id', currentUser.id)
+        .select('*, master_lead_types!lead_type_id(id, lead_type)'));
+    }
+
+    if (error) {
+      console.error('Error updating user profile in Supabase:', error);
+      throw error;
+    }
+
+    const updatedRow = (data && data[0]) ? data[0] : currentUser;
+    const formattedUser = {
+      id: updatedRow.username,
+      dbId: updatedRow.id,
+      name: updatedRow.name,
+      number: updatedRow.number,
+      gmail: updatedRow.gmail,
+      avatarUrl: updatedRow.avatar_url || accessPages.__avatar_url || finalAvatarUrl || '',
+      avatar_url: updatedRow.avatar_url || accessPages.__avatar_url || finalAvatarUrl || '',
+      password: updatedRow.password,
+      role: resolveUserRole(updatedRow.role, updatedRow.access_pages),
+      position: updatedRow.position || '',
+      leadTypeId: updatedRow.lead_type_id || null,
+      leadType: updatedRow.lead_type || updatedRow.access_pages?.__assigned_lead_types || updatedRow.master_lead_types?.lead_type || '',
+      accessPages: updatedRow.access_pages || {}
+    };
+
+    saveLocalUser(formattedUser);
+    return formattedUser;
+  },
+
+  // Save or update user (Admin / Settings)
   async saveUser(userData) {
     if (!isSupabaseConfigured) {
       return saveLocalUser(userData);
@@ -178,6 +401,10 @@ export const authApi = {
       ...(userData.accessPages || {}),
       __assigned_lead_types: userData.leadType || ''
     };
+
+    if (userData.avatarUrl || userData.avatar_url) {
+      accessPages.__avatar_url = userData.avatarUrl || userData.avatar_url;
+    }
 
     if (userData.role === 'TESTER') {
       accessPages.__role = 'TESTER';
@@ -194,6 +421,7 @@ export const authApi = {
       position: userData.position || null,
       lead_type: userData.leadType || null,
       lead_type_id: userData.leadTypeId || null,
+      avatar_url: userData.avatarUrl || userData.avatar_url || null,
       access_pages: accessPages
     };
 
@@ -205,6 +433,14 @@ export const authApi = {
     // Fallback: If database has older users_role_check constraint rejecting 'TESTER', fallback to 'USER' in role column with __role in access_pages
     if (error && (error.message?.includes('users_role_check') || error.message?.includes('role') || error.code === '23514')) {
       payload.role = 'USER';
+      ({ data, error } = await supabase
+        .from('users')
+        .upsert(payload, { onConflict: 'username' })
+        .select());
+    }
+
+    if (error && (error.message?.includes('avatar_url') || error.code === 'PGRST204')) {
+      delete payload.avatar_url;
       ({ data, error } = await supabase
         .from('users')
         .upsert(payload, { onConflict: 'username' })

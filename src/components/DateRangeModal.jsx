@@ -44,9 +44,9 @@ export default function DateRangeModal({ isOpen, onClose, from, to, onApply, tit
   const invalid = !draftFrom || !draftTo || draftFrom > draftTo;
 
   return createPortal(
-    <div className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-3 animate-in fade-in duration-150" onClick={onClose}>
+    <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-5 md:p-6 animate-in fade-in duration-150" onClick={onClose}>
       <div
-        className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-150"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100/80 ring-1 ring-black/5 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
