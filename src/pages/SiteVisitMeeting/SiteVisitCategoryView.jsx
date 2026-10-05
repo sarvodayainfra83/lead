@@ -239,31 +239,10 @@ export default function SiteVisitCategoryView({
       list = list.filter(l => matchesUserVisitor(l, user));
     }
 
-    // Filter for Closed Deals only if button is active
+    // Filter for Closed Deals only if button is active (shows closed deals of any date)
     if (showClosedDealsOnly) {
       list = list.filter(isDealClosed);
-    }
-
-    // Search query filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter(l => (
-        (l.leadNo && String(l.leadNo).toLowerCase().includes(q)) ||
-        (l.customerName && String(l.customerName).toLowerCase().includes(q)) ||
-        (l.personName && String(l.personName).toLowerCase().includes(q)) ||
-        (l.customerNumber && String(l.customerNumber).includes(q)) ||
-        (l.number && String(l.number).includes(q)) ||
-        (l.assignedVisitor && String(l.assignedVisitor).toLowerCase().includes(q)) ||
-        (l.relationshipManager && String(l.relationshipManager).toLowerCase().includes(q)) ||
-        (l.location && String(l.location).toLowerCase().includes(q)) ||
-        (l.whatHappened && String(l.whatHappened).toLowerCase().includes(q)) ||
-        (l.visitorRemarks && String(l.visitorRemarks).toLowerCase().includes(q)) ||
-        (l.leadRemarks && String(l.leadRemarks).toLowerCase().includes(q))
-      ));
-    }
-
-    // Date filter
-    if (dateFilter && dateFilter !== 'all') {
+    } else if (dateFilter && dateFilter !== 'all') {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const yesterday = new Date(today);
@@ -304,6 +283,24 @@ export default function SiteVisitCategoryView({
         }
         return true;
       });
+    }
+
+    // Search query filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(l => (
+        (l.leadNo && String(l.leadNo).toLowerCase().includes(q)) ||
+        (l.customerName && String(l.customerName).toLowerCase().includes(q)) ||
+        (l.personName && String(l.personName).toLowerCase().includes(q)) ||
+        (l.customerNumber && String(l.customerNumber).includes(q)) ||
+        (l.number && String(l.number).includes(q)) ||
+        (l.assignedVisitor && String(l.assignedVisitor).toLowerCase().includes(q)) ||
+        (l.relationshipManager && String(l.relationshipManager).toLowerCase().includes(q)) ||
+        (l.location && String(l.location).toLowerCase().includes(q)) ||
+        (l.whatHappened && String(l.whatHappened).toLowerCase().includes(q)) ||
+        (l.visitorRemarks && String(l.visitorRemarks).toLowerCase().includes(q)) ||
+        (l.leadRemarks && String(l.leadRemarks).toLowerCase().includes(q))
+      ));
     }
 
     // Sorting: when All Dates (or general view), sort by Next Meeting Date in ascending order
@@ -938,6 +935,7 @@ export default function SiteVisitCategoryView({
                 value={dateFilter}
                 onChange={(val) => {
                   setDateFilter(val);
+                  setShowClosedDealsOnly(false);
                   if (val === 'custom' && !customDate) {
                     const now = new Date();
                     setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
@@ -965,7 +963,15 @@ export default function SiteVisitCategoryView({
           {/* Closed Deal Toggle Button */}
           <button
             onClick={() => {
-              setShowClosedDealsOnly(prev => !prev);
+              setShowClosedDealsOnly(prev => {
+                const nextVal = !prev;
+                if (nextVal) {
+                  setDateFilter('all');
+                } else {
+                  setDateFilter('today');
+                }
+                return nextVal;
+              });
               setCurrentPage(1);
             }}
             title={showClosedDealsOnly ? `Show all ${category} visits/deals` : `Show only closed deals for ${category}`}
@@ -1046,7 +1052,10 @@ export default function SiteVisitCategoryView({
             </div>
             {showClosedDealsOnly ? (
               <button
-                onClick={() => setShowClosedDealsOnly(false)}
+                onClick={() => {
+                  setShowClosedDealsOnly(false);
+                  setDateFilter('today');
+                }}
                 className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-emerald-100 transition cursor-pointer"
               >
                 Show All Visits / Deals
