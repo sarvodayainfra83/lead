@@ -41,7 +41,6 @@ export default function LeadCategoryView({
   const [callerFilter, setCallerFilter] = useState('');
   const [productTypeFilter, setProductTypeFilter] = useState('');
   const [requirementFilter, setRequirementFilter] = useState('');
-  const [showMobileFilters, setShowMobileFilters] = useState(Boolean(initialDateFilter));
   const viewMode = 'auto'; // Table on desktop, cards on mobile (same as Call Tracker)
 
   // Pagination
@@ -877,24 +876,6 @@ export default function LeadCategoryView({
             )}
           </div>
 
-          {/* Filter Toggle Button */}
-          <button
-            onClick={() => setShowMobileFilters(!showMobileFilters)}
-            title={showMobileFilters ? "Hide Filter Options" : "Show Filter Options"}
-            className={`flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 ${showMobileFilters || activeFiltersCount > 0
-              ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-xs font-bold'
-              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-              }`}
-          >
-            <Filter size={13} />
-            <span className="hidden xs:inline sm:inline">Filter</span>
-            {activeFiltersCount > 0 && (
-              <span className="bg-indigo-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                {activeFiltersCount}
-              </span>
-            )}
-          </button>
-
           {/* Refresh */}
           <button
             onClick={onRefresh}
@@ -919,117 +900,115 @@ export default function LeadCategoryView({
         </div>
       </div>
 
-      {/* Collapsible Filter Bar (revealed only when Filter button is clicked) */}
-      {showMobileFilters && (
-        <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
-            Filter Options:
-          </span>
+      {/* Filter Options Bar (Always Visible) */}
+      <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
+          Filter Options:
+        </span>
 
-          {/* Caller Status Filter */}
-          <div className="w-[130px] lg:w-[150px]">
-            <select
-              value={callerStatusFilter}
-              onChange={(e) => { setCallerStatusFilter(e.target.value); setCurrentPage(1); }}
-              title="Status"
-              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-            >
-              <option value="all">All Leads</option>
-              <option value="unassigned">Unassigned (Pending)</option>
-              <option value="assigned">Caller Assigned</option>
-            </select>
-          </div>
-
-          {/* Date Filter */}
-          <div className="w-[130px] lg:w-[150px]">
-            <SearchableDropdown
-              options={DATE_FILTER_OPTIONS}
-              value={dateFilter}
-              onChange={(val) => {
-                setDateFilter(val);
-                if (val === 'custom' && !customDate) setCustomDate(getTodayStr());
-                setCurrentPage(1);
-              }}
-              placeholder="All Dates"
-              height="h-[30px]"
-            />
-          </div>
-
-          {/* Custom Date Input */}
-          {dateFilter === 'custom' && (
-            <input
-              type="date"
-              value={customDate}
-              onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
-              className="bg-white border border-gray-300 rounded px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium"
-            />
-          )}
-
-          {/* Product Type Filter */}
-          {distinctProductTypes.length > 0 && (
-            <div className="w-[130px] lg:w-[150px]">
-              <select
-                value={productTypeFilter}
-                onChange={(e) => { setProductTypeFilter(e.target.value); setCurrentPage(1); }}
-                title="Product Type"
-                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-              >
-                <option value="">All Products</option>
-                {distinctProductTypes.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Requirement Filter (Real Estate only) */}
-          {category === 'Real Estate' && distinctRequirements.length > 0 && (
-            <div className="w-[130px] lg:w-[150px]">
-              <select
-                value={requirementFilter}
-                onChange={(e) => { setRequirementFilter(e.target.value); setCurrentPage(1); }}
-                title="Requirement"
-                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-              >
-                <option value="">All Requirements</option>
-                {distinctRequirements.map(r => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Assigned Caller Filter */}
-          <div className="w-[130px] lg:w-[150px]">
-            <select
-              value={callerFilter}
-              onChange={(e) => { setCallerFilter(e.target.value); setCurrentPage(1); }}
-              title="Caller"
-              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-            >
-              <option value="">All Callers</option>
-              {callerOptions.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Lead Source Filter */}
-          <div className="w-[130px] lg:w-[150px]">
-            <select
-              value={leadSourceFilter}
-              onChange={(e) => { setLeadSourceFilter(e.target.value); setCurrentPage(1); }}
-              title="Source"
-              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-            >
-              <option value="">All Sources</option>
-              {LEAD_SOURCES.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </div>
+        {/* Caller Status Filter */}
+        <div className="w-[130px] lg:w-[150px]">
+          <select
+            value={callerStatusFilter}
+            onChange={(e) => { setCallerStatusFilter(e.target.value); setCurrentPage(1); }}
+            title="Status"
+            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+          >
+            <option value="all">All Leads</option>
+            <option value="unassigned">Unassigned (Pending)</option>
+            <option value="assigned">Caller Assigned</option>
+          </select>
         </div>
-      )}
+
+        {/* Date Filter */}
+        <div className="w-[130px] lg:w-[150px]">
+          <SearchableDropdown
+            options={DATE_FILTER_OPTIONS}
+            value={dateFilter}
+            onChange={(val) => {
+              setDateFilter(val);
+              if (val === 'custom' && !customDate) setCustomDate(getTodayStr());
+              setCurrentPage(1);
+            }}
+            placeholder="All Dates"
+            height="h-[30px]"
+          />
+        </div>
+
+        {/* Custom Date Input */}
+        {dateFilter === 'custom' && (
+          <input
+            type="date"
+            value={customDate}
+            onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
+            className="bg-white border border-gray-300 rounded px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium"
+          />
+        )}
+
+        {/* Product Type Filter */}
+        {distinctProductTypes.length > 0 && (
+          <div className="w-[130px] lg:w-[150px]">
+            <select
+              value={productTypeFilter}
+              onChange={(e) => { setProductTypeFilter(e.target.value); setCurrentPage(1); }}
+              title="Product Type"
+              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+            >
+              <option value="">All Products</option>
+              {distinctProductTypes.map(p => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Requirement Filter (Real Estate only) */}
+        {category === 'Real Estate' && distinctRequirements.length > 0 && (
+          <div className="w-[130px] lg:w-[150px]">
+            <select
+              value={requirementFilter}
+              onChange={(e) => { setRequirementFilter(e.target.value); setCurrentPage(1); }}
+              title="Requirement"
+              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+            >
+              <option value="">All Requirements</option>
+              {distinctRequirements.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Assigned Caller Filter */}
+        <div className="w-[130px] lg:w-[150px]">
+          <select
+            value={callerFilter}
+            onChange={(e) => { setCallerFilter(e.target.value); setCurrentPage(1); }}
+            title="Caller"
+            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+          >
+            <option value="">All Callers</option>
+            {callerOptions.map(c => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Lead Source Filter */}
+        <div className="w-[130px] lg:w-[150px]">
+          <select
+            value={leadSourceFilter}
+            onChange={(e) => { setLeadSourceFilter(e.target.value); setCurrentPage(1); }}
+            title="Source"
+            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+          >
+            <option value="">All Sources</option>
+            {LEAD_SOURCES.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* Batch Caller Assignment Floating Bar (smooth, light-themed, appears when leads are checked) */}
       {selectedIds.size > 0 && (

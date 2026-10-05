@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Info, Search, Filter, RotateCcw } from 'lucide-react';
+import { Info, Search, RotateCcw } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -18,7 +18,6 @@ import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 export default function HistoryLead() {
   const user = useAuthStore(state => state.user);
   const [leads, setLeads] = useState([]);
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const initialFilters = { searchQuery: '', leadType: '', leadSource: '', callerAssigned: '' };
   const [filters, setFilters] = useState({ ...initialFilters });
@@ -211,12 +210,6 @@ export default function HistoryLead() {
             />
           </div>
           <button
-            onClick={() => setShowMobileFilters(!showMobileFilters)}
-            className={`flex items-center justify-center rounded-lg shadow-sm h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-          >
-            <Filter size={14} />
-          </button>
-          <button
             onClick={handleClearFilters}
             className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg h-[32px] w-[32px] flex-shrink-0 shadow-sm active:scale-95"
             title="Clear Filters"
@@ -225,8 +218,8 @@ export default function HistoryLead() {
           </button>
         </div>
 
-        {/* Mobile Collapsible Filters */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:hidden grid-cols-2 gap-2 w-full`}>
+        {/* Mobile Filters (Always visible) */}
+        <div className="grid lg:hidden grid-cols-2 gap-2 w-full">
           <SearchableDropdown
             options={LEAD_TYPES.map(v => ({ value: v, label: v }))}
             value={filters.leadType}

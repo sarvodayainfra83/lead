@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Search, X, Filter, RotateCcw, RefreshCw, Users, Building2, ShieldCheck, TrendingUp } from 'lucide-react';
+import { Search, X, RotateCcw, RefreshCw, Users, Building2, ShieldCheck, TrendingUp } from 'lucide-react';
 import { customerMasterApi } from '../../api/customerMasterApi';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -39,7 +39,6 @@ export default function Customermaster() {
   // Tab / filter handed over from a Dashboard card, e.g. { tab: 'Insurance', customerStatus: 'Hot' }
   const navState = useLocation().state || {};
 
-  const [showFilters, setShowFilters] = useState(Boolean(navState.customerStatus));
   // Customer whose full record + complete call tracker report is open in the popup
   const [detailsCustomer, setDetailsCustomer] = useState(null);
 
@@ -302,25 +301,6 @@ export default function Customermaster() {
             )}
           </div>
 
-          {/* Filter Toggle Button */}
-          <button
-            onClick={() => setShowFilters(prev => !prev)}
-            title={showFilters ? 'Hide Filter Options' : 'Show Filter Options'}
-            className={`flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 ${
-              showFilters || activeFilterCount > 0
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-xs font-bold'
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <Filter size={13} />
-            <span className="hidden xs:inline sm:inline">Filter</span>
-            {activeFilterCount > 0 && (
-              <span className="bg-indigo-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
-
           {/* Refresh */}
           <button
             onClick={loadData}
@@ -345,56 +325,54 @@ export default function Customermaster() {
         </div>
       </div>
 
-      {/* Collapsible Filter Bar (revealed only when Filter button is clicked) */}
-      {showFilters && (
-        <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
-            Filter Options:
-          </span>
+      {/* Filter Bar (Always visible) */}
+      <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
+          Filter Options:
+        </span>
 
-          <div className="w-[130px] lg:w-[150px]">
-            <SearchableDropdown
-              options={CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v }))}
-              value={filters.customerStatus}
-              onChange={(val) => updateFilter('customerStatus', val)}
-              placeholder="Hot & Warm"
-              height="h-[30px]"
-            />
-          </div>
-
-          <div className="w-[130px] lg:w-[150px]">
-            <SearchableDropdown
-              options={LEAD_SOURCES.map(v => ({ value: v, label: v }))}
-              value={filters.leadSource}
-              onChange={(val) => updateFilter('leadSource', val)}
-              placeholder="All Lead Source"
-              height="h-[30px]"
-            />
-          </div>
-
-          <div className="w-[130px] lg:w-[150px]">
-            <SearchableDropdown
-              options={callerOptions}
-              value={filters.callerAssigned}
-              onChange={(val) => updateFilter('callerAssigned', val)}
-              placeholder="All Assigned Caller"
-              height="h-[30px]"
-            />
-          </div>
-
-          {activeFilterCount > 0 && (
-            <button
-              onClick={() => {
-                setFilters(prev => ({ ...prev, leadSource: '', callerAssigned: '', customerStatus: '' }));
-                setCurrentPage(1);
-              }}
-              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer"
-            >
-              Clear filters
-            </button>
-          )}
+        <div className="w-[130px] lg:w-[150px]">
+          <SearchableDropdown
+            options={CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v }))}
+            value={filters.customerStatus}
+            onChange={(val) => updateFilter('customerStatus', val)}
+            placeholder="Hot & Warm"
+            height="h-[30px]"
+          />
         </div>
-      )}
+
+        <div className="w-[130px] lg:w-[150px]">
+          <SearchableDropdown
+            options={LEAD_SOURCES.map(v => ({ value: v, label: v }))}
+            value={filters.leadSource}
+            onChange={(val) => updateFilter('leadSource', val)}
+            placeholder="All Lead Source"
+            height="h-[30px]"
+          />
+        </div>
+
+        <div className="w-[130px] lg:w-[150px]">
+          <SearchableDropdown
+            options={callerOptions}
+            value={filters.callerAssigned}
+            onChange={(val) => updateFilter('callerAssigned', val)}
+            placeholder="All Assigned Caller"
+            height="h-[30px]"
+          />
+        </div>
+
+        {activeFilterCount > 0 && (
+          <button
+            onClick={() => {
+              setFilters(prev => ({ ...prev, leadSource: '', callerAssigned: '', customerStatus: '' }));
+              setCurrentPage(1);
+            }}
+            className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
 
       {/* Main Full-Height Table View */}
       <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-2xs flex flex-col">

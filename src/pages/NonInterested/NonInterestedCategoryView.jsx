@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
-  Search, Filter, RotateCcw, RefreshCw, UserCheck, MessageSquare,
+  Search, RotateCcw, RefreshCw, UserCheck, MessageSquare,
   Phone, MapPin, Calendar, Eye, X, ChevronDown, ChevronUp,
   FileSpreadsheet, Mail, Briefcase, FileText, Clock, IndianRupee, Check, UserX
 } from 'lucide-react';
@@ -78,7 +78,6 @@ export default function NonInterestedCategoryView({
   const [customDate, setCustomDate] = useState('');
   const [visitorFilter, setVisitorFilter] = useState('all');
   const [customerStatusFilter, setCustomerStatusFilter] = useState('all');
-  const [showFilters, setShowFilters] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -150,21 +149,26 @@ export default function NonInterestedCategoryView({
       yesterday.setDate(yesterday.getDate() - 1);
 
       list = list.filter(item => {
-        const dObj = parseDateObj(item.meetingDate || item.visitDate || item.assignedAt || item.timestamp);
-        if (!dObj) return false;
-        const itemDate = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate());
+        const mObj = parseDateObj(item.meetingDate || item.visitDate);
+        const nextObj = parseDateObj(item.nextMeetingDate || item.nextVisitDate || item.nextCallDate || item.nextDate);
 
-        if (dateFilter === 'today') return itemDate.getTime() === today.getTime();
-        if (dateFilter === 'yesterday') return itemDate.getTime() === yesterday.getTime();
+        const mTime = mObj ? new Date(mObj.getFullYear(), mObj.getMonth(), mObj.getDate()).getTime() : null;
+        const nextTime = nextObj ? new Date(nextObj.getFullYear(), nextObj.getMonth(), nextObj.getDate()).getTime() : null;
+
+        const targetTime = nextTime || mTime;
+        if (!targetTime) return false;
+
+        if (dateFilter === 'today') return mTime === today.getTime() || nextTime === today.getTime();
+        if (dateFilter === 'yesterday') return mTime === yesterday.getTime() || nextTime === yesterday.getTime();
         if (dateFilter === 'overdue') {
-          return itemDate.getTime() < today.getTime();
+          return targetTime < today.getTime();
         }
-        if (dateFilter === 'upcoming') return itemDate.getTime() > today.getTime();
+        if (dateFilter === 'upcoming') return (nextTime && nextTime > today.getTime()) || (mTime && mTime > today.getTime());
         if (dateFilter === 'custom' && customDate) {
           const parts = customDate.split('-');
           if (parts.length === 3) {
-            const cDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-            return itemDate.getTime() === cDate.getTime();
+            const cDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
+            return mTime === cDate || nextTime === cDate;
           }
         }
         return true;
@@ -218,7 +222,7 @@ export default function NonInterestedCategoryView({
 
     const exportData = filteredLeads.map((item, idx) => ({
       'SR No': idx + 1,
-      'Meeting Date': formatDate(item.meetingDate || item.visitDate),
+      'Last Meeting Date': formatDate(item.meetingDate || item.visitDate),
       'Next Meeting Date': formatDate(item.nextMeetingDate || item.nextVisitDate),
       'Customer Name': item.customerName || item.personName || '-',
       'Status': item.status || 'Not Interested',
@@ -243,7 +247,7 @@ export default function NonInterestedCategoryView({
   // Table Headers
   const tableHeaders = [
     "Action",
-    "Meeting Date",
+    "Last Meeting Date",
     "Next Meeting Date",
     "Customer Name",
     ...(isAdmin ? ["Status"] : []),
@@ -313,7 +317,7 @@ export default function NonInterestedCategoryView({
           </div>
         </td>
 
-        {/* 1. Meeting Date */}
+        {/* 1. Last Meeting Date */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
           {(item.meetingDate || item.visitDate) ? (
             <span className="inline-flex items-center gap-1 text-gray-700 font-medium">
@@ -532,7 +536,7 @@ export default function NonInterestedCategoryView({
           </div>
         </div>
 
-        {/* Primary Row: Phone, Total Visits, Meeting Date, Next Meeting Date */}
+        {/* Primary Row: Phone, Total Visits, Last Meeting Date, Next Meeting Date */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Phone</span>
@@ -566,7 +570,7 @@ export default function NonInterestedCategoryView({
             <div>
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                 <Calendar size={10} className="text-gray-400" />
-                Meeting Date
+                Last Meeting Date
               </span>
               <span className="font-medium text-gray-700 mt-0.5 inline-block">{formatDate(item.meetingDate || item.visitDate)}</span>
             </div>
@@ -764,25 +768,6 @@ export default function NonInterestedCategoryView({
             </button>
           )}
 
-          {/* Single Filter Toggle Button */}
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            title={showFilters ? "Hide Filter Options" : "Show Filter Options"}
-            className={`flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 ${
-              showFilters || activeFiltersCount > 0
-                ? 'bg-rose-50 text-rose-700 border-rose-300 shadow-xs font-bold'
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            <Filter size={13} />
-            <span className="hidden xs:inline sm:inline">Filter</span>
-            {activeFiltersCount > 0 && (
-              <span className="bg-rose-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                {activeFiltersCount}
-              </span>
-            )}
-          </button>
-
           {/* Refresh */}
           <button
             onClick={onRefresh}
@@ -807,76 +792,74 @@ export default function NonInterestedCategoryView({
         </div>
       </div>
 
-      {/* Collapsible Filter Bar */}
-      {showFilters && (
-        <div className="p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-2 sm:gap-2.5 flex-wrap animate-in fade-in slide-in-from-top-1 duration-150 text-xs">
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">
-            Filter By:
-          </span>
+      {/* Filter Bar (Always visible) */}
+      <div className="p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-2 sm:gap-2.5 flex-wrap text-xs">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">
+          Filter By:
+        </span>
 
-          {/* Customer Status Filter */}
-          <div className="w-[130px] sm:w-[150px]">
+        {/* Customer Status Filter */}
+        <div className="w-[130px] sm:w-[150px]">
+          <select
+            value={customerStatusFilter}
+            onChange={(e) => { setCustomerStatusFilter(e.target.value); setCurrentPage(1); }}
+            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
+          >
+            <option value="all">All Customer Status</option>
+            <option value="Cold">Cold</option>
+            <option value="Warm">Warm</option>
+            <option value="Hot">Hot</option>
+          </select>
+        </div>
+
+        {/* Date Filter */}
+        <div className="w-[130px] sm:w-[150px]">
+          <select
+            value={dateFilter}
+            onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); }}
+            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
+          >
+            {DATE_FILTER_OPTIONS.map(d => (
+              <option key={d.value} value={d.value}>{d.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Custom Date Input */}
+        {dateFilter === 'custom' && (
+          <input
+            type="date"
+            value={customDate}
+            onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
+            className="bg-white border border-gray-300 rounded-md px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-rose-500"
+          />
+        )}
+
+        {/* Visitor Filter */}
+        {visitorOptions.length > 0 && (
+          <div className="w-[140px] sm:w-[170px]">
             <select
-              value={customerStatusFilter}
-              onChange={(e) => { setCustomerStatusFilter(e.target.value); setCurrentPage(1); }}
+              value={visitorFilter}
+              onChange={(e) => { setVisitorFilter(e.target.value); setCurrentPage(1); }}
               className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
             >
-              <option value="all">All Customer Status</option>
-              <option value="Cold">Cold</option>
-              <option value="Warm">Warm</option>
-              <option value="Hot">Hot</option>
-            </select>
-          </div>
-
-          {/* Date Filter */}
-          <div className="w-[130px] sm:w-[150px]">
-            <select
-              value={dateFilter}
-              onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
-            >
-              {DATE_FILTER_OPTIONS.map(d => (
-                <option key={d.value} value={d.value}>{d.label}</option>
+              {visitorOptions.map(v => (
+                <option key={v.value} value={v.value}>{v.label}</option>
               ))}
             </select>
           </div>
+        )}
 
-          {/* Custom Date Input */}
-          {dateFilter === 'custom' && (
-            <input
-              type="date"
-              value={customDate}
-              onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
-              className="bg-white border border-gray-300 rounded-md px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-rose-500"
-            />
-          )}
-
-          {/* Visitor Filter */}
-          {visitorOptions.length > 0 && (
-            <div className="w-[140px] sm:w-[170px]">
-              <select
-                value={visitorFilter}
-                onChange={(e) => { setVisitorFilter(e.target.value); setCurrentPage(1); }}
-                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
-              >
-                {visitorOptions.map(v => (
-                  <option key={v.value} value={v.value}>{v.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Quick Clear in filter bar */}
-          {activeFiltersCount > 0 && (
-            <button
-              onClick={handleClearFilters}
-              className="text-xs text-rose-600 hover:text-rose-800 font-bold underline ml-auto cursor-pointer"
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-      )}
+        {/* Quick Clear in filter bar */}
+        {activeFiltersCount > 0 && (
+          <button
+            onClick={handleClearFilters}
+            className="text-xs text-rose-600 hover:text-rose-800 font-bold underline ml-auto cursor-pointer"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
 
       {/* Main Full-Height Compact Table View */}
       <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-2xs flex flex-col">

@@ -177,6 +177,7 @@ export const nonInterestedApi = {
         meetingDate,
         nextMeetingDate,
         nextVisitDate: nextMeetingDate,
+        nextCallDate: latestTracker?.nextDate || lead.nextCallDate || '',
         visitDate: meetingDate,
         // Call Tracker info
         callTrackerId: latestTracker?.id || null,

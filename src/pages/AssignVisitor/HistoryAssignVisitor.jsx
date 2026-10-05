@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { Search, Filter, RotateCcw } from 'lucide-react';
+import { Search, RotateCcw } from 'lucide-react';
 import { siteVisitApi } from '../../api/siteVisitApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
@@ -55,7 +55,6 @@ const parseDateObj = (item) => {
 export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
   const user = useAuthStore(state => state.user);
   const [loading, setLoading] = useState(false);
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [historyLeads, setHistoryLeads] = useState([]);
   const [leadTypesMaster, setLeadTypesMaster] = useState([]);
   const [visitorsList, setVisitorsList] = useState([]);
@@ -321,12 +320,6 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
             />
           </div>
           <button
-            onClick={() => setShowMobileFilters(!showMobileFilters)}
-            className={`flex items-center justify-center rounded-lg shadow-sm h-[34px] w-[34px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-          >
-            <Filter size={14} />
-          </button>
-          <button
             onClick={handleClearFilters}
             className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg h-[34px] w-[34px] flex-shrink-0 shadow-sm active:scale-95"
             title="Clear Filters"
@@ -335,8 +328,8 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
           </button>
         </div>
 
-        {/* Mobile Collapsible Filters */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden'} lg:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full`}>
+        {/* Mobile Filters (Always visible) */}
+        <div className="grid lg:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full">
           <SearchableDropdown
             options={DATE_FILTER_OPTIONS}
             value={filters.dateFilter}

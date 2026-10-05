@@ -192,18 +192,25 @@ export default function SiteVisitCategoryView({
     }
 
     list.forEach(item => {
-      const mObj = parseDateObj(item.meetingDate || item.visitDate || item.assignedAt || item.timestamp);
+      const mObj = parseDateObj(item.meetingDate || item.visitDate);
       const nextObj = parseDateObj(item.nextMeetingDate || item.nextVisitDate);
+      const callObj = parseDateObj(item.nextCallDate || item.nextDate);
+
       const mTime = mObj ? new Date(mObj.getFullYear(), mObj.getMonth(), mObj.getDate()).getTime() : null;
       const nextTime = nextObj ? new Date(nextObj.getFullYear(), nextObj.getMonth(), nextObj.getDate()).getTime() : null;
-      const targetTime = nextTime || mTime;
+      const callTime = callObj ? new Date(callObj.getFullYear(), callObj.getMonth(), callObj.getDate()).getTime() : null;
+
+      const targetTime = nextTime || callTime || mTime;
       if (!targetTime) return;
 
-      if (mTime === todayTime || nextTime === todayTime) todayCount++;
-      if (mTime === yesterdayTime || nextTime === yesterdayTime) yesterdayCount++;
+      const isTodayMatch = mTime === todayTime || nextTime === todayTime || callTime === todayTime;
+      const isYesterdayMatch = mTime === yesterdayTime || nextTime === yesterdayTime || callTime === yesterdayTime;
+
+      if (isTodayMatch) todayCount++;
+      if (isYesterdayMatch) yesterdayCount++;
       if (targetTime < todayTime && (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan')) overdueCount++;
-      if ((nextTime && nextTime > todayTime) || (mTime && mTime > todayTime)) upcomingCount++;
-      if (chosenCustomTime !== null && (mTime === chosenCustomTime || nextTime === chosenCustomTime)) customCount++;
+      if ((nextTime && nextTime > todayTime) || (callTime && callTime > todayTime) || (mTime && mTime > todayTime)) upcomingCount++;
+      if (chosenCustomTime !== null && (mTime === chosenCustomTime || nextTime === chosenCustomTime || callTime === chosenCustomTime)) customCount++;
     });
 
     return { all: allCount, today: todayCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
@@ -275,33 +282,36 @@ export default function SiteVisitCategoryView({
       yesterday.setDate(yesterday.getDate() - 1);
 
       list = list.filter(item => {
-        const mObj = parseDateObj(item.meetingDate || item.visitDate || item.assignedAt || item.timestamp);
+        const mObj = parseDateObj(item.meetingDate || item.visitDate);
         const nextObj = parseDateObj(item.nextMeetingDate || item.nextVisitDate);
+        const callObj = parseDateObj(item.nextCallDate || item.nextDate);
 
         const mTime = mObj ? new Date(mObj.getFullYear(), mObj.getMonth(), mObj.getDate()).getTime() : null;
         const nextTime = nextObj ? new Date(nextObj.getFullYear(), nextObj.getMonth(), nextObj.getDate()).getTime() : null;
-        const targetTime = nextTime || mTime;
+        const callTime = callObj ? new Date(callObj.getFullYear(), callObj.getMonth(), callObj.getDate()).getTime() : null;
+
+        const targetTime = nextTime || callTime || mTime;
 
         if (!targetTime) return false;
 
         if (dateFilter === 'today') {
-          return mTime === today.getTime() || nextTime === today.getTime();
+          return mTime === today.getTime() || nextTime === today.getTime() || callTime === today.getTime();
         }
         if (dateFilter === 'yesterday') {
-          return mTime === yesterday.getTime() || nextTime === yesterday.getTime();
+          return mTime === yesterday.getTime() || nextTime === yesterday.getTime() || callTime === yesterday.getTime();
         }
         if (dateFilter === 'overdue') {
           return targetTime < today.getTime() &&
             (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan');
         }
         if (dateFilter === 'upcoming') {
-          return (nextTime && nextTime > today.getTime()) || (mTime && mTime > today.getTime());
+          return (nextTime && nextTime > today.getTime()) || (callTime && callTime > today.getTime()) || (mTime && mTime > today.getTime());
         }
         if (dateFilter === 'custom' && customDate) {
           const parts = customDate.split('-');
           if (parts.length === 3) {
             const cDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
-            return mTime === cDate || nextTime === cDate;
+            return mTime === cDate || nextTime === cDate || callTime === cDate;
           }
         }
         return true;
@@ -311,10 +321,10 @@ export default function SiteVisitCategoryView({
     // Sorting: when All Dates (or general view), sort by Next Meeting Date in ascending order
     // (earliest next meeting date on the top, then as we go down the next meeting dates increase)
     const sorted = [...list].sort((a, b) => {
-      const nextA = parseDateObj(a.nextMeetingDate || a.nextVisitDate);
-      const nextB = parseDateObj(b.nextMeetingDate || b.nextVisitDate);
-      const meetA = parseDateObj(a.meetingDate || a.visitDate || a.assignedAt || a.timestamp);
-      const meetB = parseDateObj(b.meetingDate || b.visitDate || b.assignedAt || b.timestamp);
+      const nextA = parseDateObj(a.nextMeetingDate || a.nextVisitDate || a.nextCallDate);
+      const nextB = parseDateObj(b.nextMeetingDate || b.nextVisitDate || b.nextCallDate);
+      const meetA = parseDateObj(a.meetingDate || a.visitDate);
+      const meetB = parseDateObj(b.meetingDate || b.visitDate);
 
       const timeNextA = nextA && !isNaN(nextA.getTime()) ? nextA.getTime() : null;
       const timeNextB = nextB && !isNaN(nextB.getTime()) ? nextB.getTime() : null;
@@ -326,7 +336,7 @@ export default function SiteVisitCategoryView({
       if (timeNextA !== null) return -1;
       if (timeNextB !== null) return 1;
 
-      // Fallback: sort by meeting date / creation date ascending
+      // Fallback: sort by meeting date ascending
       const timeMeetA = meetA && !isNaN(meetA.getTime()) ? meetA.getTime() : 0;
       const timeMeetB = meetB && !isNaN(meetB.getTime()) ? meetB.getTime() : 0;
       return timeMeetA - timeMeetB;

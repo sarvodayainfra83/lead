@@ -901,6 +901,7 @@ export const siteVisitMeetingApi = {
         meetingDate,
         nextMeetingDate,
         nextVisitDate: nextMeetingDate,
+        nextCallDate: latestTracker?.nextDate || lead.nextCallDate || '',
         visitDate: meetingDate || scheduledVisitDate,
         // Call Tracker info
         callTrackerId: latestTracker?.id || null,

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
-  Search, X, Filter, RotateCcw, Phone, Eye, ChevronDown, ChevronUp,
+  Search, X, RotateCcw, Phone, Eye, ChevronDown, ChevronUp,
   Calendar, FileSpreadsheet, Plus, RefreshCw, UserCheck,
   Mail, Briefcase, FileText, MapPin, Clock, IndianRupee, MessageSquare, Bell, Pencil, Reply
 } from 'lucide-react';
@@ -121,8 +121,6 @@ export default function CallTrackerCategoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || 'all');
-  // Reveal the filter bar when a Dashboard card pre-applied a status
-  const [showFilters, setShowFilters] = useState(Boolean(initialStatusFilter));
   const [dateFilter, setDateFilter] = useState(!isAdmin ? 'today' : 'all');
   const [customDate, setCustomDate] = useState('');
   const [callerFilter, setCallerFilter] = useState('all');
@@ -317,8 +315,11 @@ export default function CallTrackerCategoryView({
         visitorFollowUpCount: leadFollowUps.length,
         latestVisitorFollowUp,
         siteVisitStatus,
-        siteVisitDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || '',
-        nextVisitDate: latestVisitorFollowUp?.nextVisitDate || latestVisitorFollowUp?.next_visit_date || '',
+        siteVisitDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || lead.visitDate || '',
+        nextVisitDate: latestVisitorFollowUp?.nextVisitDate || latestVisitorFollowUp?.next_visit_date || lead.nextMeetingDate || '',
+        meetingDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || lead.meetingDate || lead.visitDate || '',
+        lastMeetingDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || lead.meetingDate || lead.visitDate || '',
+        nextMeetingDate: latestVisitorFollowUp?.nextVisitDate || latestVisitorFollowUp?.next_visit_date || lead.nextMeetingDate || '',
         latestActivityTime,
         latestTracker
       };
@@ -410,24 +411,32 @@ export default function CallTrackerCategoryView({
     }
 
     accessibleEnrichedLeads.forEach(item => {
-      const targetStr = item.nextCallDate || item.dateOfCallRaw || item.timestamp;
-      const d = parseTrackerDateStr(targetStr);
-      if (!d) return;
-      const targetTime = d.getTime();
+      const nextCallObj = parseTrackerDateStr(item.nextCallDate);
+      const meetObj = parseTrackerDateStr(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate);
+      const nextMeetObj = parseTrackerDateStr(item.nextMeetingDate || item.nextVisitDate);
 
-      if (targetTime === todayTime) {
+      const nextCallTime = nextCallObj ? nextCallObj.getTime() : null;
+      const meetTime = meetObj ? meetObj.getTime() : null;
+      const nextMeetTime = nextMeetObj ? nextMeetObj.getTime() : null;
+
+      const targetTime = nextCallTime || nextMeetTime || meetTime;
+
+      const isTodayMatch = nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime;
+      const isYesterdayMatch = nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime;
+
+      if (isTodayMatch) {
         todayCount++;
-      } else if (targetTime === yesterdayTime) {
+      } else if (isYesterdayMatch) {
         yesterdayCount++;
       }
 
-      if (targetTime < todayTime && !TERMINAL_STATUSES.includes(item.status)) {
+      if (targetTime && targetTime < todayTime && !TERMINAL_STATUSES.includes(item.status)) {
         overdueCount++;
-      } else if (targetTime > todayTime) {
+      } else if ((nextCallTime && nextCallTime > todayTime) || (nextMeetTime && nextMeetTime > todayTime) || (meetTime && meetTime > todayTime)) {
         upcomingCount++;
       }
 
-      if (chosenCustomTime !== null && targetTime === chosenCustomTime) {
+      if (chosenCustomTime !== null && (nextCallTime === chosenCustomTime || meetTime === chosenCustomTime || nextMeetTime === chosenCustomTime)) {
         customCount++;
       }
     });
@@ -486,30 +495,34 @@ export default function CallTrackerCategoryView({
         }
       }
 
-      // Date filter (evaluates Next Call Date if scheduled, otherwise Date of Call / Lead Date)
+      // Date filter (evaluates Next Call Date, Last Meeting Date, and Next Meeting Date)
       if (dateFilter !== 'all') {
-        const targetStr = item.nextCallDate || item.dateOfCallRaw || item.timestamp;
-        const d = parseTrackerDateStr(targetStr);
-        if (!d) return false;
+        const nextCallObj = parseTrackerDateStr(item.nextCallDate);
+        const meetObj = parseTrackerDateStr(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate);
+        const nextMeetObj = parseTrackerDateStr(item.nextMeetingDate || item.nextVisitDate);
 
-        const targetTime = d.getTime();
+        const nextCallTime = nextCallObj ? nextCallObj.getTime() : null;
+        const meetTime = meetObj ? meetObj.getTime() : null;
+        const nextMeetTime = nextMeetObj ? nextMeetObj.getTime() : null;
+
+        const targetTime = nextCallTime || nextMeetTime || meetTime;
         const todayTime = today.getTime();
         const yesterdayTime = yesterday.getTime();
 
         if (dateFilter === 'today') {
-          if (targetTime !== todayTime) return false;
+          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime)) return false;
         } else if (dateFilter === 'yesterday') {
-          if (targetTime !== yesterdayTime) return false;
+          if (!(nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime)) return false;
         } else if (dateFilter === 'overdue') {
-          if (targetTime >= todayTime || TERMINAL_STATUSES.includes(item.status)) return false;
+          if (!targetTime || targetTime >= todayTime || TERMINAL_STATUSES.includes(item.status)) return false;
         } else if (dateFilter === 'upcoming') {
-          if (targetTime <= todayTime) return false;
+          if (!((nextCallTime && nextCallTime > todayTime) || (nextMeetTime && nextMeetTime > todayTime) || (meetTime && meetTime > todayTime))) return false;
         } else if (dateFilter === 'custom') {
           if (!customDate) return true;
           const [cy, cm, cd] = customDate.split('-').map(Number);
           if (cy && cm && cd) {
             const chosen = new Date(cy, cm - 1, cd).getTime();
-            if (targetTime !== chosen) return false;
+            if (!(nextCallTime === chosen || meetTime === chosen || nextMeetTime === chosen)) return false;
           }
         }
       }
@@ -1347,13 +1360,13 @@ export default function CallTrackerCategoryView({
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
-                  : 'bg-amber-50/90 text-amber-900 border-amber-300/80 hover:bg-amber-100 hover:border-amber-400 font-semibold'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
               }`}
             >
-              <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-amber-700'} />
+              <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-gray-400'} />
               <span>Today's Followup</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-amber-200/90 text-amber-900'
+                dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
               }`}>
                 {dateCounts.today}
               </span>
@@ -1363,7 +1376,7 @@ export default function CallTrackerCategoryView({
             <div className="w-[145px] sm:w-[170px] shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
-                value={dateFilter === 'today' ? 'all' : dateFilter}
+                value={dateFilter === 'today' ? '' : dateFilter}
                 onChange={(val) => {
                   setDateFilter(val);
                   if (val === 'custom' && !customDate) {
@@ -1372,9 +1385,13 @@ export default function CallTrackerCategoryView({
                   }
                   setCurrentPage(1);
                 }}
-                placeholder="All Dates"
+                placeholder={dateFilter === 'today' ? "Other Dates" : "All Dates"}
                 height="h-[34px]"
-                triggerClassName={dateFilter !== 'today' && dateFilter !== 'all' ? "w-full bg-slate-800 text-white border border-slate-800 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer shadow-sm h-[34px] font-semibold text-xs tracking-wide active:scale-[0.98]" : ""}
+                triggerClassName={
+                  dateFilter !== 'today'
+                    ? "w-full bg-gradient-to-r from-sky-600 to-blue-600 text-white border border-blue-600 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer shadow-sm h-[34px] font-bold text-xs tracking-wide active:scale-[0.98] ring-2 ring-sky-300/50"
+                    : ""
+                }
                 icon={Clock}
               />
             </div>
@@ -1446,8 +1463,8 @@ export default function CallTrackerCategoryView({
             </button>
           )}
 
-          {/* FOR USER ROLE: All Status Dropdown replaces Filter button */}
-          {!isAdmin ? (
+          {/* FOR USER ROLE: All Status Dropdown */}
+          {!isAdmin && (
             <div className="w-[125px] sm:w-[145px] shrink-0">
               <SearchableDropdown
                 options={STATUS_FILTER_OPTIONS}
@@ -1460,24 +1477,6 @@ export default function CallTrackerCategoryView({
                 height="h-[34px]"
               />
             </div>
-          ) : (
-            /* FOR ADMIN ROLE: Filter Toggle Button */
-            <button
-              onClick={() => setShowFilters(prev => !prev)}
-              title={showFilters ? "Hide Filter Options" : "Show Filter Options"}
-              className={`flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 ${showFilters || activeFilterCount > 0
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-300 shadow-xs font-bold'
-                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }`}
-            >
-              <Filter size={13} />
-              <span className="hidden xs:inline sm:inline">Filter</span>
-              {activeFilterCount > 0 && (
-                <span className="bg-indigo-600 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
           )}
 
           {/* Export to Excel (ADMIN / Tester only) */}
@@ -1517,8 +1516,8 @@ export default function CallTrackerCategoryView({
       </div>
     </div>
 
-      {/* Collapsible Filter Bar (revealed only for ADMIN when Filter button is clicked) */}
-      {isAdmin && showFilters && (
+      {/* Filter Bar (always visible for ADMIN) */}
+      {isAdmin && (
         <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
           <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
             Filter Options:

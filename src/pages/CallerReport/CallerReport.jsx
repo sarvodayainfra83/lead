@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { FileSpreadsheet, Search, RotateCcw, Phone, Eye, Filter } from 'lucide-react';
+import { FileSpreadsheet, Search, RotateCcw, Phone, Eye } from 'lucide-react';
 import { callerReportApi } from '../../api/callerReportApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -56,7 +56,6 @@ export default function CallerReport() {
   const isAdmin = isUserAdmin(user);
 
   const [activeLeadType, setActiveLeadType] = useState('All');
-
   // Role USER only gets their assigned lead types in the Lead Type filter
   const scope = getUserLeadTypeScope(user);
   const leadTypeOptions = scope?.categories?.length > 0
@@ -67,7 +66,6 @@ export default function CallerReport() {
   const [activeCaller, setActiveCaller] = useState(isAdmin ? 'Complete' : (user?.name || user?.id || 'Complete'));
   const [activeMonth, setActiveMonth] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const [callerOptions, setCallerOptions] = useState(
     isAdmin
@@ -343,13 +341,6 @@ export default function CallerReport() {
             />
           </div>
           <button
-            onClick={() => setShowMobileFilters(!showMobileFilters)}
-            className={`flex items-center justify-center rounded-lg shadow-xs h-[32px] w-[32px] flex-shrink-0 transition ${showMobileFilters ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'}`}
-            title="Toggle Filters"
-          >
-            <Filter size={14} />
-          </button>
-          <button
             onClick={handleResetFilters}
             className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg h-[32px] w-[32px] flex-shrink-0 shadow-xs active:scale-95 hover:bg-gray-100"
             title="Reset Filters"
@@ -365,8 +356,8 @@ export default function CallerReport() {
           </button>
         </div>
 
-        {/* Mobile Collapsible Filters */}
-        <div className={`${showMobileFilters ? 'grid' : 'hidden'} xl:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full`}>
+        {/* Mobile Filters (Always visible) */}
+        <div className="grid xl:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full">
           <SearchableDropdown
             options={leadTypeOptions}
             value={activeLeadType}
