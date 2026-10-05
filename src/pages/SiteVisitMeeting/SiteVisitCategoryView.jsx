@@ -16,7 +16,7 @@ import {
 import { CUSTOMER_STATUS_STYLES } from '../CallTracker/callTrackerConstants';
 import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin } from '../../utils/authUtils';
+import { isUserAdmin, matchesUserVisitor } from '../../utils/authUtils';
 
 // Check if a lead has a Closed (Won) deal
 export const isDealClosed = (item) => {
@@ -113,7 +113,7 @@ export default function SiteVisitCategoryView({
   onViewHistory
 }) {
   const user = useAuthStore(state => state.user);
-  const isAdmin = isUserAdmin(user);
+  const isAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('today');
@@ -169,11 +169,7 @@ export default function SiteVisitCategoryView({
   const dateCounts = useMemo(() => {
     let list = leads || [];
     if (!isAdmin) {
-      list = list.filter(l => {
-        const status = String(l.status || '').trim();
-        const visitor = String(l.assignedVisitor || '').trim();
-        return status !== 'Pending Assignment' && status !== 'Unassigned' && visitor !== '' && visitor.toLowerCase() !== 'unassigned';
-      });
+      list = list.filter(l => matchesUserVisitor(l, user));
     }
     const todayTime = today.getTime();
     const yesterdayTime = new Date(today.getTime() - 86400000).getTime();
@@ -214,7 +210,7 @@ export default function SiteVisitCategoryView({
     });
 
     return { all: allCount, today: todayCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
-  }, [leads, isAdmin, today, customDate]);
+  }, [leads, isAdmin, user, today, customDate]);
 
   const dateFilterOptions = useMemo(() => [
     { value: 'today', label: `Today's Followup (${dateCounts.today})` },
@@ -229,26 +225,18 @@ export default function SiteVisitCategoryView({
   const closedDealsCount = useMemo(() => {
     let list = leads || [];
     if (!isAdmin) {
-      list = list.filter(l => {
-        const status = String(l.status || '').trim();
-        const visitor = String(l.assignedVisitor || '').trim();
-        return status !== 'Pending Assignment' && status !== 'Unassigned' && visitor !== '' && visitor.toLowerCase() !== 'unassigned';
-      });
+      list = list.filter(l => matchesUserVisitor(l, user));
     }
     return list.filter(isDealClosed).length;
-  }, [leads, isAdmin]);
+  }, [leads, isAdmin, user]);
 
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
     let list = leads || [];
 
-    // For USER role (non-admin): only show assigned leads
+    // For USER role (non-admin): only show assigned leads matching logged-in user
     if (!isAdmin) {
-      list = list.filter(l => {
-        const status = String(l.status || '').trim();
-        const visitor = String(l.assignedVisitor || '').trim();
-        return status !== 'Pending Assignment' && status !== 'Unassigned' && visitor !== '' && visitor.toLowerCase() !== 'unassigned';
-      });
+      list = list.filter(l => matchesUserVisitor(l, user));
     }
 
     // Filter for Closed Deals only if button is active
@@ -343,7 +331,7 @@ export default function SiteVisitCategoryView({
     });
 
     return sorted;
-  }, [leads, searchQuery, dateFilter, customDate, category, isAdmin, showClosedDealsOnly]);
+  }, [leads, searchQuery, dateFilter, customDate, category, isAdmin, user, showClosedDealsOnly]);
 
   // Check if any non-default filter is active
   const isFilterActive = dateFilter !== 'today' || searchQuery || showClosedDealsOnly || (dateFilter === 'custom' && customDate);

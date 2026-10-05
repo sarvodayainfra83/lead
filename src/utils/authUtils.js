@@ -70,6 +70,88 @@ export const matchesUserReceiver = (lead, user) => {
 };
 
 /**
+ * Check if a site-visit / meeting lead or assigned visitor record is assigned to the current user.
+ * 
+ * Rules:
+ * - Only pure ADMIN role sees all records.
+ * - All other accounts (including TESTER and regular USER): must strictly match the assigned visitor ID / visitor data.
+ */
+export const matchesUserVisitor = (item, user) => {
+  if (!user) return false;
+
+  const role = String(user.role || '').trim().toUpperCase();
+  // Only pure ADMIN role sees all records without visitor filtering
+  if (role === 'ADMIN') return true;
+
+  const userKeys = [
+    user.id,
+    user.dbId,
+    user.username,
+    user.name,
+    user.visitorId,
+    user.visitor_id,
+    user.number,
+    user.gmail
+  ]
+    .filter(Boolean)
+    .map(v => String(v).trim().toLowerCase());
+
+  if (userKeys.length === 0) return false;
+
+  const checkMatch = (val) => {
+    if (!val) return false;
+    const str = String(val).trim().toLowerCase();
+    if (!str || str === 'unassigned' || str === 'pending assignment' || str === 'null' || str === 'undefined' || str === '-') return false;
+    return userKeys.includes(str);
+  };
+
+  if (typeof item === 'string') {
+    return checkMatch(item);
+  }
+
+  if (!item || typeof item !== 'object') return false;
+
+  // Direct assigned visitor fields
+  if (checkMatch(item.assignedVisitor)) return true;
+  if (checkMatch(item.visitorName)) return true;
+  if (checkMatch(item.visitor_name)) return true;
+  if (checkMatch(item.visitorId)) return true;
+  if (checkMatch(item.visitor_id)) return true;
+  if (checkMatch(item.assignedVisitorId)) return true;
+  if (checkMatch(item.assigned_visitor_id)) return true;
+  if (checkMatch(item.salesExecutive)) return true;
+  if (checkMatch(item.sales_executive)) return true;
+
+  // Follow ups history check
+  if (Array.isArray(item.followUps) && item.followUps.length > 0) {
+    const hasMatchingFollowUp = item.followUps.some(f => (
+      checkMatch(f.visitorName) ||
+      checkMatch(f.visitor_name) ||
+      checkMatch(f.visitorId) ||
+      checkMatch(f.visitor_id) ||
+      checkMatch(f.assignedVisitor) ||
+      checkMatch(f.salesExecutive) ||
+      checkMatch(f.sales_executive)
+    ));
+    if (hasMatchingFollowUp) return true;
+  }
+
+  // Latest follow up check
+  if (item.latestFollowUp) {
+    if (checkMatch(item.latestFollowUp.visitorName)) return true;
+    if (checkMatch(item.latestFollowUp.visitor_name)) return true;
+    if (checkMatch(item.latestFollowUp.visitorId)) return true;
+    if (checkMatch(item.latestFollowUp.visitor_id)) return true;
+    if (checkMatch(item.latestFollowUp.assignedVisitor)) return true;
+    if (checkMatch(item.latestFollowUp.salesExecutive)) return true;
+    if (checkMatch(item.latestFollowUp.sales_executive)) return true;
+  }
+
+  return false;
+};
+
+
+/**
  * Normalize a lead type name to one of 'Real Estate' | 'Insurance' | 'Mutual Fund' ('' if unknown).
  * Falls back to the Lead No prefix (LR / LI / LM) when no type name is available.
  */

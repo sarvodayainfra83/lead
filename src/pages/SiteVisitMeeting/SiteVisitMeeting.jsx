@@ -3,7 +3,7 @@ import { Building2, ShieldCheck, TrendingUp } from 'lucide-react';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
-import { hasFullAccess, getUserLeadTypeScope, isUserAdmin } from '../../utils/authUtils';
+import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, matchesUserVisitor } from '../../utils/authUtils';
 import SiteVisitCategoryView from './SiteVisitCategoryView';
 import AssignVisitorModal from './AssignVisitorModal';
 import VisitorFollowUpModal from './VisitorFollowUpModal';
@@ -23,7 +23,7 @@ import { useLocation } from 'react-router-dom';
  */
 export default function SiteVisitMeeting() {
   const user = useAuthStore(state => state.user);
-  const isAdmin = isUserAdmin(user);
+  const isAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
   // Full Access on Site Visit / Meeting = can assign visitors & log follow-ups; View = read-only
   const canEdit = hasFullAccess(user, 'siteVisitMeeting');
   const navState = useLocation().state || {};
@@ -73,15 +73,11 @@ export default function SiteVisitMeeting() {
     loadData();
   }, [loadData, user]);
 
-  // For USER role (non-admin): only fetch/show assigned records, hide non-assigned
+  // For USER role (non-admin): only show records where assigned visitor matches the logged-in user
   const displayLeads = useMemo(() => {
     if (isAdmin) return allLeads;
-    return allLeads.filter(l => {
-      const status = String(l.status || '').trim();
-      const visitor = String(l.assignedVisitor || '').trim();
-      return status !== 'Pending Assignment' && status !== 'Unassigned' && visitor !== '' && visitor.toLowerCase() !== 'unassigned';
-    });
-  }, [allLeads, isAdmin]);
+    return allLeads.filter(l => matchesUserVisitor(l, user));
+  }, [allLeads, isAdmin, user]);
 
   // Partition leads by the 3 category tables
   const realEstateLeads = useMemo(() => {

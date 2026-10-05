@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Search, X, Filter, RotateCcw, RefreshCw, Plus, Upload, UserCheck, Phone, MessageSquare,
-  Pencil, Trash2, Info, Calendar, CheckSquare, MapPin,
+  Search, X, RotateCcw, RefreshCw, Plus, Upload, UserCheck, Phone, MessageSquare,
+  Pencil, Trash2, Info, Calendar, Clock, CheckSquare, MapPin,
   Square, ChevronDown, ChevronUp, AlertCircle, Sparkles, Building2, ShieldCheck, TrendingUp
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
@@ -125,6 +125,86 @@ export default function LeadCategoryView({
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
+
+  // Category-specific date counts
+  const dateCounts = useMemo(() => {
+    let allCount = leads.length;
+    let todayCount = 0;
+    let yesterdayCount = 0;
+    let overdueCount = 0;
+    let upcomingCount = 0;
+    let customCount = 0;
+
+    const todayTime = today.getTime();
+    const yesterdayTime = yesterday.getTime();
+    let chosenCustomTime = null;
+    if (customDate) {
+      const [cy, cm, cd] = customDate.split('-').map(Number);
+      if (cy && cm && cd) {
+        chosenCustomTime = new Date(cy, cm - 1, cd).getTime();
+      }
+    }
+
+    leads.forEach(l => {
+      const d = parseLeadDate(l);
+      if (!d) return;
+      const targetTime = d.getTime();
+
+      if (targetTime === todayTime) {
+        todayCount++;
+      } else if (targetTime === yesterdayTime) {
+        yesterdayCount++;
+      }
+
+      if (targetTime < yesterdayTime) {
+        overdueCount++;
+      } else if (targetTime > todayTime) {
+        upcomingCount++;
+      }
+
+      if (chosenCustomTime !== null && targetTime === chosenCustomTime) {
+        customCount++;
+      }
+    });
+
+    return { all: allCount, today: todayCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
+  }, [leads, today, yesterday, customDate]);
+
+  // Dropdown options for All Dates & other timeframes
+  const allDatesFilterOptions = useMemo(() => {
+    return [
+      { value: 'all', label: `All Dates (${dateCounts.all})` },
+      { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
+      { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
+      { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
+      { value: 'custom', label: customDate ? `Custom Date (${dateCounts.custom})` : 'Custom Date' },
+    ];
+  }, [dateCounts, customDate]);
+
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (callerStatusFilter && callerStatusFilter !== 'all') count++;
+    if (dateFilter && dateFilter !== 'all') count++;
+    if (customDate) count++;
+    if (leadSourceFilter) count++;
+    if (callerFilter) count++;
+    if (productTypeFilter) count++;
+    if (requirementFilter) count++;
+    return count;
+  }, [callerStatusFilter, dateFilter, customDate, leadSourceFilter, callerFilter, productTypeFilter, requirementFilter]);
+
+  const handleClearFilters = useCallback(() => {
+    setCallerStatusFilter('all');
+    setDateFilter('all');
+    setCustomDate('');
+    setLeadSourceFilter('');
+    setCallerFilter('');
+    setProductTypeFilter('');
+    setRequirementFilter('');
+    setSearchQuery('');
+    setCurrentPage(1);
+    toast.success('Filters reset');
+  }, []);
 
   // Filter leads
   const filteredLeads = useMemo(() => {
@@ -327,29 +407,6 @@ export default function LeadCategoryView({
       toast.error('Failed to delete lead');
     }
   };
-
-  const handleClearFilters = () => {
-    setSearchQuery('');
-    setCallerStatusFilter('all');
-    setDateFilter('all');
-    setCustomDate('');
-    setLeadSourceFilter('');
-    setCallerFilter('');
-    setProductTypeFilter('');
-    setRequirementFilter('');
-    setCurrentPage(1);
-    toast.success('Filters cleared');
-  };
-
-  const activeFiltersCount = [
-    searchQuery,
-    callerStatusFilter !== 'all' ? callerStatusFilter : '',
-    dateFilter !== 'all' ? dateFilter : '',
-    leadSourceFilter,
-    callerFilter,
-    productTypeFilter,
-    requirementFilter
-  ].filter(Boolean).length;
 
   const formatDate = (val) => {
     if (!val) return '-';
@@ -826,77 +883,142 @@ export default function LeadCategoryView({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-1">
-      {/* Header Bar: Mobile = 2 Rows (Row 1: Tabs, Row 2: All Other Controls); Desktop = 1 Row */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full flex-shrink-0">
-        {/* Mobile: Row 1 = lead type tabs, Row 2 = Add Lead / Bulk Upload. Tablet+: one row */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 shrink-0 w-full xl:w-auto">
-          <PageTabs tabs={tabs} activeKey={activeTab} onChange={(key) => onTabChange?.(key)} className="w-full sm:w-auto" />
-
-          {canEdit && (
-            <div className="flex items-center gap-1.5 w-full sm:w-auto">
-              <button
-                onClick={() => onAddLead?.(category)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
-              >
-                <Plus size={14} className="shrink-0" />
-                <span>Add Lead</span>
-              </button>
-
-              <button
-                onClick={() => onBulkUpload?.(category)}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
-              >
-                <Upload size={14} className="shrink-0" />
-                <span>Bulk Upload</span>
-              </button>
-            </div>
-          )}
+      {/* Header Bar: Mobile = 2 Rows (Row 1: Tabs, Row 2: Controls & Search); Desktop = 2 Rows matching Call Tracker */}
+      <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
+        {/* Row 1: Category Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
+          <PageTabs tabs={tabs} activeKey={activeTab} onChange={(key) => { onTabChange?.(key); setCurrentPage(1); }} />
         </div>
 
-        {/* Row 2 on Mobile / Right on Desktop: Search + Filter + View Toggle + Refresh + Reset in a Single Row */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
-          {/* Search Input */}
-          <div className="relative min-w-[120px] max-w-full sm:max-w-[220px] flex-1 shrink">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              placeholder={`Search ${category} leads...`}
-              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-xs transition"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
-                title="Clear search"
-              >
-                <X size={13} />
-              </button>
+        {/* Row 2: Dates & Action Buttons on Left, Search/Refresh/Reset on Right */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
+          {/* Dates & Add Lead / Bulk Upload Controls */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+            {/* Dedicated Tab / Button for Today's Lead */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilter('today');
+                setCurrentPage(1);
+              }}
+              title="Show Today's Leads"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                dateFilter === 'today'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
+              }`}
+            >
+              <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-gray-400'} />
+              <span>Today's Lead</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+              }`}>
+                {dateCounts.today}
+              </span>
+            </button>
+
+            {/* Dropdown for All Dates & other date options */}
+            <div className="w-[145px] sm:w-[170px] shrink-0">
+              <SearchableDropdown
+                options={allDatesFilterOptions}
+                value={dateFilter === 'today' ? '' : dateFilter}
+                onChange={(val) => {
+                  setDateFilter(val);
+                  if (val === 'custom' && !customDate) {
+                    setCustomDate(getTodayStr());
+                  }
+                  setCurrentPage(1);
+                }}
+                placeholder={dateFilter === 'today' ? "Other Dates" : "All Dates"}
+                height="h-[34px]"
+                triggerClassName={
+                  dateFilter !== 'today'
+                    ? "w-full bg-gradient-to-r from-sky-600 to-blue-600 text-white border border-blue-600 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer shadow-sm h-[34px] font-bold text-xs tracking-wide active:scale-[0.98] ring-2 ring-sky-300/50"
+                    : ""
+                }
+                icon={Clock}
+              />
+            </div>
+
+            {/* Custom Date Input */}
+            {dateFilter === 'custom' && (
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => {
+                  setCustomDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-white border border-gray-300 rounded-lg px-2 text-xs h-[34px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium shrink-0 cursor-pointer"
+              />
+            )}
+
+            {canEdit && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => onAddLead?.(category)}
+                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                >
+                  <Plus size={14} className="shrink-0" />
+                  <span>Add Lead</span>
+                </button>
+
+                <button
+                  onClick={() => onBulkUpload?.(category)}
+                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                >
+                  <Upload size={14} className="shrink-0" />
+                  <span>Bulk Upload</span>
+                </button>
+              </div>
             )}
           </div>
 
-          {/* Refresh */}
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            title="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
+          {/* Right Controls: Search + Refresh + Reset */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
+            {/* Search Input */}
+            <div className="relative min-w-[120px] max-w-full sm:max-w-[220px] flex-1 shrink">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                placeholder={`Search ${category} leads...`}
+                className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-xs transition"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
 
-          {/* Clear Filters (visible when any filter or search query is active) */}
-          {activeFiltersCount > 0 && (
+            {/* Refresh */}
             <button
-              onClick={handleClearFilters}
-              title="Clear all filters & search"
-              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95"
+              onClick={onRefresh}
+              disabled={loading}
+              title="Refresh"
+              className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95"
             >
-              <RotateCcw size={13} />
-              <span className="hidden md:inline">Reset</span>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
-          )}
+
+            {/* Clear Filters (visible when any filter or search query is active) */}
+            {(activeFiltersCount > 0 || searchQuery) && (
+              <button
+                onClick={handleClearFilters}
+                title="Clear all filters & search"
+                className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95"
+              >
+                <RotateCcw size={13} />
+                <span className="hidden md:inline">Reset</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -919,31 +1041,6 @@ export default function LeadCategoryView({
             <option value="assigned">Caller Assigned</option>
           </select>
         </div>
-
-        {/* Date Filter */}
-        <div className="w-[130px] lg:w-[150px]">
-          <SearchableDropdown
-            options={DATE_FILTER_OPTIONS}
-            value={dateFilter}
-            onChange={(val) => {
-              setDateFilter(val);
-              if (val === 'custom' && !customDate) setCustomDate(getTodayStr());
-              setCurrentPage(1);
-            }}
-            placeholder="All Dates"
-            height="h-[30px]"
-          />
-        </div>
-
-        {/* Custom Date Input */}
-        {dateFilter === 'custom' && (
-          <input
-            type="date"
-            value={customDate}
-            onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
-            className="bg-white border border-gray-300 rounded px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium"
-          />
-        )}
 
         {/* Product Type Filter */}
         {distinctProductTypes.length > 0 && (

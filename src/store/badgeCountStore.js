@@ -7,7 +7,7 @@ import {
   isLeadPending, getLeadStatus, getLatestCustomerStatus, isFollowUpRejected, CUSTOMER_MASTER_STATUSES, isDirectSiteVisitLead
 } from '../pages/CallTracker/callTrackerConstants';
 import { useAuthStore } from './authStore';
-import { isUserAdmin, matchesUserAssignment, matchesUserReceiver } from '../utils/authUtils';
+import { isUserAdmin, matchesUserAssignment, matchesUserReceiver, matchesUserVisitor } from '../utils/authUtils';
 
 /**
  * Sidebar badge counts store.
@@ -29,6 +29,7 @@ export const useBadgeCountStore = create((set) => ({
     try {
       const user = useAuthStore.getState().user;
       const isAdmin = isUserAdmin(user);
+      const isStrictAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
 
       const [allLeads, allTrackers, allVisitors, allFollowUps] = await Promise.all([
         leadApi.getLeads(),
@@ -76,10 +77,9 @@ export const useBadgeCountStore = create((set) => ({
       const pendingVisitorFollowUpCount = allVisitors.filter(a => {
         if (a.status === 'Cancelled') return false;
         if (leadTypeRestricted && !visibleLeadKeys.has(String(a.leadId)) && !visibleLeadKeys.has(String(a.leadNo))) return false;
-        if (!isAdmin) {
-          const isAssigned = a.visitorName === user?.name || a.visitorId === user?.id;
-          const isReceiver = userLeads.some(l => String(l.id) === String(a.leadId) || l.leadNo === a.leadNo);
-          if (!isAssigned && !isReceiver) return false;
+        if (!isStrictAdmin) {
+          const isAssigned = matchesUserVisitor(a, user);
+          if (!isAssigned) return false;
         }
         const leadFollowUps = (followUpsByLead[String(a.leadId)] || followUpsByLead[String(a.leadNo)] || [])
           .sort((x, y) => (x.timestampMs || 0) - (y.timestampMs || 0));
@@ -120,7 +120,7 @@ export const useBadgeCountStore = create((set) => ({
         pendingTrackerCount,
         pendingVisitorCount,
         pendingVisitorFollowUpCount,
-        pendingSiteVisitMeetingCount: pendingVisitorCount + pendingVisitorFollowUpCount,
+        pendingSiteVisitMeetingCount: isStrictAdmin ? (pendingVisitorCount + pendingVisitorFollowUpCount) : pendingVisitorFollowUpCount,
         customerCount,
         nonInterestedCount,
         callerReportCount,
