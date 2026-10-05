@@ -38,8 +38,7 @@ export const POSITION_OPTIONS = [
   { value: 'Receptionist', label: 'Receptionist' },
   { value: 'Lead Receiver', label: 'Lead Receiver' },
   { value: 'Manager', label: 'Manager' },
-  { value: 'HR', label: 'HR' },
-  { value: 'Other', label: 'Other' }
+  { value: 'HR', label: 'HR' }
 ];
 
 const emptyAccessPages = () => ({
@@ -129,11 +128,17 @@ export default function Setting({ setHeaderAction }) {
 
   const STANDARD_POSITIONS = ['Caller', 'Visitor', 'Receptionist', 'Lead Receiver', 'Manager', 'HR'];
 
+  const isCustomPosition = (pos) => {
+    if (!pos) return false;
+    const lower = String(pos).toLowerCase().trim();
+    return lower === 'other' || lower === 'others' || lower === 'add new' || lower === 'add_new' || lower === '+ add new';
+  };
+
   const openEdit = (row) => {
     setEditRow(row);
     const existingMasterSetting = row.accessPages?.master || row.accessPages?.setting || 'none';
     const isStandard = STANDARD_POSITIONS.includes(row.position);
-    const posValue = isStandard ? row.position : (row.position ? 'Other' : '');
+    const posValue = isStandard ? row.position : (row.position ? 'Add New' : '');
     const customPosValue = isStandard ? '' : (row.position || '');
 
     setFormData({
@@ -187,7 +192,7 @@ export default function Setting({ setHeaderAction }) {
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
     if (!formData.id.trim()) { toast.error('User Name is required'); return; }
     if (!formData.password.trim()) { toast.error('Password is required'); return; }
-    if (formData.position === 'Other' && !formData.customPosition?.trim()) {
+    if (isCustomPosition(formData.position) && !formData.customPosition?.trim()) {
       toast.error('Please enter the custom position name');
       return;
     }
@@ -203,7 +208,7 @@ export default function Setting({ setHeaderAction }) {
         accessPagesPayload.setting = accessPagesPayload.master;
       }
 
-      const resolvedPosition = formData.position === 'Other'
+      const resolvedPosition = isCustomPosition(formData.position)
         ? formData.customPosition.trim()
         : (formData.position || null);
 
@@ -629,24 +634,29 @@ export default function Setting({ setHeaderAction }) {
               value={formData.position}
               onChange={(val) => {
                 handleChange('position', val);
-                if (val !== 'Other') {
+                if (!isCustomPosition(val)) {
                   handleChange('customPosition', '');
                 }
+              }}
+              onAdd={(term) => {
+                handleChange('position', 'Add New');
+                if (term) handleChange('customPosition', term);
               }}
               placeholder="Select position (Caller, Visitor, etc.)"
               height="h-[34px]"
               required
             />
-            {formData.position === 'Other' && (
+            {isCustomPosition(formData.position) && (
               <div className="pt-1.5">
                 <input
                   type="text"
+                  autoFocus
+                  ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                   value={formData.customPosition || ''}
                   onChange={(e) => handleChange('customPosition', e.target.value)}
                   placeholder="Enter custom position name *"
                   className="w-full border border-indigo-300 bg-indigo-50/20 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[34px]"
                   required
-                  autoFocus
                 />
               </div>
             )}

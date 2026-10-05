@@ -121,7 +121,7 @@ export default function CallTrackerCategoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || 'all');
-  const [dateFilter, setDateFilter] = useState(!isAdmin ? 'today' : 'all');
+  const [dateFilter, setDateFilter] = useState('today');
   const [customDate, setCustomDate] = useState('');
   const [callerFilter, setCallerFilter] = useState('all');
 
@@ -163,19 +163,19 @@ export default function CallTrackerCategoryView({
 
   // Count active dropdown filters
   const activeFilterCount = (statusFilter !== 'all' ? 1 : 0) +
-    (!isAdmin ? (dateFilter !== 'today' ? 1 : 0) : (dateFilter !== 'all' ? 1 : 0)) +
+    (dateFilter !== 'today' ? 1 : 0) +
     (callerFilter !== 'all' ? 1 : 0);
 
   // Reset all filters & search
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setStatusFilter('all');
-    setDateFilter(!isAdmin ? 'today' : 'all');
+    setDateFilter('today');
     setCustomDate('');
     setCallerFilter('all');
     setCurrentPage(1);
-    toast.success('Filters cleared');
-  }, [isAdmin]);
+    toast.success('Filters reset to Today');
+  }, []);
 
   // Prepare full caller report & tracker connected records for each lead
   const enrichedLeads = useMemo(() => {
@@ -1008,7 +1008,7 @@ export default function CallTrackerCategoryView({
         key={leadKey}
         className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200'}`}
       >
-        {/* Card Header: Name, Lead #, Status */}
+        {/* Card Header: Name, Lead # on left; Followup & Remark buttons on top right */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
             <h4
@@ -1037,11 +1037,37 @@ export default function CallTrackerCategoryView({
               </button>
             )}
           </div>
-          {item.status && (
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-              {item.status}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setCallingLead(item)}
+                className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
+              >
+                <Phone size={12} />
+                <span>Followup</span>
+              </button>
+            )}
+            {(isAdmin || item.adminRemark) && (
+              <button
+                type="button"
+                onClick={() => openRemark(item)}
+                title={isAdmin ? (item.adminRemark ? 'Update admin remark' : 'Add admin remark') : (item.adminRemark ? 'Read admin remark & reply' : 'No remark from admin yet')}
+                className={`relative inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 whitespace-nowrap border cursor-pointer ${!isAdmin && item.hasNewAdminRemark
+                  ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
+                  : isAdmin && item.hasNewUserReply
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white'
+                  }`}
+              >
+                <MessageSquare size={11} />
+                <span>{isAdmin ? (item.hasNewUserReply ? 'Reply' : 'Remark') : (item.hasNewAdminRemark ? 'New' : 'Reply')}</span>
+                {((!isAdmin && item.hasNewAdminRemark) || (isAdmin && item.hasNewUserReply)) && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Primary Row: Phone, Total Calls, Last Call, Next Call */}
@@ -1156,41 +1182,12 @@ export default function CallTrackerCategoryView({
           </div>
         )}
 
-        {/* Action Buttons: Followup on the left, Details Dropdown on the right */}
+        {/* Action & Status Row: Details dropdown on left, Status badge on right */}
         <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
-          {canEdit && (
-            <button
-              onClick={() => setCallingLead(item)}
-              className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition"
-            >
-              <Phone size={12} />
-              <span>Followup</span>
-            </button>
-          )}
-
-          {/* Remark button — admin: always (start / continue the conversation);
-              user: only when the admin has written a remark, as "Reply" (blinks on a new admin remark) */}
-          {(isAdmin || item.adminRemark) && <button
-            onClick={() => openRemark(item)}
-            title={isAdmin ? (item.adminRemark ? 'Update admin remark' : 'Add admin remark') : (item.adminRemark ? 'Read admin remark & reply' : 'No remark from admin yet')}
-            className={`relative inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 whitespace-nowrap border ${!isAdmin && item.hasNewAdminRemark
-              ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
-              : isAdmin && item.hasNewUserReply
-                ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white'
-              }`}
-          >
-            <MessageSquare size={12} />
-            <span>{isAdmin ? (item.hasNewUserReply ? 'New Reply' : 'Remark') : (item.hasNewAdminRemark ? 'New Remark' : 'Reply')}</span>
-            {((!isAdmin && item.hasNewAdminRemark) || (isAdmin && item.hasNewUserReply)) && (
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-            )}
-          </button>}
-
-          {/* Single Dropdown Button (Hide & Drop Details) */}
           <button
+            type="button"
             onClick={() => toggleCardExpand(leadKey)}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95 ${isExpanded
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer ${isExpanded
               ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
               : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
               }`}
@@ -1207,6 +1204,14 @@ export default function CallTrackerCategoryView({
               </>
             )}
           </button>
+
+          <div className="flex items-center gap-1 shrink-0">
+            {item.status && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                {item.status}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Dropped-down / Accordion Section */}
@@ -1376,7 +1381,12 @@ export default function CallTrackerCategoryView({
             <div className="w-[145px] sm:w-[170px] shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
-                value={dateFilter === 'today' ? '' : dateFilter}
+                value={dateFilter === 'today' ? 'all' : dateFilter}
+                onMainClick={() => {
+                  setDateFilter('all');
+                  setCustomDate('');
+                  setCurrentPage(1);
+                }}
                 onChange={(val) => {
                   setDateFilter(val);
                   if (val === 'custom' && !customDate) {
@@ -1385,11 +1395,11 @@ export default function CallTrackerCategoryView({
                   }
                   setCurrentPage(1);
                 }}
-                placeholder={dateFilter === 'today' ? "Other Dates" : "All Dates"}
+                placeholder="All Dates"
                 height="h-[34px]"
                 triggerClassName={
                   dateFilter !== 'today'
-                    ? "w-full bg-gradient-to-r from-sky-600 to-blue-600 text-white border border-blue-600 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer shadow-sm h-[34px] font-bold text-xs tracking-wide active:scale-[0.98] ring-2 ring-sky-300/50"
+                    ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
                     : ""
                 }
                 icon={Clock}

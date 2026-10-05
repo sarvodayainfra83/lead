@@ -142,6 +142,12 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
     }
   }, [isOpen, defaultLeadType]);
 
+  const isOtherValue = (val) => {
+    if (!val) return false;
+    const lower = String(val).toLowerCase().trim();
+    return lower === 'other' || lower === 'others' || lower === 'add new' || lower === 'add_new' || lower === '+ add new';
+  };
+
   const leadTypeOptions = useMemo(() => {
     if (defaultLeadType) {
       return [{ value: defaultLeadType, label: defaultLeadType }];
@@ -150,11 +156,9 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
   }, [defaultLeadType, leadTypesMaster]);
 
   const leadSourceOptions = useMemo(() => {
-    const opts = (leadSourcesMaster || []).map(s => ({ value: s.leadSource, label: s.leadSource }));
-    if (!opts.some(o => o.value === 'Other')) {
-      opts.push({ value: 'Other', label: 'Other' });
-    }
-    return opts;
+    return (leadSourcesMaster || [])
+      .filter(s => !isOtherValue(s.leadSource))
+      .map(s => ({ value: s.leadSource, label: s.leadSource }));
   }, [leadSourcesMaster]);
 
   const selectedLeadTypeObj = useMemo(() => {
@@ -275,68 +279,48 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
     }
   }, [formData.status, visitorOptions, user, formData.assignedVisitor]);
 
-  const isOtherValue = (val) => {
-    if (!val) return false;
-    const lower = String(val).toLowerCase().trim();
-    return lower === 'other' || lower === 'others';
-  };
-
   const isRealEstate = formData.leadType === 'Real Estate';
   const isInsurance = formData.leadType === 'Insurance' || formData.leadType?.toLowerCase().includes('insurance');
   const isMutualFund = formData.leadType === 'Mutual Fund';
   const isReferenceSource = formData.leadSource?.toLowerCase() === 'reference';
 
   const realEstateProductOptions = useMemo(() => {
-    const opts = (realEstateProductsMaster || []).map(t => ({ value: t.productType, label: t.productType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (realEstateProductsMaster || [])
+      .filter(t => !isOtherValue(t.productType))
+      .map(t => ({ value: t.productType, label: t.productType }));
   }, [realEstateProductsMaster]);
 
   const realEstateRequirementOptions = useMemo(() => {
-    const opts = (realEstateRequirementsMaster || []).map(t => ({ value: t.requirement, label: t.requirement }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (realEstateRequirementsMaster || [])
+      .filter(t => !isOtherValue(t.requirement))
+      .map(t => ({ value: t.requirement, label: t.requirement }));
   }, [realEstateRequirementsMaster]);
 
   const mutualFundProductOptions = useMemo(() => {
-    const opts = (mutualFundProductsMaster || []).map(t => ({ value: t.productType, label: t.productType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (mutualFundProductsMaster || [])
+      .filter(t => !isOtherValue(t.productType))
+      .map(t => ({ value: t.productType, label: t.productType }));
   }, [mutualFundProductsMaster]);
 
   const insuranceProductOptions = useMemo(() => {
-    const opts = (insuranceProductsMaster || []).map(t => ({ value: t.productType, label: t.productType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (insuranceProductsMaster || [])
+      .filter(t => !isOtherValue(t.productType))
+      .map(t => ({ value: t.productType, label: t.productType }));
   }, [insuranceProductsMaster]);
 
   const insuranceSubProductOptions = useMemo(() => {
     const currentInsType = isOtherValue(formData.insuranceType)
       ? (formData.customInsuranceType || '')
       : formData.insuranceType;
-    const opts = (insuranceSubProductsMaster || [])
-      .filter(s => s.productType?.toLowerCase().trim() === currentInsType?.toLowerCase().trim())
+    return (insuranceSubProductsMaster || [])
+      .filter(s => !isOtherValue(s.subProductType) && s.productType?.toLowerCase().trim() === currentInsType?.toLowerCase().trim())
       .map(s => ({ value: s.subProductType, label: s.subProductType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
   }, [insuranceSubProductsMaster, formData.insuranceType, formData.customInsuranceType]);
 
   const investmentBudgetOptions = useMemo(() => {
-    const opts = (investmentBudgetsMaster || []).map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (investmentBudgetsMaster || [])
+      .filter(t => !isOtherValue(t.investmentBudget))
+      .map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
   }, [investmentBudgetsMaster]);
 
   const handleChange = (field, value) => {
@@ -740,6 +724,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
             options={leadSourceOptions}
             value={formData.leadSource}
             onChange={(val) => handleChange('leadSource', val)}
+            onAdd={(term) => {
+              handleChange('leadSource', 'Add New');
+              if (term) handleChange('customLeadSource', term);
+            }}
             placeholder="Select lead source"
           />
           {isOtherValue(formData.leadSource) && (
@@ -747,6 +735,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
               <Share2 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
               <input
                 type="text"
+                autoFocus
+                ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                 value={formData.customLeadSource}
                 onChange={(e) => handleChange('customLeadSource', e.target.value)}
                 placeholder="Enter new lead source"
@@ -782,6 +772,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 options={realEstateProductOptions}
                 value={formData.productType}
                 onChange={(val) => handleChange('productType', val)}
+                onAdd={(term) => {
+                  handleChange('productType', 'Add New');
+                  if (term) handleChange('customProductType', term);
+                }}
                 placeholder="Select product type"
               />
               {isOtherValue(formData.productType) && (
@@ -789,6 +783,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customProductType}
                     onChange={(e) => handleChange('customProductType', e.target.value)}
                     placeholder="Enter new product type"
@@ -803,6 +799,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 options={realEstateRequirementOptions}
                 value={formData.requirementOption}
                 onChange={handleRequirementOptionChange}
+                onAdd={(term) => {
+                  handleRequirementOptionChange('Add New');
+                  if (term) handleCustomRequirementChange(term);
+                }}
                 placeholder="Select requirement"
               />
               {isOtherValue(formData.requirementOption) && (
@@ -810,9 +810,11 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customRequirement}
                     onChange={(e) => handleCustomRequirementChange(e.target.value)}
-                    placeholder="Specify other requirement"
+                    placeholder="Enter new requirement"
                     className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
                   />
                 </div>
@@ -829,6 +831,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
               options={mutualFundProductOptions}
               value={formData.productType}
               onChange={(val) => handleChange('productType', val)}
+              onAdd={(term) => {
+                handleChange('productType', 'Add New');
+                if (term) handleChange('customProductType', term);
+              }}
               placeholder="Select product type"
             />
             {isOtherValue(formData.productType) && (
@@ -836,6 +842,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                 <input
                   type="text"
+                  autoFocus
+                  ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                   value={formData.customProductType}
                   onChange={(e) => handleChange('customProductType', e.target.value)}
                   placeholder="Enter new product type"
@@ -855,6 +863,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 options={insuranceProductOptions}
                 value={formData.insuranceType}
                 onChange={(val) => handleChange('insuranceType', val)}
+                onAdd={(term) => {
+                  handleChange('insuranceType', 'Add New');
+                  if (term) handleChange('customInsuranceType', term);
+                }}
                 placeholder="Select product type"
               />
               {isOtherValue(formData.insuranceType) && (
@@ -862,6 +874,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceType}
                     onChange={(e) => handleChange('customInsuranceType', e.target.value)}
                     placeholder="Enter new product type"
@@ -877,6 +891,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 options={insuranceSubProductOptions}
                 value={formData.insuranceSubType}
                 onChange={(val) => handleChange('insuranceSubType', val)}
+                onAdd={(term) => {
+                  handleChange('insuranceSubType', 'Add New');
+                  if (term) handleChange('customInsuranceSubType', term);
+                }}
                 placeholder={`Select ${isOtherValue(formData.insuranceType) ? (formData.customInsuranceType || 'product') : formData.insuranceType} sub type`}
               />
               {isOtherValue(formData.insuranceSubType) && (
@@ -884,6 +902,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <Shield className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceSubType}
                     onChange={(e) => handleChange('customInsuranceSubType', e.target.value)}
                     placeholder="Enter new sub product type"
@@ -986,6 +1006,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
             options={investmentBudgetOptions}
             value={formData.investmentBudget}
             onChange={(val) => handleChange('investmentBudget', val)}
+            onAdd={(term) => {
+              handleChange('investmentBudget', 'Add New');
+              if (term) handleChange('customInvestmentBudget', term);
+            }}
             placeholder="Select investment budget"
           />
           {isOtherValue(formData.investmentBudget) && (
@@ -993,6 +1017,8 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
               <Wallet className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
               <input
                 type="text"
+                autoFocus
+                ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                 value={formData.customInvestmentBudget}
                 onChange={(e) => handleChange('customInvestmentBudget', e.target.value)}
                 placeholder="Enter new budget range (e.g. 1 Cr - 2 Cr)"

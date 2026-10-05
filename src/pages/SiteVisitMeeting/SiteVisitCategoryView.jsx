@@ -212,8 +212,7 @@ export default function SiteVisitCategoryView({
     return { all: allCount, today: todayCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
   }, [leads, isAdmin, user, today, customDate]);
 
-  const dateFilterOptions = useMemo(() => [
-    { value: 'today', label: `Today's Followup (${dateCounts.today})` },
+  const allDatesFilterOptions = useMemo(() => [
     { value: 'all', label: `All Dates (${dateCounts.all})` },
     { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
     { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
@@ -649,7 +648,7 @@ export default function SiteVisitCategoryView({
         key={leadKey}
         className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200'}`}
       >
-        {/* Card Header: Name, Lead #, Status */}
+        {/* Card Header: Name, Lead # on left; Followup button on top right */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
             <h4
@@ -663,27 +662,22 @@ export default function SiteVisitCategoryView({
                 #{item.leadNo}
               </span>
             )}
-          </div>
-          <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
             {isDealClosed(item) && (
               <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
                 <CheckCircle2 size={9} className="stroke-[2.5] text-emerald-700" /> Closed Deal
               </span>
             )}
-            {isAdmin && item.status && (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                {item.status}
-              </span>
-            )}
-            {(item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <Check size={9} className="stroke-[2.5]" /> Site Visited
-              </span>
-            )}
-            {item.visitMeet?.meeting && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded bg-violet-50 text-violet-700 border border-violet-200">
-                <Check size={9} className="stroke-[2.5]" /> Meeting
-              </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {onLogFollowUp && (
+              <button
+                type="button"
+                onClick={() => onLogFollowUp(item)}
+                className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
+              >
+                <MessageSquare size={12} />
+                <span>Followup</span>
+              </button>
             )}
           </div>
         </div>
@@ -801,19 +795,12 @@ export default function SiteVisitCategoryView({
           </div>
         )}
 
-        {/* Action Buttons: Followup on left, Hide/Details on right */}
+        {/* Action & Status Row: Details dropdown on left, Meeting / Site Visited text on right */}
         <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
-          {onLogFollowUp ? (<button
-            onClick={() => onLogFollowUp(item)}
-            className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition"
-          >
-            <MessageSquare size={12} />
-            <span>Followup</span>
-          </button>) : null}
-
           <button
+            type="button"
             onClick={() => toggleCardExpand(leadKey)}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95 ${
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer ${
               isExpanded
                 ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
                 : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
@@ -831,6 +818,24 @@ export default function SiteVisitCategoryView({
               </>
             )}
           </button>
+
+          <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+            {isAdmin && item.status && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                {item.status}
+              </span>
+            )}
+            {(item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Check size={9} className="stroke-[2.5]" /> Site Visited
+              </span>
+            )}
+            {item.visitMeet?.meeting && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
+                <Check size={9} className="stroke-[2.5]" /> Meeting
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Dropped-down / Accordion Section */}
@@ -920,51 +925,75 @@ export default function SiteVisitCategoryView({
             )}
           </div>
 
-          {/* Date Filter Dropdown (Shifted directly into top bar & defaulted to Today's Date) */}
-          <div className="flex items-center gap-1 shrink-0">
-            <div className="w-[155px] sm:w-[185px] shrink-0">
-              <SearchableDropdown
-                options={dateFilterOptions}
-                value={dateFilter}
-                onChange={(val) => {
-                  setDateFilter(val);
-                  setShowClosedDealsOnly(false);
-                  if (val === 'custom' && !customDate) {
-                    const now = new Date();
-                    setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
-                  }
-                  setCurrentPage(1);
-                }}
-                placeholder="Select Date"
-                height="h-[34px]"
-                triggerClassName={dateFilter === 'today' ? "w-full bg-gradient-to-r from-amber-500 to-amber-600 text-white border border-amber-600 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer shadow-sm h-[34px] font-semibold text-xs tracking-wide active:scale-[0.98]" : ""}
-                icon={Calendar}
-              />
-            </div>
+          {/* Dedicated Tab / Button for Today's Followup */}
+          <button
+            type="button"
+            onClick={() => {
+              setDateFilter('today');
+              setShowClosedDealsOnly(false);
+              setCurrentPage(1);
+            }}
+            title="Show Today's Followups"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              dateFilter === 'today'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
+            }`}
+          >
+            <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-gray-400'} />
+            <span>Today's Followup</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+              dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+            }`}>
+              {dateCounts.today}
+            </span>
+          </button>
 
-            {/* Custom Date Input if 'custom' is selected */}
-            {dateFilter === 'custom' && (
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
-                className="bg-white border border-gray-300 rounded-lg px-2 text-xs font-medium text-gray-700 h-[34px] focus:outline-none focus:border-indigo-500 shadow-xs cursor-pointer"
-              />
-            )}
+          {/* Dropdown for All Dates & other date options */}
+          <div className="w-[145px] sm:w-[170px] shrink-0">
+            <SearchableDropdown
+              options={allDatesFilterOptions}
+              value={dateFilter === 'today' ? 'all' : dateFilter}
+              onMainClick={() => {
+                setDateFilter('all');
+                setShowClosedDealsOnly(false);
+                setCustomDate('');
+                setCurrentPage(1);
+              }}
+              onChange={(val) => {
+                setDateFilter(val);
+                setShowClosedDealsOnly(false);
+                if (val === 'custom' && !customDate) {
+                  const now = new Date();
+                  setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+                }
+                setCurrentPage(1);
+              }}
+              placeholder="All Dates"
+              height="h-[34px]"
+              triggerClassName={
+                dateFilter !== 'today'
+                  ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
+                  : ""
+              }
+              icon={Clock}
+            />
           </div>
+
+          {/* Custom Date Input if 'custom' is selected */}
+          {dateFilter === 'custom' && (
+            <input
+              type="date"
+              value={customDate}
+              onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
+              className="bg-white border border-gray-300 rounded-lg px-2 text-xs font-medium text-gray-700 h-[34px] focus:outline-none focus:border-indigo-500 shadow-xs cursor-pointer"
+            />
+          )}
 
           {/* Closed Deal Toggle Button */}
           <button
             onClick={() => {
-              setShowClosedDealsOnly(prev => {
-                const nextVal = !prev;
-                if (nextVal) {
-                  setDateFilter('all');
-                } else {
-                  setDateFilter('today');
-                }
-                return nextVal;
-              });
+              setShowClosedDealsOnly(prev => !prev);
               setCurrentPage(1);
             }}
             title={showClosedDealsOnly ? `Show all ${category} visits/deals` : `Show only closed deals for ${category}`}

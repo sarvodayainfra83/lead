@@ -35,7 +35,7 @@ export default function LeadCategoryView({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [callerStatusFilter, setCallerStatusFilter] = useState('all'); // 'all' | 'unassigned' | 'assigned'
-  const [dateFilter, setDateFilter] = useState(initialDateFilter || 'all');
+  const [dateFilter, setDateFilter] = useState(initialDateFilter || 'today');
   const [customDate, setCustomDate] = useState('');
   const [leadSourceFilter, setLeadSourceFilter] = useState('');
   const [callerFilter, setCallerFilter] = useState('');
@@ -184,7 +184,7 @@ export default function LeadCategoryView({
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (callerStatusFilter && callerStatusFilter !== 'all') count++;
-    if (dateFilter && dateFilter !== 'all') count++;
+    if (dateFilter && dateFilter !== 'today') count++;
     if (customDate) count++;
     if (leadSourceFilter) count++;
     if (callerFilter) count++;
@@ -195,7 +195,7 @@ export default function LeadCategoryView({
 
   const handleClearFilters = useCallback(() => {
     setCallerStatusFilter('all');
-    setDateFilter('all');
+    setDateFilter('today');
     setCustomDate('');
     setLeadSourceFilter('');
     setCallerFilter('');
@@ -203,7 +203,7 @@ export default function LeadCategoryView({
     setRequirementFilter('');
     setSearchQuery('');
     setCurrentPage(1);
-    toast.success('Filters reset');
+    toast.success('Filters reset to Today');
   }, []);
 
   // Filter leads
@@ -921,7 +921,12 @@ export default function LeadCategoryView({
             <div className="w-[145px] sm:w-[170px] shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
-                value={dateFilter === 'today' ? '' : dateFilter}
+                value={dateFilter === 'today' ? 'all' : dateFilter}
+                onMainClick={() => {
+                  setDateFilter('all');
+                  setCustomDate('');
+                  setCurrentPage(1);
+                }}
                 onChange={(val) => {
                   setDateFilter(val);
                   if (val === 'custom' && !customDate) {
@@ -929,11 +934,11 @@ export default function LeadCategoryView({
                   }
                   setCurrentPage(1);
                 }}
-                placeholder={dateFilter === 'today' ? "Other Dates" : "All Dates"}
+                placeholder="All Dates"
                 height="h-[34px]"
                 triggerClassName={
                   dateFilter !== 'today'
-                    ? "w-full bg-gradient-to-r from-sky-600 to-blue-600 text-white border border-blue-600 rounded-lg px-2.5 py-1 flex justify-between items-center cursor-pointer shadow-sm h-[34px] font-bold text-xs tracking-wide active:scale-[0.98] ring-2 ring-sky-300/50"
+                    ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
                     : ""
                 }
                 icon={Clock}

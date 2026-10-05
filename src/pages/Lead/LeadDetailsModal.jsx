@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Phone, MessageSquare, Mail, MapPin, User, Calendar, Briefcase, Wallet, Shield, Home, TrendingUp, UserCheck, Clock, FileText, PhoneCall, Share2 } from 'lucide-react';
+import { X, Phone, MessageSquare, Mail, MapPin, User, Calendar, Briefcase, Wallet, Shield, Home, TrendingUp, UserCheck, Clock, FileText, PhoneCall, Share2, Pencil } from 'lucide-react';
 import { formatLeadDate } from './leadConstants';
 import { getLeadTypeBadgeClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 import { callTrackerApi } from '../../api/callTrackerApi';
@@ -26,6 +26,32 @@ const formatCallDate = (val) => {
   return str || '-';
 };
 
+const getModalLeadTypeBadge = (leadType) => {
+  const norm = String(leadType || '').toLowerCase();
+  if (norm.includes('real') || norm.includes('estate')) {
+    return {
+      bg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+      dot: 'bg-amber-400'
+    };
+  }
+  if (norm.includes('insurance')) {
+    return {
+      bg: 'bg-sky-500/20 text-sky-300 border-sky-500/40',
+      dot: 'bg-sky-400'
+    };
+  }
+  if (norm.includes('mutual') || norm.includes('fund')) {
+    return {
+      bg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+      dot: 'bg-emerald-400'
+    };
+  }
+  return {
+    bg: 'bg-white/10 text-slate-200 border-white/20',
+    dot: 'bg-slate-300'
+  };
+};
+
 export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShareProducts }) {
   // Call report: full call_trackers history for this lead (by lead_id)
   const [callRecords, setCallRecords] = useState([]);
@@ -48,6 +74,7 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
   if (!isOpen || !lead) return null;
 
   const latestCall = callRecords[callRecords.length - 1] || null;
+  const badgeStyle = getModalLeadTypeBadge(lead.leadType);
 
   const formatDate = (val) => {
     if (!val) return '-';
@@ -71,34 +98,43 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs">
       <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100/80 ring-1 ring-black/5 w-full max-w-3xl max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex-shrink-0 px-4 sm:px-5 py-3 sm:py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-base sm:text-lg font-bold tracking-tight text-white bg-white/10 px-3 py-1 rounded-lg border border-white/20">
-              {lead.leadNo}
-            </span>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${getLeadTypeBadgeClass(lead.leadType)}`}>
-              {lead.leadType}
-            </span>
+        <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between gap-2 border-b border-white/10">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+            {lead.leadNo && (
+              <span className="font-mono text-xs sm:text-sm font-bold text-white bg-white/10 px-2.5 py-1 rounded-lg border border-white/15 tracking-wide shrink-0">
+                #{lead.leadNo}
+              </span>
+            )}
+            {lead.leadType && (
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap shadow-2xs ${badgeStyle.bg}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${badgeStyle.dot}`} />
+                <span>{lead.leadType}</span>
+              </span>
+            )}
             {lead.processType && (
-              <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded bg-white/10 text-gray-300">
+              <span className="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-medium whitespace-nowrap">
                 {lead.processType}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2 shrink-0">
             {onShareProducts && (
               <button
+                type="button"
                 onClick={() => onShareProducts(lead)}
                 title={`Share ${lead.leadType || ''} products with ${lead.personName || lead.customerName || 'this client'}`}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-indigo-700 hover:bg-indigo-50 shadow-xs transition active:scale-95"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/20 hover:bg-indigo-500/35 text-indigo-100 hover:text-white border border-indigo-400/30 shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer"
               >
-                <Share2 size={13} />
-                <span>Share Products</span>
+                <Share2 size={13} className="text-indigo-300" />
+                <span className="hidden sm:inline">Share Products</span>
+                <span className="sm:hidden">Share</span>
               </button>
             )}
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Close popup"
             >
               <X size={18} />
             </button>
@@ -373,33 +409,42 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        <div className="flex-shrink-0 px-4 sm:px-6 py-3 bg-slate-50 border-t border-gray-200 flex items-center justify-between gap-2">
+          {/* Quick Communication Actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <a
               href={`tel:${getCleanPhone(lead.number || lead.customerNumber)}`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs transition"
+              className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer"
             >
-              <Phone size={13} /> Call
+              <Phone size={13} />
+              <span>Call</span>
             </a>
             <button
+              type="button"
               onClick={handleWhatsApp}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-50 shadow-xs transition"
+              className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-700 shadow-2xs transition active:scale-95 whitespace-nowrap cursor-pointer"
             >
-              <MessageSquare size={13} /> WhatsApp
+              <MessageSquare size={13} />
+              <span>WhatsApp</span>
             </button>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Edit & Close Actions */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {onEdit && (
               <button
+                type="button"
                 onClick={() => { onClose(); onEdit(lead); }}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition"
+                className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition active:scale-95 whitespace-nowrap cursor-pointer"
               >
-                Edit Lead
+                <Pencil size={13} />
+                <span>Edit Lead</span>
               </button>
             )}
             <button
+              type="button"
               onClick={onClose}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 transition"
+              className="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 shadow-2xs transition active:scale-95 whitespace-nowrap cursor-pointer"
             >
               Close
             </button>

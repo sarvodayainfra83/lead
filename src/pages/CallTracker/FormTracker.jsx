@@ -95,7 +95,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
   const isOtherValue = (val) => {
     if (!val) return false;
     const lower = String(val).toLowerCase().trim();
-    return lower === 'other' || lower === 'others';
+    return lower === 'other' || lower === 'others' || lower === 'add new' || lower === 'add_new' || lower === '+ add new';
   };
 
   const isRealEstate =
@@ -207,48 +207,36 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
   };
 
   const requirementOptions = useMemo(() => {
-    const opts = (requirementsList || []).map(r => ({ value: r.requirement, label: r.requirement }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (requirementsList || [])
+      .filter(r => !isOtherValue(r.requirement))
+      .map(r => ({ value: r.requirement, label: r.requirement }));
   }, [requirementsList]);
 
   const realEstateProductOptions = useMemo(() => {
-    const opts = (realEstateProductsList || []).map(t => ({ value: t.productType, label: t.productType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (realEstateProductsList || [])
+      .filter(t => !isOtherValue(t.productType))
+      .map(t => ({ value: t.productType, label: t.productType }));
   }, [realEstateProductsList]);
 
   const mutualFundProductOptions = useMemo(() => {
-    const opts = (mutualFundProductsList || []).map(t => ({ value: t.productType, label: t.productType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (mutualFundProductsList || [])
+      .filter(t => !isOtherValue(t.productType))
+      .map(t => ({ value: t.productType, label: t.productType }));
   }, [mutualFundProductsList]);
 
   const insuranceProductOptions = useMemo(() => {
-    const opts = (insuranceProductsList || []).map(t => ({ value: t.productType, label: t.productType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
+    return (insuranceProductsList || [])
+      .filter(t => !isOtherValue(t.productType))
+      .map(t => ({ value: t.productType, label: t.productType }));
   }, [insuranceProductsList]);
 
   const insuranceSubProductOptions = useMemo(() => {
     const currentInsType = isOtherValue(formData.insuranceType)
       ? (formData.customInsuranceType || '')
       : formData.insuranceType;
-    const opts = (insuranceSubProductsList || [])
-      .filter(s => s.productType?.toLowerCase().trim() === currentInsType?.toLowerCase().trim())
+    return (insuranceSubProductsList || [])
+      .filter(s => !isOtherValue(s.subProductType) && s.productType?.toLowerCase().trim() === currentInsType?.toLowerCase().trim())
       .map(s => ({ value: s.subProductType, label: s.subProductType }));
-    if (!opts.some(o => isOtherValue(o.value))) {
-      opts.push({ value: 'Others', label: 'Others' });
-    }
-    return opts;
   }, [insuranceSubProductsList, formData.insuranceType, formData.customInsuranceType]);
 
   const investmentBudgetOptions = investmentBudgetsList.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
@@ -613,6 +601,10 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 options={realEstateProductOptions}
                 value={formData.productType}
                 onChange={(val) => handleChange('productType', val)}
+                onAdd={(term) => {
+                  handleChange('productType', 'Add New');
+                  if (term) handleChange('customProductType', term);
+                }}
                 placeholder="Select product type"
               />
               {isOtherValue(formData.productType) && (
@@ -620,6 +612,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customProductType}
                     onChange={(e) => handleChange('customProductType', e.target.value)}
                     placeholder="Enter new product type"
@@ -634,6 +628,10 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 options={requirementOptions}
                 value={formData.requirementOption}
                 onChange={handleRequirementOptionChange}
+                onAdd={(term) => {
+                  handleRequirementOptionChange('Add New');
+                  if (term) handleCustomRequirementChange(term);
+                }}
                 placeholder="Select requirement"
               />
               {isOtherValue(formData.requirementOption) && (
@@ -641,9 +639,11 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customRequirement}
                     onChange={(e) => handleCustomRequirementChange(e.target.value)}
-                    placeholder="Specify other requirement"
+                    placeholder="Enter new requirement"
                     className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
                   />
                 </div>
@@ -660,6 +660,10 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
               options={mutualFundProductOptions}
               value={formData.productType}
               onChange={(val) => handleChange('productType', val)}
+              onAdd={(term) => {
+                handleChange('productType', 'Add New');
+                if (term) handleChange('customProductType', term);
+              }}
               placeholder="Select product type"
             />
             {isOtherValue(formData.productType) && (
@@ -667,6 +671,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                 <input
                   type="text"
+                  autoFocus
+                  ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                   value={formData.customProductType}
                   onChange={(e) => handleChange('customProductType', e.target.value)}
                   placeholder="Enter new product type"
@@ -686,6 +692,10 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 options={insuranceProductOptions}
                 value={formData.insuranceType}
                 onChange={(val) => handleChange('insuranceType', val)}
+                onAdd={(term) => {
+                  handleChange('insuranceType', 'Add New');
+                  if (term) handleChange('customInsuranceType', term);
+                }}
                 placeholder="Select product type"
               />
               {isOtherValue(formData.insuranceType) && (
@@ -693,6 +703,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceType}
                     onChange={(e) => handleChange('customInsuranceType', e.target.value)}
                     placeholder="Enter new product type"
@@ -708,6 +720,10 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 options={insuranceSubProductOptions}
                 value={formData.insuranceSubType}
                 onChange={(val) => handleChange('insuranceSubType', val)}
+                onAdd={(term) => {
+                  handleChange('insuranceSubType', 'Add New');
+                  if (term) handleChange('customInsuranceSubType', term);
+                }}
                 placeholder={`Select ${isOtherValue(formData.insuranceType) ? (formData.customInsuranceType || 'product') : formData.insuranceType} sub type`}
               />
               {isOtherValue(formData.insuranceSubType) && (
@@ -715,6 +731,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <ClipboardList className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
                   <input
                     type="text"
+                    autoFocus
+                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceSubType}
                     onChange={(e) => handleChange('customInsuranceSubType', e.target.value)}
                     placeholder="Enter new sub product type"
