@@ -11,7 +11,7 @@ const Layout = () => {
   const user = useAuthStore(state => state.user);
 
   return (
-    <div className="flex h-[100dvh] bg-white overflow-hidden">
+    <div className="flex h-full w-full bg-white overflow-hidden">
 
       {/* Sidebar - Fixed on desktop, sliding on mobile */}
       <Sidebar
@@ -22,7 +22,7 @@ const Layout = () => {
       />
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 h-[100dvh] ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-56 2xl:ml-60'}`}>
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 h-full overflow-hidden ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-56 2xl:ml-60'}`}>
 
         {/* Header - Sticky */}
         <Header
@@ -36,7 +36,6 @@ const Layout = () => {
             <Outlet />
           </div>
         </main>
-
 
         <Footer />
 

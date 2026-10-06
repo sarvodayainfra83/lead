@@ -41,7 +41,7 @@ function App() {
   }, []);
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="bg-white h-full w-full overflow-hidden">
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Toaster position="top-center" toastOptions={{ duration: 3000 }} />
         <ScrollToTop />
