@@ -265,9 +265,14 @@ export const getPageAccess = (user, pageKey) => {
     // Old accounts stored one shared 'siteVisitMeeting' level for both visitor pages
     level = pages[pageKey] ?? pages.siteVisitMeeting;
   } else if (pageKey === 'nonInterested') {
-    const niLevel = pages.nonInterested ?? pages.siteVisitMeeting ?? pages.callTracker;
-    if (niLevel === 'full' || niLevel === 'edit') return 'full';
-    return 'view'; // Show the Not-interested section to all user roles by default
+    // If explicitly configured in accessPages by admin, strictly honor that configuration
+    if (pages.nonInterested !== undefined && pages.nonInterested !== null) {
+      level = pages.nonInterested;
+    } else if (isUserHR(user)) {
+      level = 'none'; // HR users default to no access unless explicitly granted by admin
+    } else {
+      level = pages.siteVisitMeeting ?? pages.callTracker ?? 'none';
+    }
   } else {
     level = pages[pageKey];
   }

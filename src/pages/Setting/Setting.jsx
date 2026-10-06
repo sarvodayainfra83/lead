@@ -103,7 +103,8 @@ export default function Setting({ setHeaderAction }) {
         next.accessPages = {
           ...next.accessPages,
           attendance: 'full',
-          attendanceReport: 'full'
+          attendanceReport: 'full',
+          nonInterested: 'none'
         };
       }
       return next;

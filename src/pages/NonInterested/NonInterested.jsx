@@ -19,7 +19,7 @@ import { useLocation } from 'react-router-dom';
 export default function NonInterested() {
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
-  const canEdit = hasFullAccess(user, 'nonInterested') || hasFullAccess(user, 'siteVisitMeeting');
+  const canEdit = hasFullAccess(user, 'nonInterested');
   const navState = useLocation().state || {};
 
   // Determine initial tab from nav state or user's assigned lead type
