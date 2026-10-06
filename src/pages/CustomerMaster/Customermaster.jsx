@@ -268,10 +268,10 @@ export default function Customermaster() {
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-1">
-      {/* Header Bar: Mobile = 2 Rows (Row 1: Tabs, Row 2: All Other Controls); Desktop = 1 Row */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full flex-shrink-0">
-        {/* Row 1 on Mobile / Left on Desktop: Lead Category Button Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+      {/* Header Bar: Row 1 = Lead Category Tabs; Row 2 = Search & Actions Controls */}
+      <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
+        {/* Row 1: Lead Category Button Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
           <PageTabs
             tabs={visibleTabs.map(t => ({ ...t, count: categoryCounts[t.key] ?? 0 }))}
             activeKey={activeTab}
@@ -279,11 +279,11 @@ export default function Customermaster() {
           />
         </div>
 
-        {/* Row 2 on Mobile / Right on Desktop: Search + Filter + Refresh + Reset in a Single Row */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
+        {/* Row 2: Search + Filter + Refresh + Reset */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full justify-between sm:justify-end pb-0.5">
           {/* Search Input */}
-          <div className="relative min-w-[120px] max-w-full sm:max-w-[220px] flex-1 shrink">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+          <div className="relative min-w-[140px] sm:min-w-[180px] max-w-full sm:max-w-[240px] flex-1 sm:flex-initial">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
             <input
               type="text"
               placeholder={`Search ${activeTab} customers...`}
@@ -294,7 +294,7 @@ export default function Customermaster() {
             {filters.searchQuery && (
               <button
                 onClick={() => updateFilter('searchQuery', '')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
                 title="Clear search"
               >
                 <X size={13} />
@@ -307,7 +307,7 @@ export default function Customermaster() {
             onClick={loadData}
             disabled={loading}
             title="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95"
+            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95 cursor-pointer"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -317,7 +317,7 @@ export default function Customermaster() {
             <button
               onClick={handleClearFilters}
               title="Clear all filters & search"
-              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95"
+              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95 cursor-pointer"
             >
               <RotateCcw size={13} />
               <span className="hidden md:inline">Reset</span>

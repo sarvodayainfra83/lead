@@ -647,10 +647,7 @@ export default function LeadCategoryView({
 
         {/* Actions */}
         {isTester && (
-          <td
-            className="px-3 py-2.5 text-center whitespace-nowrap"
-            style={{ position: 'sticky', right: 0, zIndex: 10, background: 'inherit' }}
-          >
+          <td className="px-3 py-2.5 text-center whitespace-nowrap">
             <div className="flex items-center justify-center gap-1">
               <button
                 onClick={() => onViewDetails?.(item)}
@@ -1167,7 +1164,6 @@ export default function LeadCategoryView({
             renderCard={renderCard}
             minWidth="1400px"
             stickyFirstColumn={true}
-            stickyLastColumn={canEdit}
             disableDragScroll={true}
             viewMode={viewMode}
             cardsGridClassName="grid grid-cols-1 md:grid-cols-2 gap-2.5 p-2 sm:p-3"

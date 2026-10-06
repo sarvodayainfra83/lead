@@ -892,10 +892,10 @@ export default function SiteVisitCategoryView({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-1">
-      {/* Header Bar: Mobile = 2 Rows (Row 1: Tabs, Row 2: All Other Controls); Desktop = 1 Row */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full flex-shrink-0">
-        {/* Row 1 on Mobile / Left on Desktop: Lead Category Button Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+      {/* Header Bar: Row 1 = Lead Category Tabs (Top); Row 2 = Dates & Actions Controls Bar */}
+      <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
+        {/* Row 1: Lead Category Button Tabs (Always Top Row) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
           <PageTabs
             tabs={tabs}
             activeKey={activeTab}
@@ -903,151 +903,157 @@ export default function SiteVisitCategoryView({
           />
         </div>
 
-        {/* Row 2 on Mobile / Right on Desktop: Search + Date Filter + Closed Deal + Export + Refresh + Reset */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
-          {/* Search Input */}
-          <div className="relative min-w-[120px] max-w-full sm:max-w-[220px] flex-1 shrink">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              placeholder={`Search ${category} visits...`}
-              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-xs transition"
-            />
-            {searchQuery && (
+        {/* Row 2: Controls Bar (Dates & Closed Deal on Left, Search & Actions on Right) */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
+          {/* Left: Date Filters + Closed Deal Toggle */}
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+            {/* Dedicated Tab / Button for Today's Followup */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateFilter('today');
+                setShowClosedDealsOnly(false);
+                setCurrentPage(1);
+              }}
+              title="Show Today's Followups"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                dateFilter === 'today'
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
+              }`}
+            >
+              <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-gray-400'} />
+              <span>Today's Followup</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+              }`}>
+                {dateCounts.today}
+              </span>
+            </button>
+
+            {/* Dropdown for All Dates & other date options */}
+            <div className="w-[145px] sm:w-[170px] shrink-0">
+              <SearchableDropdown
+                options={allDatesFilterOptions}
+                value={dateFilter === 'today' ? 'all' : dateFilter}
+                onMainClick={() => {
+                  setDateFilter('all');
+                  setShowClosedDealsOnly(false);
+                  setCustomDate('');
+                  setCurrentPage(1);
+                }}
+                onChange={(val) => {
+                  setDateFilter(val);
+                  setShowClosedDealsOnly(false);
+                  if (val === 'custom' && !customDate) {
+                    const now = new Date();
+                    setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+                  }
+                  setCurrentPage(1);
+                }}
+                placeholder="All Dates"
+                height="h-[34px]"
+                triggerClassName={
+                  dateFilter !== 'today'
+                    ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
+                    : ""
+                }
+                icon={Clock}
+              />
+            </div>
+
+            {/* Custom Date Input if 'custom' is selected */}
+            {dateFilter === 'custom' && (
+              <input
+                type="date"
+                value={customDate}
+                onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
+                className="bg-white border border-gray-300 rounded-lg px-2 text-xs font-medium text-gray-700 h-[34px] focus:outline-none focus:border-indigo-500 shadow-xs cursor-pointer shrink-0"
+              />
+            )}
+
+            {/* Closed Deal Toggle Button */}
+            <button
+              onClick={() => {
+                setShowClosedDealsOnly(prev => !prev);
+                setCurrentPage(1);
+              }}
+              title={showClosedDealsOnly ? `Show all ${category} visits/deals` : `Show only closed deals for ${category}`}
+              className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                showClosedDealsOnly
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs font-bold ring-2 ring-emerald-300'
+                  : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs'
+              }`}
+            >
+              <CheckCircle2 size={14} className={showClosedDealsOnly ? 'text-white' : 'text-emerald-600'} />
+              <span>Closed Deal</span>
+              {closedDealsCount > 0 && (
+                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight ${
+                  showClosedDealsOnly ? 'bg-white text-emerald-800' : 'bg-emerald-100 text-emerald-800'
+                }`}>
+                  {closedDealsCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Right: Search + Excel + Refresh + Reset */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto justify-between sm:justify-end pb-0.5">
+            {/* Search Input */}
+            <div className="relative min-w-[140px] sm:min-w-[180px] max-w-full sm:max-w-[240px] flex-1 sm:flex-initial">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                placeholder={`Search ${category} visits...`}
+                className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-xs transition"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Export to Excel (ADMIN / Tester only) */}
+            {isAdmin && (
               <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
-                title="Clear search"
+                onClick={exportToExcel}
+                title={`Export ${category} visits to Excel`}
+                className="flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-xs active:scale-95 cursor-pointer"
               >
-                <X size={13} />
+                <FileSpreadsheet size={14} className="text-emerald-600" />
+                <span className="hidden sm:inline">Excel</span>
+              </button>
+            )}
+
+            {/* Refresh */}
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              title="Refresh"
+              className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95 cursor-pointer"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin text-indigo-600' : ''} />
+            </button>
+
+            {/* Clear / Reset Filters */}
+            {isFilterActive && (
+              <button
+                onClick={handleClearFilters}
+                title="Reset all filters & search to default"
+                className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95 cursor-pointer"
+              >
+                <RotateCcw size={13} />
+                <span className="hidden md:inline">Reset</span>
               </button>
             )}
           </div>
-
-          {/* Dedicated Tab / Button for Today's Followup */}
-          <button
-            type="button"
-            onClick={() => {
-              setDateFilter('today');
-              setShowClosedDealsOnly(false);
-              setCurrentPage(1);
-            }}
-            title="Show Today's Followups"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
-              dateFilter === 'today'
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
-            }`}
-          >
-            <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-gray-400'} />
-            <span>Today's Followup</span>
-            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-              dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
-            }`}>
-              {dateCounts.today}
-            </span>
-          </button>
-
-          {/* Dropdown for All Dates & other date options */}
-          <div className="w-[145px] sm:w-[170px] shrink-0">
-            <SearchableDropdown
-              options={allDatesFilterOptions}
-              value={dateFilter === 'today' ? 'all' : dateFilter}
-              onMainClick={() => {
-                setDateFilter('all');
-                setShowClosedDealsOnly(false);
-                setCustomDate('');
-                setCurrentPage(1);
-              }}
-              onChange={(val) => {
-                setDateFilter(val);
-                setShowClosedDealsOnly(false);
-                if (val === 'custom' && !customDate) {
-                  const now = new Date();
-                  setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
-                }
-                setCurrentPage(1);
-              }}
-              placeholder="All Dates"
-              height="h-[34px]"
-              triggerClassName={
-                dateFilter !== 'today'
-                  ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
-                  : ""
-              }
-              icon={Clock}
-            />
-          </div>
-
-          {/* Custom Date Input if 'custom' is selected */}
-          {dateFilter === 'custom' && (
-            <input
-              type="date"
-              value={customDate}
-              onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
-              className="bg-white border border-gray-300 rounded-lg px-2 text-xs font-medium text-gray-700 h-[34px] focus:outline-none focus:border-indigo-500 shadow-xs cursor-pointer"
-            />
-          )}
-
-          {/* Closed Deal Toggle Button */}
-          <button
-            onClick={() => {
-              setShowClosedDealsOnly(prev => !prev);
-              setCurrentPage(1);
-            }}
-            title={showClosedDealsOnly ? `Show all ${category} visits/deals` : `Show only closed deals for ${category}`}
-            className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
-              showClosedDealsOnly
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs font-bold ring-2 ring-emerald-300'
-                : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs'
-            }`}
-          >
-            <CheckCircle2 size={14} className={showClosedDealsOnly ? 'text-white' : 'text-emerald-600'} />
-            <span>Closed Deal</span>
-            {closedDealsCount > 0 && (
-              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight ${
-                showClosedDealsOnly ? 'bg-white text-emerald-800' : 'bg-emerald-100 text-emerald-800'
-              }`}>
-                {closedDealsCount}
-              </span>
-            )}
-          </button>
-
-          {/* Export to Excel (ADMIN / Tester only) */}
-          {isAdmin && (
-            <button
-              onClick={exportToExcel}
-              title={`Export ${category} visits to Excel`}
-              className="flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-xs active:scale-95 cursor-pointer"
-            >
-              <FileSpreadsheet size={14} className="text-emerald-600" />
-              <span className="hidden sm:inline">Excel</span>
-            </button>
-          )}
-
-          {/* Refresh */}
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            title="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95 cursor-pointer"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin text-indigo-600' : ''} />
-          </button>
-
-          {/* Clear / Reset Filters */}
-          {isFilterActive && (
-            <button
-              onClick={handleClearFilters}
-              title="Reset all filters & search to default"
-              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95 cursor-pointer"
-            >
-              <RotateCcw size={13} />
-              <span className="hidden md:inline">Reset</span>
-            </button>
-          )}
         </div>
       </div>
 
