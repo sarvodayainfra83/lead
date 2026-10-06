@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, MapPin, Calendar, User, ExternalLink } from 'lucide-react';
+import { isRawCoordinatesOrEmpty, getGoogleMapsUrl } from '../../api/attendanceApi';
 
 export default function PhotoViewModal({ isOpen, onClose, log }) {
   const [activePhoto, setActivePhoto] = React.useState('in');
@@ -13,9 +14,14 @@ export default function PhotoViewModal({ isOpen, onClose, log }) {
   const hasBothPhotos = Boolean(log.photoUrl && log.outPhotoUrl);
   const currentPhoto = (activePhoto === 'out' && log.outPhotoUrl) ? log.outPhotoUrl : (log.photoUrl || log.outPhotoUrl);
 
-  const mapsUrl = log.latitude && log.longitude
-    ? `https://maps.google.com/?q=${log.latitude},${log.longitude}`
-    : null;
+  const isOutView = activePhoto === 'out' && Boolean(log.outPhotoUrl || log.outLatitude || log.outLocationName);
+  const currentLatitude = isOutView ? (log.outLatitude ?? log.latitude) : log.latitude;
+  const currentLongitude = isOutView ? (log.outLongitude ?? log.longitude) : log.longitude;
+  const currentLocationName = isOutView ? (log.outLocationName || (log.outLatitude != null ? '' : log.locationName)) : log.locationName;
+  const currentGeocodingStatus = isOutView ? (log.outGeocodingStatus || log.geocodingStatus) : log.geocodingStatus;
+
+  const mapsUrl = getGoogleMapsUrl(currentLatitude, currentLongitude);
+  const isFallbackLocation = isRawCoordinatesOrEmpty(currentLocationName);
 
   return (
     <div
@@ -65,7 +71,7 @@ export default function PhotoViewModal({ isOpen, onClose, log }) {
             )}
             <button
               onClick={onClose}
-              className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
             >
               <X size={18} />
             </button>
@@ -110,30 +116,33 @@ export default function PhotoViewModal({ isOpen, onClose, log }) {
             </div>
           </div>
 
-          {(log.locationName || (log.latitude && log.longitude)) && (
-            <div className="pt-2 border-t border-gray-200/60 flex items-start justify-between gap-2">
-              <div className="flex items-start gap-1.5 min-w-0 text-gray-700">
-                <MapPin size={14} className="text-rose-500 flex-shrink-0 mt-0.5" />
+          {(currentLocationName || (currentLatitude && currentLongitude)) && (
+            <div className="pt-2 border-t border-gray-200/60 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0 text-gray-700">
+                <MapPin size={14} className="text-rose-500 flex-shrink-0" />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-[11px] leading-tight text-gray-800 break-words font-medium">
-                      {log.locationName || `${log.latitude?.toFixed(6)}, ${log.longitude?.toFixed(6)}`}
-                    </p>
-                    {log.geocodingStatus === 'PENDING' && (
-                      <span className="text-[9px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0">
-                        Pending Sync
+                  {mapsUrl && isFallbackLocation ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] leading-tight text-gray-800 font-semibold">
+                        📍 Current Location
                       </span>
-                    )}
-                  </div>
-                  {log.latitude && log.longitude && (
-                    <p className="text-[10px] text-gray-400 font-mono mt-0.5">
-                      {log.latitude?.toFixed(6)}, {log.longitude?.toFixed(6)}
-                      {log.accuracy != null && (
-                        <span className="text-gray-400 font-sans ml-1">
-                          (±{Math.round(log.accuracy)}m)
+                      {currentGeocodingStatus === 'PENDING' && (
+                        <span className="text-[9px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0">
+                          Pending Sync
                         </span>
                       )}
-                    </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[11px] leading-tight text-gray-800 break-words font-medium">
+                        {currentLocationName || '-'}
+                      </p>
+                      {currentGeocodingStatus === 'PENDING' && (
+                        <span className="text-[9px] px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0">
+                          Pending Sync
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -144,7 +153,7 @@ export default function PhotoViewModal({ isOpen, onClose, log }) {
                   rel="noopener noreferrer"
                   className="flex items-center gap-1 bg-white border border-gray-300 hover:border-indigo-400 hover:text-indigo-600 text-gray-700 px-2.5 py-1 rounded text-[11px] font-semibold transition-colors flex-shrink-0 shadow-xs"
                 >
-                  <ExternalLink size={11} /> Maps
+                  <ExternalLink size={11} /> View on Map
                 </a>
               )}
             </div>

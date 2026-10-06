@@ -26,6 +26,22 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+// Check if a location name string is empty, placeholder, or raw coordinates
+export const isRawCoordinatesOrEmpty = (str) => {
+  if (!str) return true;
+  const s = String(str).trim().toLowerCase();
+  if (!s || s === '-' || s === 'location unavailable' || s === 'current location') return true;
+  // Matches patterns like "21.251431, 81.629805" or "21.251431,81.629805"
+  return /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(s);
+};
+
+// Generate standard Google Maps search URL from coordinates
+export const getGoogleMapsUrl = (lat, lng) => {
+  if (lat == null || lng == null || isNaN(Number(lat)) || isNaN(Number(lng))) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${Number(lat)},${Number(lng)}`;
+};
+
+
 // Convert base64 data URL to binary Blob for efficient storage upload
 function dataURLtoBlob(dataUrl) {
   try {
@@ -168,6 +184,10 @@ export const attendanceApi = {
           outTime: outTime || existing.outTime || '',
           outPhotoUrl: existing.outPhotoUrl || (statusUpper === 'OUT' ? log.photoUrl : ''),
           outLocationName: existing.outLocationName || (statusUpper === 'OUT' ? log.locationName : ''),
+          outLatitude: existing.outLatitude || (statusUpper === 'OUT' ? (log.outLatitude || log.latitude) : existing.outLatitude),
+          outLongitude: existing.outLongitude || (statusUpper === 'OUT' ? (log.outLongitude || log.longitude) : existing.outLongitude),
+          outAccuracy: existing.outAccuracy || (statusUpper === 'OUT' ? (log.outAccuracy || log.accuracy) : existing.outAccuracy),
+          outGeocodingStatus: existing.outGeocodingStatus || (statusUpper === 'OUT' ? (log.outGeocodingStatus || log.geocodingStatus) : existing.outGeocodingStatus),
           status: finalStatus
         });
       }
@@ -205,6 +225,8 @@ export const attendanceApi = {
       accuracy: row.accuracy !== null && row.accuracy !== undefined ? Number(row.accuracy) : null,
       locationName: row.location_name || row.locationName || row.location || '',
       geocodingStatus: row.geocoding_status || row.geocodingStatus || 'RESOLVED',
+      outLatitude: row.out_latitude !== null && row.out_latitude !== undefined ? Number(row.out_latitude) : (row.outLatitude != null ? Number(row.outLatitude) : null),
+      outLongitude: row.out_longitude !== null && row.out_longitude !== undefined ? Number(row.out_longitude) : (row.outLongitude != null ? Number(row.outLongitude) : null),
       outAccuracy: row.out_accuracy !== null && row.out_accuracy !== undefined ? Number(row.out_accuracy) : null,
       outLocationName: row.out_location_name || row.outLocationName || '',
       outGeocodingStatus: row.out_geocoding_status || row.outGeocodingStatus || 'RESOLVED',
@@ -229,6 +251,8 @@ export const attendanceApi = {
       accuracy: entry.accuracy !== null && entry.accuracy !== undefined ? Number(entry.accuracy) : null,
       location_name: entry.locationName || entry.location || '',
       geocoding_status: entry.geocodingStatus || entry.geocoding_status || 'RESOLVED',
+      out_latitude: entry.outLatitude !== null && entry.outLatitude !== undefined ? Number(entry.outLatitude) : null,
+      out_longitude: entry.outLongitude !== null && entry.outLongitude !== undefined ? Number(entry.outLongitude) : null,
       out_accuracy: entry.outAccuracy !== null && entry.outAccuracy !== undefined ? Number(entry.outAccuracy) : null,
       out_location_name: entry.outLocationName || null,
       out_geocoding_status: entry.outGeocodingStatus || entry.out_geocoding_status || 'RESOLVED'
@@ -310,6 +334,8 @@ export const attendanceApi = {
       accuracy: !isMarkingOut ? (entry.accuracy != null ? entry.accuracy : existingTodayLog?.accuracy) : (existingTodayLog?.accuracy || entry.accuracy),
       locationName: isMarkingOut ? (existingTodayLog?.locationName || entry.locationName) : entry.locationName,
       geocodingStatus: !isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.geocodingStatus || 'RESOLVED'),
+      outLatitude: isMarkingOut ? (entry.latitude != null ? entry.latitude : (existingTodayLog?.outLatitude || null)) : (existingTodayLog?.outLatitude || null),
+      outLongitude: isMarkingOut ? (entry.longitude != null ? entry.longitude : (existingTodayLog?.outLongitude || null)) : (existingTodayLog?.outLongitude || null),
       outAccuracy: isMarkingOut ? (entry.accuracy != null ? entry.accuracy : null) : (existingTodayLog?.outAccuracy || null),
       outLocationName: isMarkingOut ? entry.locationName : (existingTodayLog?.outLocationName || null),
       outGeocodingStatus: isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.outGeocodingStatus || 'RESOLVED')
@@ -335,6 +361,8 @@ export const attendanceApi = {
           out_location_name: payloadWithPhoto.outLocationName || null
         };
         if (isMarkingOut) {
+          if (entry.latitude != null) updatePayload.out_latitude = Number(entry.latitude);
+          if (entry.longitude != null) updatePayload.out_longitude = Number(entry.longitude);
           if (entry.accuracy != null) updatePayload.out_accuracy = Number(entry.accuracy);
           if (entry.geocodingStatus) updatePayload.out_geocoding_status = entry.geocodingStatus;
         } else {
@@ -359,6 +387,8 @@ export const attendanceApi = {
           const fallbackUpdatePayload = { ...updatePayload };
           delete fallbackUpdatePayload.accuracy;
           delete fallbackUpdatePayload.geocoding_status;
+          delete fallbackUpdatePayload.out_latitude;
+          delete fallbackUpdatePayload.out_longitude;
           delete fallbackUpdatePayload.out_accuracy;
           delete fallbackUpdatePayload.out_geocoding_status;
 
@@ -716,9 +746,12 @@ async updateAttendanceLog(id, updatedFields) {
       };
     }
 
-    // Tier 4: Raw GPS Coordinates Fallback
+    // Tier 4: GPS Coordinates Only (Final Fallback)
+    // NOTE: Raw coordinates are NOT stored as human address.
+    // Address is left empty with geocodingStatus = 'PENDING' so the UI displays
+    // "Current Location -> View on Map" while retaining the actual GPS coordinates.
     return {
-      address: `${numLat.toFixed(6)}, ${numLng.toFixed(6)}`,
+      address: '',
       geocodingStatus: 'PENDING',
       source: 'coordinates',
       isFallback: true
@@ -805,11 +838,16 @@ async updateAttendanceLog(id, updatedFields) {
             localModified = true;
           }
         }
-        if (log.out_geocoding_status === 'PENDING' && log.latitude != null && log.longitude != null) {
-          const res = await this.resolveLocationAddress(log.latitude, log.longitude, log.out_accuracy || log.accuracy);
+        const isPendingOut = (log.out_geocoding_status === 'PENDING' || log.outGeocodingStatus === 'PENDING');
+        const outLat = log.out_latitude != null ? log.out_latitude : (log.outLatitude != null ? log.outLatitude : log.latitude);
+        const outLng = log.out_longitude != null ? log.out_longitude : (log.outLongitude != null ? log.outLongitude : log.longitude);
+        if (isPendingOut && outLat != null && outLng != null) {
+          const res = await this.resolveLocationAddress(outLat, outLng, log.out_accuracy || log.outAccuracy || log.accuracy);
           if (res.geocodingStatus === 'RESOLVED') {
             log.out_location_name = res.address;
+            log.outLocationName = res.address;
             log.out_geocoding_status = 'RESOLVED';
+            log.outGeocodingStatus = 'RESOLVED';
             localModified = true;
           }
         }

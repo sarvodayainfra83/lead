@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { Search, RotateCcw, Image as ImageIcon, Clock, ExternalLink, Calendar, MapPin } from 'lucide-react';
-import { attendanceApi } from '../../api/attendanceApi';
+import { attendanceApi, isRawCoordinatesOrEmpty, getGoogleMapsUrl } from '../../api/attendanceApi';
 import { authApi } from '../../api/authApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
@@ -330,10 +330,8 @@ export default function AllAttendanceTab({ tabBar }) {
   ];
 
   const renderRow = (item) => {
-    const mapsUrl =
-      item.latitude && item.longitude
-        ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
-        : null;
+    const mapsUrl = getGoogleMapsUrl(item.latitude, item.longitude);
+    const isFallbackLocation = isRawCoordinatesOrEmpty(item.locationName);
 
     return (
       <tr key={item.id} className="hover:bg-indigo-50/30 transition-colors border-b border-gray-100">
@@ -375,19 +373,38 @@ export default function AllAttendanceTab({ tabBar }) {
             <span className="text-gray-400 font-mono text-xs">-</span>
           )}
         </td>
-        <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[280px] truncate" title={item.locationName}>
-          {mapsUrl ? (
-            <a
-              href={mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-gray-800 hover:text-indigo-600 transition group"
-            >
-              <span className="truncate">{item.locationName || "View Map"}</span>
-              <ExternalLink size={12} className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0" />
-            </a>
+        <td className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[280px]" title={!isFallbackLocation ? item.locationName : undefined}>
+          {mapsUrl && isFallbackLocation ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-gray-800 flex items-center gap-1 whitespace-nowrap">
+                📍 Current Location
+              </span>
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium whitespace-nowrap"
+              >
+                <span>View on Map</span>
+                <ExternalLink size={11} />
+              </a>
+            </div>
           ) : (
-            <span>{item.locationName || "-"}</span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              {mapsUrl ? (
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-gray-800 hover:text-indigo-600 transition group min-w-0 truncate"
+                >
+                  <span className="truncate">{item.locationName || "-"}</span>
+                  <ExternalLink size={12} className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0" />
+                </a>
+              ) : (
+                <span className="truncate">{item.locationName || "-"}</span>
+              )}
+            </div>
           )}
         </td>
         <td className="px-4 py-3 text-center text-[13px] text-gray-700 whitespace-nowrap font-medium">
@@ -403,10 +420,8 @@ export default function AllAttendanceTab({ tabBar }) {
   };
 
   const renderCard = (item) => {
-    const mapsUrl =
-      item.latitude && item.longitude
-        ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
-        : null;
+    const mapsUrl = getGoogleMapsUrl(item.latitude, item.longitude);
+    const isFallbackLocation = isRawCoordinatesOrEmpty(item.locationName);
 
     return (
       <div key={item.id} className="bg-white rounded-lg border border-indigo-50 shadow-sm p-3 space-y-2">
@@ -437,10 +452,25 @@ export default function AllAttendanceTab({ tabBar }) {
           </div>
         </div>
 
-        {item.locationName && (
+        {(item.locationName || (item.latitude && item.longitude)) && (
           <div className="text-[10px] pt-1">
             <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Location</p>
-            <p className="text-gray-700 truncate">{item.locationName}</p>
+            {mapsUrl && isFallbackLocation ? (
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="font-semibold text-gray-800">📍 Current Location</span>
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 font-medium"
+                >
+                  <span>View on Map</span>
+                  <ExternalLink size={10} />
+                </a>
+              </div>
+            ) : (
+              <p className="text-gray-700 truncate">{item.locationName || "-"}</p>
+            )}
           </div>
         )}
 
@@ -448,7 +478,7 @@ export default function AllAttendanceTab({ tabBar }) {
           {(item.photoUrl || item.outPhotoUrl) && (
             <button
               onClick={() => setViewLog(item)}
-              className="flex-1 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold uppercase flex items-center justify-center gap-1 transition"
+              className="flex-1 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold uppercase flex items-center justify-center gap-1 transition cursor-pointer"
             >
               <ImageIcon size={12} /> View Photo
             </button>
@@ -460,7 +490,7 @@ export default function AllAttendanceTab({ tabBar }) {
               rel="noopener noreferrer"
               className="flex-1 py-1 rounded bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 text-[10px] font-bold uppercase flex items-center justify-center gap-1 transition"
             >
-              <ExternalLink size={12} /> Map
+              <ExternalLink size={12} /> View on Map
             </a>
           )}
         </div>

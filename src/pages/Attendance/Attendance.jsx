@@ -12,7 +12,7 @@ import {
   Clock,
   CheckCircle2,
 } from "lucide-react";
-import { attendanceApi } from "../../api/attendanceApi";
+import { attendanceApi, isRawCoordinatesOrEmpty, getGoogleMapsUrl } from "../../api/attendanceApi";
 import DataTable from "../../components/DataTable";
 import AttendanceModal from "./AttendanceModal";
 import PhotoViewModal from "./PhotoViewModal";
@@ -198,10 +198,8 @@ export default function Attendance() {
 
   const renderRow = (item, index) => {
     const serialNo = (currentPage - 1) * itemsPerPage + index + 1;
-    const mapsUrl =
-      item.latitude && item.longitude
-        ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
-        : null;
+    const mapsUrl = getGoogleMapsUrl(item.latitude, item.longitude);
+    const isFallbackLocation = isRawCoordinatesOrEmpty(item.locationName);
 
     const getStatusBadgeClass = (status) => {
       const s = (status || "").toUpperCase();
@@ -269,37 +267,62 @@ export default function Attendance() {
           )}
         </td>
         <td
-          className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[340px] truncate"
-          title={item.locationName}
+          className="px-4 py-3 text-left text-[13px] text-gray-700 max-w-[340px]"
+          title={!isFallbackLocation ? item.locationName : undefined}
         >
-          <div className="flex items-center gap-1.5 min-w-0">
-            {mapsUrl ? (
+          {mapsUrl && isFallbackLocation ? (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-semibold text-gray-800 flex items-center gap-1 whitespace-nowrap">
+                📍 Current Location
+              </span>
               <a
                 href={mapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-gray-800 hover:text-indigo-600 transition group min-w-0 truncate"
+                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-xs font-medium whitespace-nowrap"
               >
-                <span className="truncate">
-                  {item.locationName || "View Map"}
-                </span>
-                <ExternalLink
-                  size={12}
-                  className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0"
-                />
+                <span>View on Map</span>
+                <ExternalLink size={11} />
               </a>
-            ) : (
-              <span className="truncate">{item.locationName || "-"}</span>
-            )}
-            {item.geocodingStatus === "PENDING" && (
-              <span
-                className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0"
-                title="Geocoding pending synchronization"
-              >
-                Pending Sync
-              </span>
-            )}
-          </div>
+              {item.geocodingStatus === "PENDING" && (
+                <span
+                  className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0"
+                  title="Geocoding pending synchronization"
+                >
+                  Pending Sync
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 min-w-0">
+              {mapsUrl ? (
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-gray-800 hover:text-indigo-600 transition group min-w-0 truncate"
+                >
+                  <span className="truncate">
+                    {item.locationName || "-"}
+                  </span>
+                  <ExternalLink
+                    size={12}
+                    className="text-gray-400 group-hover:text-indigo-600 flex-shrink-0"
+                  />
+                </a>
+              ) : (
+                <span className="truncate">{item.locationName || "-"}</span>
+              )}
+              {item.geocodingStatus === "PENDING" && (
+                <span
+                  className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0"
+                  title="Geocoding pending synchronization"
+                >
+                  Pending Sync
+                </span>
+              )}
+            </div>
+          )}
         </td>
         {/* Updated At */}
         <td className="px-4 py-3 text-center whitespace-nowrap">
@@ -335,10 +358,8 @@ export default function Attendance() {
 
   const renderCard = (item, index) => {
     const serialNo = (currentPage - 1) * itemsPerPage + index + 1;
-    const mapsUrl =
-      item.latitude && item.longitude
-        ? `https://maps.google.com/?q=${item.latitude},${item.longitude}`
-        : null;
+    const mapsUrl = getGoogleMapsUrl(item.latitude, item.longitude);
+    const isFallbackLocation = isRawCoordinatesOrEmpty(item.locationName);
     const getStatusBadgeClass = (status) => {
       const s = (status || "").toUpperCase();
       if (s === "IN")
@@ -403,9 +424,26 @@ export default function Attendance() {
             Location
           </p>
           <div className="flex items-center gap-1">
-            <p className="text-gray-700 leading-tight truncate flex-1">
-              {item.locationName || "-"}
-            </p>
+            {mapsUrl && isFallbackLocation ? (
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <span className="font-semibold text-gray-800 flex items-center gap-1">
+                  📍 Current Location
+                </span>
+                <a
+                  href={mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 font-medium"
+                >
+                  <span>View on Map</span>
+                  <ExternalLink size={10} />
+                </a>
+              </div>
+            ) : (
+              <p className="text-gray-700 leading-tight truncate flex-1">
+                {item.locationName || "-"}
+              </p>
+            )}
             {item.geocodingStatus === "PENDING" && (
               <span className="text-[9px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0">
                 Pending Sync
@@ -418,7 +456,7 @@ export default function Attendance() {
           {item.photoUrl && (
             <button
               onClick={() => setViewLog(item)}
-              className="flex-1 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition"
+              className="flex-1 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition cursor-pointer"
             >
               <ImageIcon size={12} /> View Photo
             </button>
@@ -430,7 +468,7 @@ export default function Attendance() {
               rel="noopener noreferrer"
               className="flex-1 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition"
             >
-              <ExternalLink size={12} /> Google Maps
+              <ExternalLink size={12} /> View on Map
             </a>
           )}
         </div>
@@ -472,7 +510,7 @@ export default function Attendance() {
               </>
             ) : todayStatus.hasMarkedIn ? (
               <>
-                <Clock size={16} /> Mark Out / Half Day
+                <Clock size={16} /> Mark Out
               </>
             ) : (
               <>

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Upload, Camera, CheckCircle2, RotateCcw, MapPin, Loader2, Trash2, X, AlertTriangle
+  Upload, Camera, CheckCircle2, RotateCcw, MapPin, Loader2, Trash2, X, AlertTriangle, ExternalLink
 } from 'lucide-react';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { attendanceApi } from '../../api/attendanceApi';
+import { attendanceApi, isRawCoordinatesOrEmpty, getGoogleMapsUrl } from '../../api/attendanceApi';
 import { useAuthStore } from '../../store/authStore';
 
 export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs = [] }) {
@@ -258,11 +258,11 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
 
         try {
           const res = await attendanceApi.resolveLocationAddress(lat, lng, accuracy);
-          setAddress(res.address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+          setAddress(res.address || '');
           setGeocodingStatus(res.geocodingStatus || 'RESOLVED');
           setLocationFallback(!!res.isFallback);
         } catch (e) {
-          setAddress(`${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+          setAddress('');
           setGeocodingStatus('PENDING');
           setLocationFallback(true);
         } finally {
@@ -277,7 +277,15 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         setAddress('Location unavailable');
         setGeocodingStatus('RESOLVED');
         setLocationFallback(false);
-        toast.success('Image uploaded');
+        if (err.code === 1) {
+          toast.error('Location permission denied (HTTPS required on mobile IP)');
+        } else if (err.code === 2) {
+          toast.error('Device GPS position unavailable. Please turn on Location.');
+        } else if (err.code === 3) {
+          toast.error('Location request timed out. Please try again.');
+        } else {
+          toast.error('Location unavailable');
+        }
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
@@ -371,7 +379,7 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         latitude: location?.latitude != null ? location.latitude : null,
         longitude: location?.longitude != null ? location.longitude : null,
         accuracy: location?.accuracy != null ? location.accuracy : null,
-        locationName: address || (location ? `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}` : 'Current Location'),
+        locationName: address || '',
         geocodingStatus: geocodingStatus || (locationFallback ? 'PENDING' : 'RESOLVED')
       });
 
@@ -552,24 +560,39 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
                 ) : (
                   <>
                     {location && (
-                      <p className="text-[11px] font-mono text-gray-700 truncate leading-tight mt-0.5 font-medium">
-                        {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
-                        {location.accuracy != null && (
-                          <span className="text-gray-400 font-sans text-[10px] ml-1">
-                            (±{Math.round(location.accuracy)}m)
-                          </span>
-                        )}
-                      </p>
-                    )}
-                    {address && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <p className="text-[10px] text-gray-500 truncate leading-tight flex-1" title={address}>
-                          {address}
-                        </p>
-                        {geocodingStatus === 'PENDING' && (
-                          <span className="text-[9px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0" title="Geocoding pending sync">
-                            Pending Sync
-                          </span>
+                      <div className="mt-0.5">
+                        {address && !isRawCoordinatesOrEmpty(address) ? (
+                          <div className="flex items-center gap-1">
+                            <p className="text-[11px] text-gray-700 truncate leading-tight font-medium" title={address}>
+                              {address}
+                            </p>
+                            {geocodingStatus === 'PENDING' && (
+                              <span className="text-[9px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0" title="Geocoding pending sync">
+                                Pending Sync
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[11px] font-semibold text-gray-800 flex items-center gap-1">
+                                📍 Current Location
+                              </span>
+                              <span className="text-[9px] px-1 py-0.2 bg-amber-100 text-amber-800 rounded font-semibold flex-shrink-0" title="Geocoding pending sync">
+                                Pending Sync
+                              </span>
+                            </div>
+                            <a
+                              href={getGoogleMapsUrl(location.latitude, location.longitude)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 font-medium w-fit inline-flex"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span>View on Map</span>
+                              <ExternalLink size={10} />
+                            </a>
+                          </div>
                         )}
                       </div>
                     )}
