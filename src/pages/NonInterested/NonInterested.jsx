@@ -3,7 +3,7 @@ import { Building2, ShieldCheck, TrendingUp } from 'lucide-react';
 import { nonInterestedApi } from '../../api/nonInterestedApi';
 import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
-import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, matchesUserAssignment, matchesUserReceiver } from '../../utils/authUtils';
+import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, matchesUserConnection, matchesAuthorizedUserForNonInterested } from '../../utils/authUtils';
 import NonInterestedCategoryView from './NonInterestedCategoryView';
 import AssignVisitorModal from '../SiteVisitMeeting/AssignVisitorModal';
 import VisitorFollowUpModal from '../SiteVisitMeeting/VisitorFollowUpModal';
@@ -18,7 +18,7 @@ import { useLocation } from 'react-router-dom';
  */
 export default function NonInterested() {
   const user = useAuthStore(state => state.user);
-  const isAdmin = isUserAdmin(user);
+  const isAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
   const canEdit = hasFullAccess(user, 'nonInterested');
   const navState = useLocation().state || {};
 
@@ -37,6 +37,14 @@ export default function NonInterested() {
   }, [user, navState.tab]);
 
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Sync activeTab when navigating from Dashboard with new tab state
+  useEffect(() => {
+    if (navState.tab) {
+      setActiveTab(navState.tab);
+    }
+  }, [navState.tab]);
+
   const [allLeads, setAllLeads] = useState([]);
   const [visitorsMaster, setVisitorsMaster] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -67,19 +75,11 @@ export default function NonInterested() {
     loadData();
   }, [loadData, user]);
 
-  // For USER role (non-admin): show assigned records matching user as caller, visitor, or receiver
+  // For USER role (non-admin): show only authorized records matching user as assigned visitor or caller
   const displayLeads = useMemo(() => {
-    if (isAdmin || canEdit) return allLeads;
-    return allLeads.filter(l => {
-      if (matchesUserAssignment(l, user)) return true;
-      if (matchesUserReceiver(l, user)) return true;
-      const visitorNorm = (l.assignedVisitor || l.visitorName || l.visitorId || '').trim().toLowerCase();
-      const userNameNorm = (user?.name || '').trim().toLowerCase();
-      const userIdNorm = (user?.id || '').trim().toLowerCase();
-      if (visitorNorm && (visitorNorm === userNameNorm || visitorNorm === userIdNorm)) return true;
-      return false;
-    });
-  }, [allLeads, isAdmin, canEdit, user]);
+    if (isAdmin) return allLeads;
+    return allLeads.filter(l => matchesAuthorizedUserForNonInterested(l, user));
+  }, [allLeads, isAdmin, user]);
 
   // Partition leads by the 3 category tables
   const realEstateLeads = useMemo(() => {

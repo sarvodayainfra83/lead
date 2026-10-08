@@ -10,16 +10,12 @@ import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { generateLeadNo } from '../Lead/leadConstants';
+import { generateLeadNo, getInvestmentBudgetsForLeadType } from '../Lead/leadConstants';
 import { ENQUIRY_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES } from './callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin } from '../../utils/authUtils';
 
-const DEAL_STATUS_OPTIONS = [
-  { value: 'Pending', label: 'Pending' },
-  { value: 'Closed', label: 'Closed' },
-  { value: 'Not Interested', label: 'Not Interested' }
-];
+
 
 const initialFormData = {
   leadType: 'Real Estate',
@@ -52,7 +48,7 @@ const initialFormData = {
   customerSaid: '',
   nextCallDate: '',
   siteVisited: false,
-  meeting: false,
+  meeting: true,
   dealStatus: 'Pending',
   exactBudget: '',
   assignedVisitor: ''
@@ -102,7 +98,9 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         ...initialFormData,
         leadType: targetType,
         callerAssigned: user?.name || user?.id || '',
-        assignedVisitor: user?.name || ''
+        assignedVisitor: user?.name || '',
+        siteVisited: false,
+        meeting: true
       });
 
       Promise.all([
@@ -329,10 +327,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
   }, [insuranceSubProductsMaster, formData.insuranceType, formData.customInsuranceType]);
 
   const investmentBudgetOptions = useMemo(() => {
-    return (investmentBudgetsMaster || [])
+    return getInvestmentBudgetsForLeadType(investmentBudgetsMaster, formData.leadType)
       .filter(t => !isOtherValue(t.investmentBudget))
       .map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
-  }, [investmentBudgetsMaster]);
+  }, [investmentBudgetsMaster, formData.leadType]);
 
   const handleChange = (field, value) => {
     setFormData(prev => {
@@ -341,6 +339,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       if (field === 'leadType') {
         updated.leadReceiver = '';
         updated.callerAssigned = user?.name || user?.id || '';
+        updated.investmentBudget = '';
         updated.productType = '';
         updated.customProductType = '';
         updated.customInsuranceType = '';
@@ -353,8 +352,15 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
             updated.status = 'Meeting';
           }
           updated.siteVisited = false;
-        } else if (value === 'Real Estate' && updated.status === 'Meeting') {
-          updated.status = 'Site Visit/Meeting';
+          updated.meeting = true;
+        } else if (value === 'Real Estate') {
+          if (updated.status === 'Meeting') {
+            updated.status = 'Site Visit/Meeting';
+          }
+          if (!updated.siteVisited && !updated.meeting) {
+            updated.siteVisited = false;
+            updated.meeting = true;
+          }
         }
       }
       if (field === 'productType' && !isOtherValue(value)) {
@@ -381,8 +387,20 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       if (field === 'investmentBudget' && !isOtherValue(value)) {
         updated.customInvestmentBudget = '';
       }
-      if (field === 'status' && !DATE_STATUSES.includes(value) && value !== 'Meeting') {
-        updated.nextCallDate = '';
+      if (field === 'status') {
+        if (!DATE_STATUSES.includes(value) && value !== 'Meeting') {
+          updated.nextCallDate = '';
+        }
+        if (value === 'Site Visit/Meeting') {
+          // Real Estate: picking Site Visit/Meeting starts on "Site Visit" (the user can switch to Meeting)
+          if (prev.status !== value || (!updated.siteVisited && !updated.meeting)) {
+            updated.siteVisited = true;
+            updated.meeting = false;
+          }
+        } else if (value === 'Meeting') {
+          updated.meeting = true;
+          updated.siteVisited = false;
+        }
       }
       return updated;
     });
@@ -405,7 +423,15 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
   };
 
   const handleClose = () => {
-    setFormData({ ...initialFormData, leadType: defaultLeadType || resolveUserLeadType(), callerAssigned: user?.name || '' });
+    const targetType = defaultLeadType || resolveUserLeadType();
+    setFormData({
+      ...initialFormData,
+      leadType: targetType,
+      callerAssigned: user?.name || '',
+      assignedVisitor: user?.name || '',
+      siteVisited: false,
+      meeting: true
+    });
     onClose();
   };
 
@@ -625,6 +651,16 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       timestampMs: now.getTime()
     });
 
+    // The customer was just called while adding the lead — mark it "called today" in Today's Followup.
+    // The mark only counts for today, so on the next call date it shows unmarked again.
+    if (createdLead?.id) {
+      try {
+        await leadApi.setCallMark(createdLead.id, true, user?.name || user?.id);
+      } catch (err) {
+        console.warn('Could not mark the new lead as called today:', err);
+      }
+    }
+
     // Auto-create assigned visitor & visitor follow-up record if status is Site Visit/Meeting or Meeting
     if (formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') {
       const chosenVisitorName = formData.assignedVisitor || user?.name || '';
@@ -655,22 +691,23 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
 
       // 2. Save visitor follow-up record
       try {
+        const isSiteVisit = isRealEstate ? Boolean(formData.siteVisited) : false;
+        const isMeet = isRealEstate ? (!isSiteVisit || Boolean(formData.meeting)) : true;
         const visitMeet = {
-          'site-visit': isRealEstate ? Boolean(formData.siteVisited) : false,
-          'meeting': Boolean(formData.meeting)
+          'site-visit': isSiteVisit,
+          'meeting': isMeet
         };
-        const closingAmt = formData.dealStatus === 'Closed' ? (formData.exactBudget || finalInvestmentBudget || '') : '';
         await siteVisitMeetingApi.saveVisitorFollowUp({
           leadId: createdLead.id,
           leadNo: createdLead.leadNo,
           assignedVisitorId: savedAssignment?.id || null,
           parentId: null,
           parent_id: null,
-          status: formData.dealStatus === 'Closed' ? 'Closed Won' : (formData.dealStatus === 'Not Interested' ? 'Not Interested' : 'Interested'),
-          dealOutcome: formData.dealStatus || 'Pending',
-          deal_outcome: formData.dealStatus || 'Pending',
-          closingAmount: closingAmt,
-          closing_amount: closingAmt,
+          status: 'Interested',
+          dealOutcome: 'Pending',
+          deal_outcome: 'Pending',
+          closingAmount: '',
+          closing_amount: '',
           visitMeet,
           visit_meet: visitMeet,
           visitDate: visitDate,
@@ -686,7 +723,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       }
     }
 
-    if (formData.status === 'Interested' || formData.status === 'Deal Closed') {
+    if (formData.status === 'Interested') {
       toast.success(`Lead ${leadNo} added and moved to Customer Master.`);
     } else if (formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') {
       toast.success(`Lead ${leadNo} added with ${isInsurance || isMutualFund ? 'Meeting' : 'Site Visit / Meeting'} details.`);
@@ -755,7 +792,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
               <input
                 type="text"
                 autoFocus
-                ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                 value={formData.customLeadSource}
                 onChange={(e) => handleChange('customLeadSource', e.target.value)}
                 placeholder="Enter new lead source"
@@ -803,7 +839,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customProductType}
                     onChange={(e) => handleChange('customProductType', e.target.value)}
                     placeholder="Enter new product type"
@@ -830,7 +865,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customRequirement}
                     onChange={(e) => handleCustomRequirementChange(e.target.value)}
                     placeholder="Enter new requirement"
@@ -862,7 +896,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 <input
                   type="text"
                   autoFocus
-                  ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                   value={formData.customProductType}
                   onChange={(e) => handleChange('customProductType', e.target.value)}
                   placeholder="Enter new product type"
@@ -894,7 +927,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceType}
                     onChange={(e) => handleChange('customInsuranceType', e.target.value)}
                     placeholder="Enter new product type"
@@ -922,7 +954,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceSubType}
                     onChange={(e) => handleChange('customInsuranceSubType', e.target.value)}
                     placeholder="Enter new sub product type"
@@ -1018,33 +1049,19 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
           </div>
         </div>
 
-        {/* Investment Budget */}
-        <div className={`space-y-1 ${isOtherValue(formData.investmentBudget) ? 'col-span-2 sm:col-span-1' : 'col-span-1'}`}>
-          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Investment Budget</label>
-          <SearchableDropdown
-            options={investmentBudgetOptions}
-            value={formData.investmentBudget}
-            onChange={(val) => handleChange('investmentBudget', val)}
-            onAdd={(term) => {
-              handleChange('investmentBudget', 'Add New');
-              if (term) handleChange('customInvestmentBudget', term);
-            }}
-            placeholder="Select investment budget"
-          />
-          {isOtherValue(formData.investmentBudget) && (
-            <div className="relative mt-1 animate-in fade-in duration-200">
-              <Wallet className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
-              <input
-                type="text"
-                autoFocus
-                ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
-                value={formData.customInvestmentBudget}
-                onChange={(e) => handleChange('customInvestmentBudget', e.target.value)}
-                placeholder="Enter new budget range (e.g. 1 Cr - 2 Cr)"
-                className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-              />
-            </div>
-          )}
+        {/* Customer Address */}
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Address</label>
+          <div className="relative">
+            <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
+            <input
+              type="text"
+              value={formData.location}
+              onChange={(e) => handleChange('location', e.target.value)}
+              placeholder="Enter address"
+              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+            />
+          </div>
         </div>
 
         {/* When to Buy Plan */}
@@ -1079,19 +1096,32 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
           </div>
         )}
 
-        {/* Customer Address */}
-        <div className="space-y-1 col-span-2">
-          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Address</label>
-          <div className="relative">
-            <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
-            <input
-              type="text"
-              value={formData.location}
-              onChange={(e) => handleChange('location', e.target.value)}
-              placeholder="Enter address"
-              className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
-            />
-          </div>
+        {/* Investment Budget */}
+        <div className={`space-y-1 ${isOtherValue(formData.investmentBudget) ? 'col-span-2 sm:col-span-1' : 'col-span-1'}`}>
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Investment Budget</label>
+          <SearchableDropdown
+            options={investmentBudgetOptions}
+            value={formData.investmentBudget}
+            onChange={(val) => handleChange('investmentBudget', val)}
+            onAdd={(term) => {
+              handleChange('investmentBudget', 'Add New');
+              if (term) handleChange('customInvestmentBudget', term);
+            }}
+            placeholder="Select investment budget"
+          />
+          {isOtherValue(formData.investmentBudget) && (
+            <div className="relative mt-1 animate-in fade-in duration-200">
+              <Wallet className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
+              <input
+                type="text"
+                autoFocus
+                value={formData.customInvestmentBudget}
+                onChange={(e) => handleChange('customInvestmentBudget', e.target.value)}
+                placeholder="Enter new budget range (e.g. 1 Cr - 2 Cr)"
+                className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px]"
+              />
+            </div>
+          )}
         </div>
 
         {/* Status */}
@@ -1122,51 +1152,52 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
               </div>
             )}
 
-            {/* When status is Site Visit/Meeting or Meeting: Checkboxes (Site Visited, Meeting), Deal Status dropdown, Assigned Visitor, and Budget */}
+            {/* When status is Site Visit/Meeting or Meeting: Radio buttons (Site Visit, Meeting) and Assigned Visitor */}
             {(formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') && (
               <div className="space-y-3 col-span-2 p-2.5 sm:p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl animate-in fade-in duration-200">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-center">
-                  {/* Checkboxes: Site Visited & Meeting */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 items-center">
+                  {/* Radio buttons: Site Visit & Meeting */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
                       {isInsurance || isMutualFund ? 'Meeting' : 'Visit / Meeting Type'}
                     </label>
                     <div className="flex items-center gap-4 pt-1">
-                      {isRealEstate && (
+                      {isRealEstate ? (
+                        <>
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
+                            <input
+                              type="radio"
+                              name="directVisitMeetingType"
+                              checked={Boolean(formData.siteVisited)}
+                              onChange={() => setFormData(prev => ({ ...prev, siteVisited: true, meeting: false }))}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>Site Visit</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
+                            <input
+                              type="radio"
+                              name="directVisitMeetingType"
+                              checked={Boolean(formData.meeting) || (!formData.siteVisited && !formData.meeting)}
+                              onChange={() => setFormData(prev => ({ ...prev, siteVisited: false, meeting: true }))}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>Meeting</span>
+                          </label>
+                        </>
+                      ) : (
                         <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
                           <input
-                            type="checkbox"
-                            checked={formData.siteVisited}
-                            onChange={(e) => handleChange('siteVisited', e.target.checked)}
-                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            type="radio"
+                            name="directVisitMeetingType"
+                            checked={Boolean(formData.meeting)}
+                            onChange={() => setFormData(prev => ({ ...prev, siteVisited: false, meeting: true }))}
+                            className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
                           />
-                          <span>Site Visited</span>
+                          <span>Meeting</span>
                         </label>
                       )}
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
-                        <input
-                          type="checkbox"
-                          checked={formData.meeting}
-                          onChange={(e) => handleChange('meeting', e.target.checked)}
-                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                        />
-                        <span>Meeting</span>
-                      </label>
                     </div>
-                  </div>
-
-                  {/* Deal Status Dropdown */}
-                  <div className="space-y-1">
-                    <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                      Deal Status
-                    </label>
-                    <SearchableDropdown
-                      options={DEAL_STATUS_OPTIONS}
-                      value={formData.dealStatus || 'Pending'}
-                      onChange={(val) => handleChange('dealStatus', val)}
-                      placeholder="Select deal status"
-                      height="h-[30px] md:h-[34px]"
-                    />
                   </div>
 
                   {/* Assigned Visitor Dropdown (defaults to loggedIn user) */}
@@ -1183,25 +1214,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                     />
                   </div>
                 </div>
-
-                {/* Exact Budget text field if Deal is Closed */}
-                {formData.dealStatus === 'Closed' && (
-                  <div className="space-y-1 pt-1 animate-in fade-in duration-150">
-                    <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-emerald-800 uppercase tracking-tight font-bold">
-                      Closing Budget / Exact Budget *
-                    </label>
-                    <div className="relative">
-                      <Wallet className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-600" size={13} />
-                      <input
-                        type="text"
-                        value={formData.exactBudget}
-                        onChange={(e) => handleChange('exactBudget', e.target.value)}
-                        placeholder="Enter exact closing budget (e.g. 50 Lakh / 50,00,000)"
-                        className="w-full border border-emerald-300 bg-white rounded pl-7 pr-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] font-semibold text-emerald-900"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 

@@ -45,6 +45,43 @@ import {
   updateInvestmentBudgetMaster as updateLocalInvestmentBudget,
   deleteInvestmentBudgetMaster as deleteLocalInvestmentBudget
 } from '../utils/storageManager';
+import { addPosition, removePosition } from '../utils/authUtils';
+
+// Add or remove one position on a user, keeping their others (e.g. a "Manager, Caller" stays a Manager)
+const updateUserPosition = async (userId, change, extra = {}) => {
+  const { data } = await supabase.from('users').select('position').eq('id', userId).maybeSingle();
+  await supabase.from('users').update({ position: change(data?.position), ...extra }).eq('id', userId);
+};
+
+// Rupee value of an amount like "20k", "5 Lakh", "10L", "1.5 Lakh", "2Cr" (null if none found)
+const BUDGET_UNITS = { k: 1e3, thousand: 1e3, l: 1e5, lac: 1e5, lacs: 1e5, lakh: 1e5, lakhs: 1e5, cr: 1e7, crore: 1e7, crores: 1e7 };
+const parseBudgetAmount = (text, fallbackUnit) => {
+  const m = /([\d.]+)\s*(k|thousand|lakhs?|lacs?|l|crores?|cr)?\b/i.exec(text || '');
+  if (!m) return null;
+  const unit = (m[2] || fallbackUnit || '').toLowerCase();
+  return parseFloat(m[1]) * (BUDGET_UNITS[unit] || 1);
+};
+
+// Sort budgets by their lower bound, then upper bound; every "Above X" budget goes last (in amount order
+// among themselves), and unparseable values keep their order after the ranges. Serial numbers follow the sorted order.
+const isAboveBudget = (text) => /^\s*above\b/i.test(String(text || ''));
+const sortInvestmentBudgets = (rows) => {
+  const keyOf = (text) => {
+    const str = String(text || '').trim();
+    const isAbove = /^(above|more than|over|\d[\d.]*\s*\w*\s*\+)/i.test(str) || /\+\s*$/.test(str);
+    const parts = str.replace(/^(above|more than|over|below|under|upto|up to)\s*/i, '').split(/\s*(?:-|–|to)\s*/i);
+    const upperUnit = (/(k|thousand|lakhs?|lacs?|l|crores?|cr)\b/i.exec(parts[1] || '') || [])[1];
+    const low = parseBudgetAmount(parts[0], upperUnit); // "10 - 25 Lakh" → 10 Lakh
+    if (low == null) return [Infinity, Infinity];
+    if (/^(below|under|upto|up to)/i.test(str)) return [0, low];
+    const high = isAbove ? Infinity : (parseBudgetAmount(parts[1]) ?? low);
+    return [low, high];
+  };
+  return (rows || [])
+    .map((row, idx) => ({ row, idx, above: isAboveBudget(row.investmentBudget) ? 1 : 0, key: keyOf(row.investmentBudget) }))
+    .sort((a, b) => (a.above - b.above) || (a.key[0] - b.key[0]) || (a.key[1] - b.key[1]) || (a.idx - b.idx))
+    .map(({ row }, idx) => ({ ...row, serialNo: idx + 1 }));
+};
 
 export const masterApi = {
   // --- LEAD TYPES ---
@@ -214,19 +251,16 @@ export const masterApi = {
       return receiverObj.id ? updateLocalReceiver(receiverObj.id, receiverObj) : saveLocalReceiver(receiverObj);
     }
 
-    // Update user's position to Lead Receiver
+    // Add Lead Receiver to the user's positions
     if (receiverObj.id) {
-      await supabase
-        .from('users')
-        .update({ position: 'Lead Receiver', lead_type_id: leadTypeId })
-        .eq('id', receiverObj.id);
+      await updateUserPosition(receiverObj.id, pos => addPosition(pos, 'Lead Receiver'), { lead_type_id: leadTypeId });
     }
     return { ...receiverObj, leadTypeId };
   },
 
   async deleteLeadReceiver(id) {
     if (!isSupabaseConfigured) return deleteLocalReceiver(id);
-    await supabase.from('users').update({ position: null }).eq('id', id);
+    await updateUserPosition(id, pos => removePosition(pos, 'Lead Receiver'));
     deleteLocalReceiver(id);
   },
 
@@ -286,19 +320,16 @@ export const masterApi = {
       return callerObj.id ? updateLocalCaller(callerObj.id, callerObj) : saveLocalCaller(callerObj);
     }
 
-    // Update user's position to Caller
+    // Add Caller to the user's positions
     if (callerObj.id) {
-      await supabase
-        .from('users')
-        .update({ position: 'Caller', lead_type_id: leadTypeId })
-        .eq('id', callerObj.id);
+      await updateUserPosition(callerObj.id, pos => addPosition(pos, 'Caller'), { lead_type_id: leadTypeId });
     }
     return { ...callerObj, leadTypeId };
   },
 
   async deleteCallerName(id) {
     if (!isSupabaseConfigured) return deleteLocalCaller(id);
-    await supabase.from('users').update({ position: null }).eq('id', id);
+    await updateUserPosition(id, pos => removePosition(pos, 'Caller'));
     deleteLocalCaller(id);
   },
 
@@ -327,6 +358,7 @@ export const masterApi = {
           serialNo: idx + 1,
           leadTypeId: d.lead_type_id,
           leadType: (d.lead_type_id && leadTypeMap[d.lead_type_id]) || d.lead_type || '',
+          leadTypeText: d.lead_type || '', // may list several types, e.g. "Insurance, Mutual Fund"
           personName: d.name
         }));
       }
@@ -348,6 +380,7 @@ export const masterApi = {
           serialNo: idx + 1,
           leadTypeId: d.lead_type_id,
           leadType: (d.lead_type_id && leadTypeMap[d.lead_type_id]) || d.lead_type || '',
+          leadTypeText: d.lead_type || '', // may list several types, e.g. "Insurance, Mutual Fund"
           personName: d.name
         }));
       }
@@ -403,10 +436,7 @@ export const masterApi = {
     // If ID exists, update the user in Supabase
     if (visitorObj.id) {
       try {
-        await supabase
-          .from('users')
-          .update({ position: 'Visitor', lead_type_id: leadTypeId })
-          .eq('id', visitorObj.id);
+        await updateUserPosition(visitorObj.id, pos => addPosition(pos, 'Visitor'), { lead_type_id: leadTypeId });
       } catch (err) {
         console.warn('Could not update user by id:', err);
       }
@@ -420,10 +450,7 @@ export const masterApi = {
           .maybeSingle();
 
         if (existingUser?.id) {
-          await supabase
-            .from('users')
-            .update({ position: 'Visitor', lead_type_id: leadTypeId })
-            .eq('id', existingUser.id);
+          await updateUserPosition(existingUser.id, pos => addPosition(pos, 'Visitor'), { lead_type_id: leadTypeId });
         } else {
           const username = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + Math.floor(1000 + Math.random() * 9000);
           await supabase
@@ -449,7 +476,7 @@ export const masterApi = {
   async deleteVisitor(id) {
     if (!isSupabaseConfigured) return deleteLocalVisitor(id);
     try {
-      await supabase.from('users').update({ position: null }).eq('id', id);
+      await updateUserPosition(id, pos => removePosition(pos, 'Visitor'));
     } catch (e) {}
     deleteLocalVisitor(id);
   },
@@ -653,27 +680,55 @@ export const masterApi = {
     deleteLocalInsuranceSubProduct(id);
   },
 
-  // --- INVESTMENT BUDGETS (shared across Real Estate / Mutual Fund / Insurance) ---
+  // --- INVESTMENT BUDGETS (each tagged with one or more Lead Types; none = shared across all) ---
+  // Returned in ascending amount order (20k - 50k, 5 Lakh - 10 Lakh, ..., Above 5Cr)
   async getInvestmentBudgets() {
-    if (!isSupabaseConfigured) return getLocalInvestmentBudgets();
-    const { data, error } = await supabase.from('master_investment_budgets').select('*').order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching investment budgets:', error); return getLocalInvestmentBudgets(); }
-    return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, investmentBudget: d.investment_budget }));
+    if (!isSupabaseConfigured) return sortInvestmentBudgets(getLocalInvestmentBudgets());
+    const [{ data, error }, { data: typeRows }] = await Promise.all([
+      supabase.from('master_investment_budgets').select('*').order('created_at', { ascending: true }),
+      supabase.from('master_lead_types').select('id, lead_type')
+    ]);
+    if (error) { console.error('Error fetching investment budgets:', error); return sortInvestmentBudgets(getLocalInvestmentBudgets()); }
+    const typeMap = Object.fromEntries((typeRows || []).map(t => [t.id, t.lead_type]));
+    return sortInvestmentBudgets(data.map(d => {
+      const leadTypeIds = d.lead_type_ids || [];
+      return {
+        id: d.id,
+        investmentBudget: d.investment_budget,
+        leadTypeIds,
+        leadTypes: leadTypeIds.map(id => typeMap[id]).filter(Boolean)
+      };
+    }));
   },
 
+  // obj: { id?, investmentBudget, leadTypeIds: [master_lead_types.id], leadTypes: [names] }
   async saveInvestmentBudget(obj) {
     if (!isSupabaseConfigured) return obj.id ? updateLocalInvestmentBudget(obj) : saveLocalInvestmentBudget(obj);
 
+    const payload = { investment_budget: obj.investmentBudget, lead_type_ids: obj.leadTypeIds || [] };
+    // lead_type_ids missing in the database (PGRST204 / 42703) — surface the fix instead of the raw schema-cache error
+    const explain = (error) => (
+      (error?.code === 'PGRST204' || error?.code === '42703') && String(error.message || '').includes('lead_type_ids')
+        ? new Error("Database is missing the 'lead_type_ids' column on master_investment_budgets — run the migration in supabase_schema.sql")
+        : error
+    );
+    const toResult = (data) => ({
+      id: data.id,
+      investmentBudget: data.investment_budget,
+      leadTypeIds: data.lead_type_ids || [],
+      leadTypes: obj.leadTypes || []
+    });
+
     if (obj.id) {
-      const { data, error } = await supabase.from('master_investment_budgets').update({ investment_budget: obj.investmentBudget }).eq('id', obj.id).select().single();
-      if (error) { console.error('Error updating investment budget:', error); updateLocalInvestmentBudget(obj); throw error; }
-      const result = { id: data.id, investmentBudget: data.investment_budget };
+      const { data, error } = await supabase.from('master_investment_budgets').update(payload).eq('id', obj.id).select().single();
+      if (error) { console.error('Error updating investment budget:', error); updateLocalInvestmentBudget(obj); throw explain(error); }
+      const result = toResult(data);
       updateLocalInvestmentBudget(result);
       return result;
     } else {
-      const { data, error } = await supabase.from('master_investment_budgets').insert({ investment_budget: obj.investmentBudget }).select().single();
-      if (error) { console.error('Error saving investment budget:', error); saveLocalInvestmentBudget(obj); throw error; }
-      const result = { id: data.id, investmentBudget: data.investment_budget };
+      const { data, error } = await supabase.from('master_investment_budgets').insert(payload).select().single();
+      if (error) { console.error('Error saving investment budget:', error); saveLocalInvestmentBudget(obj); throw explain(error); }
+      const result = toResult(data);
       saveLocalInvestmentBudget(result);
       return result;
     }

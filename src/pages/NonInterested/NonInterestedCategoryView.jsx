@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
   Search, RotateCcw, RefreshCw, UserCheck, MessageSquare,
   Phone, MapPin, Calendar, Eye, X, ChevronDown, ChevronUp,
-  FileSpreadsheet, Mail, Briefcase, FileText, Clock, IndianRupee, Check, UserX
+  FileSpreadsheet, Mail, Briefcase, FileText, Clock, IndianRupee, Check, UserX,
+  CalendarDays
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -17,20 +18,39 @@ import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin } from '../../utils/authUtils';
 
+const getTodayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Deal Lock': 'bg-emerald-100 text-emerald-800 border-emerald-400',
   'Not Interested': 'bg-rose-50 text-rose-700 border-rose-200 font-bold',
   'Future Plan': 'bg-amber-50 text-amber-700 border-amber-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
+  'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Assigned: 'bg-sky-50 text-sky-700 border-sky-200',
   'Pending Assignment': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Did Not Show': 'bg-slate-100 text-slate-700 border-slate-300',
+  'Under Negotiation': 'bg-orange-50 text-orange-700 border-orange-200',
   'Closed Won': 'bg-emerald-100 text-emerald-800 border-emerald-300',
   'Closed Lost': 'bg-rose-50 text-rose-700 border-rose-200',
   Pending: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   Unassigned: 'bg-gray-50 text-gray-500 border-gray-200'
+};
+
+const formatShortDate = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+  return dateStr;
 };
 
 // Format YYYY-MM-DD or DD/MM/YYYY to DD/MM/YYYY
@@ -76,7 +96,8 @@ export default function NonInterestedCategoryView({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
-  const [customDate, setCustomDate] = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [visitorFilter, setVisitorFilter] = useState('all');
   const [customerStatusFilter, setCustomerStatusFilter] = useState('all');
 
@@ -165,19 +186,38 @@ export default function NonInterestedCategoryView({
           return targetTime < today.getTime();
         }
         if (dateFilter === 'upcoming') return (nextTime && nextTime > today.getTime()) || (mTime && mTime > today.getTime());
-        if (dateFilter === 'custom' && customDate) {
-          const parts = customDate.split('-');
-          if (parts.length === 3) {
-            const cDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
-            return mTime === cDate || nextTime === cDate;
+        if (dateFilter === 'custom') {
+          let fromMs = null;
+          let toMs = null;
+          if (customFrom) {
+            const fParts = customFrom.split('-').map(Number);
+            if (fParts.length === 3) {
+              fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
+            }
           }
+          if (customTo) {
+            const tParts = customTo.split('-').map(Number);
+            if (tParts.length === 3) {
+              toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
+            }
+          }
+          if (fromMs !== null || toMs !== null) {
+            const checkMatch = (t) => {
+              if (!t) return false;
+              if (fromMs !== null && t < fromMs) return false;
+              if (toMs !== null && t > toMs) return false;
+              return true;
+            };
+            return checkMatch(mTime) || checkMatch(nextTime);
+          }
+          return true;
         }
         return true;
       });
     }
 
     return list;
-  }, [leads, searchQuery, customerStatusFilter, visitorFilter, dateFilter, customDate]);
+  }, [leads, searchQuery, customerStatusFilter, visitorFilter, dateFilter, customFrom, customTo]);
 
   // Visitor filter options
   const visitorOptions = useMemo(() => {
@@ -199,6 +239,19 @@ export default function NonInterestedCategoryView({
     return opts;
   }, [visitorsMaster, leads]);
 
+  // Date filter options
+  const dateFilterOptions = useMemo(() => {
+    return DATE_FILTER_OPTIONS.map(opt => {
+      if (opt.value === 'custom' && customFrom && customTo) {
+        return {
+          value: 'custom',
+          label: `Custom: ${formatShortDate(customFrom)} – ${formatShortDate(customTo)}`
+        };
+      }
+      return opt;
+    });
+  }, [customFrom, customTo]);
+
   // Count active dropdown filters
   const activeFiltersCount = (customerStatusFilter !== 'all' ? 1 : 0) +
     (dateFilter !== 'all' ? 1 : 0) +
@@ -208,11 +261,23 @@ export default function NonInterestedCategoryView({
     setSearchQuery('');
     setCustomerStatusFilter('all');
     setDateFilter('all');
-    setCustomDate('');
+    setCustomFrom('');
+    setCustomTo('');
     setVisitorFilter('all');
     setCurrentPage(1);
     toast.success('Filters cleared');
   }, []);
+
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/non-interested') {
+        handleClearFilters();
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, [handleClearFilters]);
 
   // Export to Excel
   const exportToExcel = () => {
@@ -251,7 +316,7 @@ export default function NonInterestedCategoryView({
     "Last Meeting Date",
     "Next Meeting Date",
     "Customer Name",
-    ...(isAdmin ? ["Status"] : []),
+    "Status",
     "Site Visited",
     "Meeting",
     "Customer Status",
@@ -344,25 +409,17 @@ export default function NonInterestedCategoryView({
 
         {/* 3. Customer Name */}
         <td className="px-3 py-2 text-left text-xs font-bold whitespace-nowrap max-w-[190px] truncate" title={item.customerName || item.personName}>
-          <div className="flex items-center gap-1.5 truncate">
-            <span className="text-gray-900 truncate hover:text-rose-600 transition">
-              {item.customerName || item.personName || '-'}
-            </span>
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
-              <UserX size={9} className="stroke-[2.5]" />
-              NOT INTERESTED
-            </span>
-          </div>
+          <span className="text-gray-900 truncate hover:text-rose-600 transition">
+            {item.customerName || item.personName || '-'}
+          </span>
         </td>
 
-        {/* 4. Status (Admin only) */}
-        {isAdmin && (
-          <td className="px-3 py-2 text-center whitespace-nowrap">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase border tracking-wide bg-rose-50 text-rose-700 border-rose-200">
-              {item.status || 'Not Interested'}
-            </span>
-          </td>
-        )}
+        {/* 4. Status */}
+        <td className="px-3 py-2 text-center whitespace-nowrap">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase border tracking-wide ${STATUS_STYLES[item.status] || 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+            {item.status || 'Not Interested'}
+          </span>
+        </td>
 
         {/* 5. Site Visited */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -817,23 +874,54 @@ export default function NonInterestedCategoryView({
         <div className="w-[130px] sm:w-[150px]">
           <select
             value={dateFilter}
-            onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => {
+              const val = e.target.value;
+              setDateFilter(val);
+              if (val === 'custom' && !customFrom && !customTo) {
+                const t = getTodayStr();
+                setCustomFrom(t);
+                setCustomTo(t);
+              }
+              setCurrentPage(1);
+            }}
             className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
           >
-            {DATE_FILTER_OPTIONS.map(d => (
+            {dateFilterOptions.map(d => (
               <option key={d.value} value={d.value}>{d.label}</option>
             ))}
           </select>
         </div>
 
-        {/* Custom Date Input */}
+        {/* Custom Date Range Inline Inputs */}
         {dateFilter === 'custom' && (
-          <input
-            type="date"
-            value={customDate}
-            onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
-            className="bg-white border border-gray-300 rounded-md px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-rose-500"
-          />
+          <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+            <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-rose-500 rounded px-2 h-[30px] shadow-xs">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => {
+                  setCustomFrom(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                title="From Date"
+              />
+            </div>
+            <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-rose-500 rounded px-2 h-[30px] shadow-xs">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => {
+                  setCustomTo(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                title="To Date"
+              />
+            </div>
+          </div>
         )}
 
         {/* Visitor Filter */}

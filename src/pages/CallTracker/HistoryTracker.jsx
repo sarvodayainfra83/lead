@@ -6,7 +6,7 @@ import { callTrackerApi } from '../../api/callTrackerApi';
 import DataTable from '../../components/DataTable';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_TYPES } from '../Lead/leadConstants';
-import { ENQUIRY_STATUSES, annotateFollowUpNumbers } from './callTrackerConstants';
+import { FOLLOW_UP_CALL_STATUSES, annotateFollowUpNumbers } from './callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
 import { matchesUserAssignment } from '../../utils/authUtils';
 import { getLeadTypeTextClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
@@ -15,6 +15,8 @@ const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
+  'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
@@ -236,7 +238,7 @@ export default function HistoryTracker({ tabBar }) {
             height="h-[32px]"
           />
           <SearchableDropdown
-            options={ENQUIRY_STATUSES.map(v => ({ value: v, label: v }))}
+            options={FOLLOW_UP_CALL_STATUSES.map(v => ({ value: v, label: v }))}
             value={filters.status}
             onChange={(val) => { setFilters({ ...filters, status: val }); setCurrentPage(1); }}
             placeholder="All Status"
@@ -276,7 +278,7 @@ export default function HistoryTracker({ tabBar }) {
           </div>
           <div className="flex-1 min-w-0">
             <SearchableDropdown
-              options={ENQUIRY_STATUSES.map(v => ({ value: v, label: v }))}
+              options={FOLLOW_UP_CALL_STATUSES.map(v => ({ value: v, label: v }))}
               value={filters.status}
               onChange={(val) => { setFilters({ ...filters, status: val }); setCurrentPage(1); }}
               placeholder="All Status"

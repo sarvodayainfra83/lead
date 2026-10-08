@@ -3,7 +3,8 @@ import toast from 'react-hot-toast';
 import {
   Search, X, RotateCcw, RefreshCw, Plus, Upload, UserCheck, Phone, MessageSquare,
   Pencil, Trash2, Info, Calendar, Clock, CheckSquare, MapPin,
-  Square, ChevronDown, ChevronUp, AlertCircle, Sparkles, Building2, ShieldCheck, TrendingUp
+  Square, ChevronDown, ChevronUp, AlertCircle, Sparkles, Building2, ShieldCheck, TrendingUp,
+  CalendarDays
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -36,12 +37,29 @@ export default function LeadCategoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const [callerStatusFilter, setCallerStatusFilter] = useState('all'); // 'all' | 'unassigned' | 'assigned'
   const [dateFilter, setDateFilter] = useState(initialDateFilter || 'today');
-  const [customDate, setCustomDate] = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [leadSourceFilter, setLeadSourceFilter] = useState('');
   const [callerFilter, setCallerFilter] = useState('');
   const [productTypeFilter, setProductTypeFilter] = useState('');
   const [requirementFilter, setRequirementFilter] = useState('');
   const viewMode = 'auto'; // Table on desktop, cards on mobile (same as Call Tracker)
+
+  // Helper to format short date DD/MM
+  const formatShortDate = (str) => {
+    if (!str) return '';
+    const parts = str.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+    return str;
+  };
+
+  // React to prop updates from Dashboard navigation
+  useEffect(() => {
+    if (initialDateFilter !== undefined) {
+      setDateFilter(initialDateFilter || 'today');
+      setCurrentPage(1);
+    }
+  }, [initialDateFilter]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -137,11 +155,14 @@ export default function LeadCategoryView({
 
     const todayTime = today.getTime();
     const yesterdayTime = yesterday.getTime();
-    let chosenCustomTime = null;
-    if (customDate) {
-      const [cy, cm, cd] = customDate.split('-').map(Number);
-      if (cy && cm && cd) {
-        chosenCustomTime = new Date(cy, cm - 1, cd).getTime();
+    let fromMs = null;
+    let toMs = null;
+    if (customFrom && customTo) {
+      const fParts = customFrom.split('-').map(Number);
+      const tParts = customTo.split('-').map(Number);
+      if (fParts.length === 3 && tParts.length === 3) {
+        fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
+        toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
       }
     }
 
@@ -162,13 +183,20 @@ export default function LeadCategoryView({
         upcomingCount++;
       }
 
-      if (chosenCustomTime !== null && targetTime === chosenCustomTime) {
+      if (fromMs !== null && toMs !== null && targetTime >= fromMs && targetTime <= toMs) {
         customCount++;
       }
     });
 
     return { all: allCount, today: todayCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
-  }, [leads, today, yesterday, customDate]);
+  }, [leads, today, yesterday, customFrom, customTo]);
+
+  const customDropdownLabel = useMemo(() => {
+    if (customFrom && customTo) {
+      return `Custom: ${formatShortDate(customFrom)} – ${formatShortDate(customTo)} (${dateCounts.custom})`;
+    }
+    return 'Custom Date Range';
+  }, [customFrom, customTo, dateCounts.custom]);
 
   // Dropdown options for All Dates & other timeframes
   const allDatesFilterOptions = useMemo(() => {
@@ -177,26 +205,26 @@ export default function LeadCategoryView({
       { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
       { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
       { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
-      { value: 'custom', label: customDate ? `Custom Date (${dateCounts.custom})` : 'Custom Date' },
+      { value: 'custom', label: customDropdownLabel },
     ];
-  }, [dateCounts, customDate]);
+  }, [dateCounts, customDropdownLabel]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (callerStatusFilter && callerStatusFilter !== 'all') count++;
     if (dateFilter && dateFilter !== 'today') count++;
-    if (customDate) count++;
     if (leadSourceFilter) count++;
     if (callerFilter) count++;
     if (productTypeFilter) count++;
     if (requirementFilter) count++;
     return count;
-  }, [callerStatusFilter, dateFilter, customDate, leadSourceFilter, callerFilter, productTypeFilter, requirementFilter]);
+  }, [callerStatusFilter, dateFilter, leadSourceFilter, callerFilter, productTypeFilter, requirementFilter]);
 
   const handleClearFilters = useCallback(() => {
     setCallerStatusFilter('all');
     setDateFilter('today');
-    setCustomDate('');
+    setCustomFrom('');
+    setCustomTo('');
     setLeadSourceFilter('');
     setCallerFilter('');
     setProductTypeFilter('');
@@ -205,6 +233,17 @@ export default function LeadCategoryView({
     setCurrentPage(1);
     toast.success('Filters reset to Today');
   }, []);
+
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/lead') {
+        handleClearFilters();
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, [handleClearFilters]);
 
   // Filter leads
   const filteredLeads = useMemo(() => {
@@ -241,13 +280,19 @@ export default function LeadCategoryView({
         } else if (dateFilter === 'upcoming') {
           if (d.getTime() <= today.getTime()) return false;
         } else if (dateFilter === 'custom') {
-          if (customDate) {
-            const [cy, cm, cd] = customDate.split('-').map(Number);
-            if (cy && cm && cd) {
-              const target = new Date(cy, cm - 1, cd);
-              if (d.getTime() !== target.getTime()) return false;
-            }
+          let fromMs = null;
+          let toMs = null;
+          if (customFrom) {
+            const fParts = customFrom.split('-').map(Number);
+            if (fParts.length === 3) fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
           }
+          if (customTo) {
+            const tParts = customTo.split('-').map(Number);
+            if (tParts.length === 3) toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
+          }
+          const dMs = d.getTime();
+          if (fromMs !== null && dMs < fromMs) return false;
+          if (toMs !== null && dMs > toMs) return false;
         }
       }
 
@@ -279,7 +324,7 @@ export default function LeadCategoryView({
 
       return true;
     });
-  }, [leads, callerStatusFilter, callerFilter, leadSourceFilter, productTypeFilter, requirementFilter, dateFilter, customDate, searchQuery]);
+  }, [leads, callerStatusFilter, callerFilter, leadSourceFilter, productTypeFilter, requirementFilter, dateFilter, customFrom, customTo, searchQuery]);
 
   // Sort: Latest added leads at top (created_at / timestamp descending)
   const sortedLeads = useMemo(() => {
@@ -417,23 +462,30 @@ export default function LeadCategoryView({
 
   // Table Headers tailored to category
   const tableHeaders = useMemo(() => {
-    const headers = [
-      <div key="select-all" className="flex items-center justify-center">
-        <input
-          type="checkbox"
-          checked={allCurrentChecked}
-          onChange={toggleSelectAll}
-          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-          title="Select all on this page"
-        />
-      </div>,
+    const headers = [];
+
+    if (canEdit) {
+      headers.push(
+        <div key="select-all" className="flex items-center justify-center">
+          <input
+            type="checkbox"
+            checked={allCurrentChecked}
+            onChange={toggleSelectAll}
+            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+            title="Select all on this page"
+          />
+        </div>
+      );
+    }
+
+    headers.push(
       "Lead Date",
       "Caller Assigned",
       "Customer Name",
       "Customer Mobile",
       "Email",
       "Location"
-    ];
+    );
 
     if (category === 'Real Estate') {
       headers.push("Product Type", "Requirement", "Site Location", "Investment Budget", "When to Buy");
@@ -450,7 +502,7 @@ export default function LeadCategoryView({
     }
 
     return headers;
-  }, [category, isTester, allCurrentChecked]);
+  }, [category, isTester, allCurrentChecked, canEdit]);
 
   // Render Table Row (Desktop)
   const renderRow = (item, index) => {
@@ -468,28 +520,30 @@ export default function LeadCategoryView({
         }}
         className={`group cursor-pointer transition-colors border-b border-gray-100 hover:bg-indigo-50/40 ${isSelected ? 'bg-indigo-50/60' : (index % 2 === 0 ? 'bg-white' : 'bg-slate-50/30')}`}
       >
-        {/* Checkbox */}
-        <td
-          className="px-3 py-2.5 text-center whitespace-nowrap"
-          style={{ position: 'sticky', left: 0, zIndex: 10, background: 'inherit' }}
-        >
-          {isDirectSiteVisitLead(item) ? (
-            <input
-              type="checkbox"
-              disabled
-              checked={false}
-              className="w-4 h-4 rounded text-gray-300 bg-gray-100 border-gray-300 cursor-not-allowed opacity-40"
-              title="Direct Site Visit lead - caller assignment disabled"
-            />
-          ) : (
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={(e) => toggleSelectRow(item.id, e)}
-              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-            />
-          )}
-        </td>
+        {/* Checkbox (only when editable) */}
+        {canEdit && (
+          <td
+            className="px-3 py-2.5 text-center whitespace-nowrap"
+            style={{ position: 'sticky', left: 0, zIndex: 10, background: 'inherit' }}
+          >
+            {isDirectSiteVisitLead(item) ? (
+              <input
+                type="checkbox"
+                disabled
+                checked={false}
+                className="w-4 h-4 rounded text-gray-300 bg-gray-100 border-gray-300 cursor-not-allowed opacity-40"
+                title="Direct Site Visit lead - caller assignment disabled"
+              />
+            ) : (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={(e) => toggleSelectRow(item.id, e)}
+                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+              />
+            )}
+          </td>
+        )}
 
         {/* Lead Date */}
         <td className="px-4 py-2.5 text-center text-xs text-gray-600 whitespace-nowrap font-medium">
@@ -511,7 +565,7 @@ export default function LeadCategoryView({
               <UserCheck size={12} className="text-emerald-600" />
               {item.callerAssigned}
             </span>
-          ) : (
+          ) : canEdit ? (
             <div className="flex items-center justify-center gap-1">
               <div className="w-32">
                 <SearchableDropdown
@@ -526,6 +580,10 @@ export default function LeadCategoryView({
                 />
               </div>
             </div>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500 border border-gray-200">
+              Unassigned
+            </span>
           )}
         </td>
 
@@ -690,21 +748,23 @@ export default function LeadCategoryView({
         {/* Card Top Row: Checkbox, Lead No, Date, Status */}
         <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
           <div className="flex items-center gap-2">
-            {isDirectSiteVisitLead(item) ? (
-              <input
-                type="checkbox"
-                disabled
-                checked={false}
-                className="w-4 h-4 rounded text-gray-300 bg-gray-100 border-gray-300 cursor-not-allowed opacity-40"
-                title="Direct Site Visit lead - caller assignment disabled"
-              />
-            ) : (
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={(e) => toggleSelectRow(item.id, e)}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
-              />
+            {canEdit && (
+              isDirectSiteVisitLead(item) ? (
+                <input
+                  type="checkbox"
+                  disabled
+                  checked={false}
+                  className="w-4 h-4 rounded text-gray-300 bg-gray-100 border-gray-300 cursor-not-allowed opacity-40"
+                  title="Direct Site Visit lead - caller assignment disabled"
+                />
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => toggleSelectRow(item.id, e)}
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                />
+              )
             )}
             <button
               onClick={() => onViewDetails?.(item)}
@@ -827,8 +887,8 @@ export default function LeadCategoryView({
           )}
         </div>
 
-        {/* Inline Quick Assign for Unassigned Leads (excluding Direct Site Visit) */}
-        {!item.callerAssigned && !isDirectSiteVisitLead(item) && (
+        {/* Inline Quick Assign for Unassigned Leads (excluding Direct Site Visit and only when canEdit) */}
+        {canEdit && !item.callerAssigned && !isDirectSiteVisitLead(item) && (
           <div className="pt-1">
             <SearchableDropdown
               options={callerOptions}
@@ -921,13 +981,16 @@ export default function LeadCategoryView({
                 value={dateFilter === 'today' ? 'all' : dateFilter}
                 onMainClick={() => {
                   setDateFilter('all');
-                  setCustomDate('');
+                  setCustomFrom('');
+                  setCustomTo('');
                   setCurrentPage(1);
                 }}
                 onChange={(val) => {
                   setDateFilter(val);
-                  if (val === 'custom' && !customDate) {
-                    setCustomDate(getTodayStr());
+                  if (val === 'custom' && !customFrom && !customTo) {
+                    const t = getTodayStr();
+                    setCustomFrom(t);
+                    setCustomTo(t);
                   }
                   setCurrentPage(1);
                 }}
@@ -942,17 +1005,36 @@ export default function LeadCategoryView({
               />
             </div>
 
-            {/* Custom Date Input */}
+            {/* Custom Date Range Inline Inputs */}
             {dateFilter === 'custom' && (
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => {
-                  setCustomDate(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="bg-white border border-gray-300 rounded-lg px-2 text-xs h-[34px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium shrink-0 cursor-pointer"
-              />
+              <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => {
+                      setCustomFrom(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                    title="From Date"
+                  />
+                </div>
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => {
+                      setCustomTo(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                    title="To Date"
+                  />
+                </div>
+              </div>
             )}
 
             {canEdit && (
@@ -1109,8 +1191,8 @@ export default function LeadCategoryView({
         </div>
       </div>
 
-      {/* Batch Caller Assignment Floating Bar (smooth, light-themed, appears when leads are checked) */}
-      {selectedIds.size > 0 && (
+      {/* Batch Caller Assignment Floating Bar (only when canEdit is true) */}
+      {canEdit && selectedIds.size > 0 && (
         <div className="fixed bottom-5 sm:bottom-7 left-1/2 -translate-x-1/2 z-50 max-w-lg w-[92%] sm:w-auto px-4 py-2.5 flex flex-col sm:flex-row items-center justify-between gap-3 bg-white/95 border border-indigo-200 text-gray-900 shadow-2xl rounded-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-200 ring-1 ring-indigo-100">
           <div className="flex items-center gap-2.5">
             <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
@@ -1163,7 +1245,7 @@ export default function LeadCategoryView({
             renderRow={renderRow}
             renderCard={renderCard}
             minWidth="1400px"
-            stickyFirstColumn={true}
+            stickyFirstColumn={canEdit}
             disableDragScroll={true}
             viewMode={viewMode}
             cardsGridClassName="grid grid-cols-1 md:grid-cols-2 gap-2.5 p-2 sm:p-3"

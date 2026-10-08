@@ -30,7 +30,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuthStore();
-  const { pendingLeadCount, pendingTrackerCount, pendingVisitorCount, pendingVisitorFollowUpCount, pendingSiteVisitMeetingCount, customerCount, nonInterestedCount, refresh } = useBadgeCountStore();
+  const { pendingLeadCount, siteVisitMeetingCount, callTrackerCount, customerCount, nonInterestedCount, refresh } = useBadgeCountStore();
 
   useEffect(() => {
     refresh();
@@ -54,8 +54,8 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', pageKey: 'dashboard' },
     { path: '/lead', icon: UserPlus, label: 'Lead', pageKey: 'lead', badgeCount: pendingLeadCount },
-    { path: '/call-tracker', icon: PhoneCall, label: 'Lead & Followup', pageKey: 'callTracker', badgeCount: pendingTrackerCount },
-    { path: '/site-visit-meeting', icon: MapPin, label: 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: pendingSiteVisitMeetingCount ?? (pendingVisitorCount + pendingVisitorFollowUpCount) },
+    { path: '/call-tracker', icon: PhoneCall, label: 'Lead & Followup', pageKey: 'callTracker', badgeCount: callTrackerCount },
+    { path: '/site-visit-meeting', icon: MapPin, label: 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: siteVisitMeetingCount },
     { path: '/customer-master', icon: Users, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount },
     { path: '/non-interested', icon: UserX, label: 'Non-interested', pageKey: 'nonInterested', badgeCount: nonInterestedCount },
     // { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
@@ -113,7 +113,12 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
               <div key={item.path} className="relative group">
                 <NavLink
                   to={item.path}
-                  onClick={onClose}
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new CustomEvent('app:clear-filters', {
+                      detail: { path: item.path }
+                    }));
+                  }}
                   className={({ isActive }) => `
                     flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group overflow-hidden
                     ${collapsed ? 'justify-center' : ''}

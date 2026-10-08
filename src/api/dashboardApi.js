@@ -2,13 +2,14 @@ import { leadApi } from './leadApi';
 import { callTrackerApi } from './callTrackerApi';
 import { authApi } from './authApi';
 import { attendanceApi } from './attendanceApi';
-import { siteVisitApi } from './siteVisitApi';
-import { siteVisitFollowUpApi } from './siteVisitFollowUpApi';
+import { siteVisitMeetingApi } from './siteVisitMeetingApi';
 import {
-  getLeadStatus, isLeadPending, CONVERTED_STATUSES, getTrackersForLead, getLatestCustomerStatus
+  getLeadStatus, isLeadPending, CONVERTED_STATUSES, getTrackersForLead, getLatestCustomerStatus,
+  getFollowUpsForLead, getEffectiveCustomerStatus, isFollowUpRejected,
+  isDirectSiteVisitLead, buildCalledLeadKeys, isInFollowUpQueue
 } from '../pages/CallTracker/callTrackerConstants';
 import { LEAD_TYPES, LEAD_SOURCES, parseLeadDate } from '../pages/Lead/leadConstants';
-import { isUserAdmin, matchesUserAssignment, matchesUserReceiver, getLeadCategory } from '../utils/authUtils';
+import { isUserAdmin, matchesUserAssignment, matchesUserReceiver, matchesUserConnection, getLeadCategory } from '../utils/authUtils';
 
 const CATEGORICAL = ['#7c3aed', '#0891b2', '#c026d3', '#65a30d', '#ea580c', '#db2777', '#0d9488', '#6b7280'];
 
@@ -25,35 +26,170 @@ const dateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2
 export const dashboardApi = {
   // Everything the category-tab dashboard needs, loaded once and sliced per tab on the page.
   // Leads come already scoped to the user's lead type (leadApi.getLeads); role USER is further
-  // limited to their own assigned leads and their own attendance.
+  // limited to their own connected leads and their own attendance.
   async getDashboardData(user = null) {
     const [allLeads, allTrackers, allUsers, attendanceLogs, allVisits, allVisitFollowUps] = await Promise.all([
       leadApi.getLeads(),
       callTrackerApi.getCallTrackers(),
       authApi.getUsers().catch(() => []),
       attendanceApi.getAttendanceLogs().catch(() => []),
-      siteVisitApi.getAssignedVisitors().catch(() => []),
-      siteVisitFollowUpApi.getVisitorFollowUps().catch(() => [])
+      siteVisitMeetingApi.getAssignedVisitors().catch(() => []),
+      siteVisitMeetingApi.getVisitorFollowUps().catch(() => [])
     ]);
 
     const isAdmin = isUserAdmin(user);
-    // Role USER: only their own leads — assigned to them as caller or received by them (Team Member)
-    const leads = isAdmin ? allLeads : allLeads.filter(l => matchesUserAssignment(l, user) || matchesUserReceiver(l, user));
 
-    const enrichedLeads = leads.map(lead => {
+    // Pre-group assigned visitors by leadId and leadNo
+    const visitsByLead = {};
+    (allVisits || []).forEach(v => {
+      if (v.status === 'Cancelled') return;
+      const idKey = v.leadId != null ? String(v.leadId) : null;
+      const noKey = v.leadNo != null ? String(v.leadNo).trim() : null;
+      if (idKey) {
+        if (!visitsByLead[idKey]) visitsByLead[idKey] = [];
+        visitsByLead[idKey].push(v);
+      }
+      if (noKey && noKey !== idKey) {
+        if (!visitsByLead[noKey]) visitsByLead[noKey] = [];
+        visitsByLead[noKey].push(v);
+      }
+    });
+
+    // Pre-group visitor follow-ups by leadId and leadNo
+    const followUpsByLead = {};
+    (allVisitFollowUps || []).forEach(f => {
+      const idKey = f.leadId != null ? String(f.leadId) : null;
+      const noKey = f.leadNo != null ? String(f.leadNo).trim() : null;
+      if (idKey) {
+        if (!followUpsByLead[idKey]) followUpsByLead[idKey] = [];
+        followUpsByLead[idKey].push(f);
+      }
+      if (noKey && noKey !== idKey) {
+        if (!followUpsByLead[noKey]) followUpsByLead[noKey] = [];
+        followUpsByLead[noKey].push(f);
+      }
+    });
+
+    // Role USER: only their own connected leads — as caller, receiver or visitor, or as Sales Executive on
+    // the latest visit follow-up. Same rule as the Hot Customers page, so their counts match.
+    const calledLeadKeys = buildCalledLeadKeys(allTrackers);
+    // Leads the Site Visit / Meeting page lists — its card opens that page, so the count uses the same list
+    const siteVisitListIds = new Set(
+      siteVisitMeetingApi.buildSiteVisitMeetingLeads(allLeads, allTrackers, allVisits || [], allVisitFollowUps || [])
+        .map(l => String(l.leadId))
+    );
+    const enrichedLeads = allLeads.map(lead => {
+      const leadIdStr = lead.id != null ? String(lead.id) : '';
+      const leadNoStr = lead.leadNo != null ? String(lead.leadNo).trim() : '';
+
       const leadTrackers = getTrackersForLead(allTrackers, lead.id, lead.leadNo);
-      const latest = leadTrackers[leadTrackers.length - 1] || null;
+      const latestTracker = leadTrackers[leadTrackers.length - 1] || null;
+
+      const rawVisits = [
+        ...(leadIdStr && visitsByLead[leadIdStr] ? visitsByLead[leadIdStr] : []),
+        ...(leadNoStr && visitsByLead[leadNoStr] ? visitsByLead[leadNoStr] : [])
+      ];
+      const seenVisitIds = new Set();
+      const leadVisits = [];
+      rawVisits.forEach(v => {
+        const vid = v.id || `${v.leadNo}-${v.timestamp || v.created_at}`;
+        if (!seenVisitIds.has(vid)) {
+          seenVisitIds.add(vid);
+          leadVisits.push(v);
+        }
+      });
+      const latestVisit = leadVisits[leadVisits.length - 1] || null;
+
+      const rawFollowUps = [
+        ...(leadIdStr && followUpsByLead[leadIdStr] ? followUpsByLead[leadIdStr] : []),
+        ...(leadNoStr && followUpsByLead[leadNoStr] ? followUpsByLead[leadNoStr] : [])
+      ];
+      const seenFollowUpIds = new Set();
+      const leadFollowUps = [];
+      rawFollowUps.forEach(f => {
+        const fid = f.id || `${f.leadNo}-${f.timestampMs || f.createdAt || f.created_at}`;
+        if (!seenFollowUpIds.has(fid)) {
+          seenFollowUpIds.add(fid);
+          leadFollowUps.push(f);
+        }
+      });
+      leadFollowUps.sort((a, b) => {
+        const aMs = Number(a.timestampMs) || (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+        const bMs = Number(b.timestampMs) || (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+        return aMs - bMs;
+      });
+      const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
+
+      const assignedVisitor = latestVisit?.visitorName || latestFollowUp?.visitorName || lead.assignedVisitor || '';
+      const connectionObject = {
+        ...lead,
+        assignedVisitor,
+        visitorName: assignedVisitor,
+        assignedVisitorId: latestVisit?.visitorId || latestVisit?.visitor_id,
+        salesExecutive: latestFollowUp?.salesExecutive || lead.salesExecutive,
+        visitorFollowUps: leadFollowUps,
+        followUps: leadFollowUps
+      };
+
+      if (!isAdmin && !matchesUserConnection(connectionObject, user)) {
+        return null;
+      }
+
+      const latestTrackerMs = Number(latestTracker?.timestampMs) || 0;
+      const latestFollowUpMs = latestFollowUp ? (Number(latestFollowUp.timestampMs) || (latestFollowUp.createdAt ? new Date(latestFollowUp.createdAt).getTime() : 0)) : 0;
+      const lastActivityMs = Math.max(latestTrackerMs, latestFollowUpMs);
+
+      // Customer status considering both trackers and visitor follow-ups
+      const customerStatus = getEffectiveCustomerStatus(leadTrackers, leadFollowUps, lead.id, lead.leadNo);
+
+      // Current active status
+      let currentStatus = latestTracker?.status || lead.status || null;
+      if (latestFollowUpMs >= latestTrackerMs && latestFollowUp?.status) {
+        currentStatus = isFollowUpRejected(latestFollowUp) ? 'Rejected (Lost)' : latestFollowUp.status;
+      }
+
+      // Status as the Lead & Followup list shows it — only leads that list carries, latest call only
+      // (matched by phone too). The Converted / Future Plan cards open that list, so their counts use this.
+      const inFollowUpList = !isDirectSiteVisitLead(lead) && isInFollowUpQueue(lead, calledLeadKeys) &&
+        (isAdmin || matchesUserConnection(lead, user));
+      const latestListTracker = getTrackersForLead(allTrackers, lead.id, lead.leadNo, lead.number || lead.customerNumber).pop();
+      const followUpListStatus = inFollowUpList
+        ? (latestListTracker?.status || (lead.callerAssigned ? 'Pending' : 'Unassigned'))
+        : null;
+
+      // Site Visit detection: assigned visitor, follow ups, direct site visit, or visit tracker status
+      const isSiteVisit = Boolean(
+        leadVisits.length > 0 ||
+        leadFollowUps.length > 0 ||
+        (latestTracker?.status && String(latestTracker.status).toLowerCase().includes('visit')) ||
+        (lead.status && String(lead.status).toLowerCase().includes('visit')) ||
+        (latestTracker?.status && String(latestTracker.status).toLowerCase().includes('meeting')) ||
+        (lead.status && String(lead.status).toLowerCase().includes('meeting')) ||
+        (lead.visitMeet?.['site-visit'] || lead.visitMeet?.meeting)
+      );
+
       return {
         ...lead,
         category: getLeadCategory(lead.leadType, lead.leadNo),
         createdDate: parseLeadDate(lead),
         trackers: leadTrackers,
-        latestTracker: latest,
-        status: latest?.status || null,
-        customerStatus: getLatestCustomerStatus(allTrackers, lead.id, lead.leadNo),
-        lastActivityMs: Number(latest?.timestampMs) || 0
+        followUps: leadFollowUps,
+        visits: leadVisits,
+        assignedVisitor,
+        latestTracker,
+        latestFollowUp,
+        latestVisit,
+        isSiteVisit,
+        siteVisitsCount: Math.max(leadVisits.length, leadFollowUps.length, isSiteVisit ? 1 : 0),
+        status: currentStatus,
+        followUpListStatus,
+        inSiteVisitList: siteVisitListIds.has(String(lead.id)),
+        customerStatus,
+        // Deal marked lost in a Site Visit follow-up — not a Hot/Warm client (same rule as Hot Customers page)
+        isLost: isFollowUpRejected(latestFollowUp),
+        lastActivityMs
       };
-    });
+    }).filter(Boolean);
 
     // Every call entry, joined to its (visible) lead
     const calls = enrichedLeads.flatMap(lead => lead.trackers.map(t => ({
@@ -130,8 +266,8 @@ export const dashboardApi = {
     ]);
 
     const isAdmin = isUserAdmin(user);
-    const leads = isAdmin ? allLeads : allLeads.filter(l => matchesUserAssignment(l, user));
-    const trackers = isAdmin ? allTrackers : allTrackers.filter(t => matchesUserAssignment(t, user));
+    const leads = isAdmin ? allLeads : allLeads.filter(l => matchesUserConnection(l, user));
+    const trackers = isAdmin ? allTrackers : allTrackers.filter(t => matchesUserConnection(t, user));
 
     const leadsWithStatus = leads.map(l => ({ ...l, _status: getLeadStatus(trackers, l.id) }));
 

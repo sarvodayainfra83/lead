@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList, PieChart, Pie, Cell
 } from 'recharts';
@@ -10,7 +11,7 @@ import {
 } from 'lucide-react';
 import { dashboardApi } from '../../api/dashboardApi';
 import { useAuthStore } from '../../store/authStore';
-import { getUserLeadTypeScope, isUserAdmin } from '../../utils/authUtils';
+import { getUserLeadTypeScope, isUserAdmin, canViewPage } from '../../utils/authUtils';
 import { buildShareClient } from '../../utils/productShare';
 import { getLeadTypeBadgeClass } from '../../utils/leadTypeColors';
 import { CUSTOMER_STATUS_STYLES } from '../CallTracker/callTrackerConstants';
@@ -38,6 +39,8 @@ const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
+  'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
@@ -84,6 +87,21 @@ const isAdminRole = (e) => String(e.role || '').toUpperCase() === 'ADMIN';
 // ----------------------------------------------------------------------------
 // Small presentational pieces
 // ----------------------------------------------------------------------------
+
+// Page access key for every page the Dashboard links to (matches the route guards in App.jsx)
+const PATH_PAGE_KEYS = {
+  '/lead': 'lead',
+  '/call-tracker': 'callTracker',
+  '/site-visit-meeting': 'siteVisitMeeting',
+  '/customer-master': 'customerMaster',
+  '/products': 'products',
+  '/mis-report': 'misReport',
+  '/attendance': 'attendance',
+  '/attendance-report': 'attendanceReport'
+};
+
+// Lead data pages a KPI can drill into without page access (must match AccessGuard's DASHBOARD_DRILLDOWN_PAGES)
+const DASHBOARD_DRILLDOWN_PATHS = ['/lead', '/call-tracker', '/site-visit-meeting', '/customer-master', '/non-interested'];
 
 const ViewAll = ({ onClick, label = 'View all' }) => (
   <button onClick={onClick} className="text-[11px] sm:text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-0.5 flex-shrink-0 whitespace-nowrap">
@@ -353,11 +371,12 @@ export default function Dashboard() {
     const todayMs = startOfToday().getTime();
     const inRange = (ms) => ms >= range.fromMs && ms < range.toMs;
     const byEmployee = (name) => !employeeKey || normName(name) === employeeKey;
-    const leads = data.leads.filter(l => inTab(l.category) && byEmployee(l.callerAssigned));
+    const leads = data.leads.filter(l => inTab(l.category) && (byEmployee(l.callerAssigned) || byEmployee(l.assignedVisitor)));
     const calls = data.calls.filter(c => inTab(c.category) && byEmployee(c.callerAssigned));
 
     const summarize = (list, callList) => {
-      const byStatus = (s) => list.filter(l => l.status === s).length;
+      // Same status the Lead & Followup list filters on, so each card's count matches the list it opens
+      const byStatus = (s) => list.filter(l => l.followUpListStatus === s).length;
       const converted = byStatus('Interested');
       return {
         total: list.length,
@@ -365,11 +384,13 @@ export default function Dashboard() {
         todayCalls: callList.filter(c => c.timestampMs >= todayMs).length,
         futurePlan: byStatus('Future Plan Date'),
         converted,
-        siteVisit: byStatus('Site Visit/Meeting') + byStatus('Meeting'),
+        siteVisit: list.filter(l => l.inSiteVisitList).length,
         notInterested: byStatus('Not Interested'),
-        notCalled: list.filter(l => l.trackers.length === 0).length,
-        hot: list.filter(l => l.customerStatus === 'Hot').length,
-        warm: list.filter(l => l.customerStatus === 'Warm').length,
+        // Leads the Lead & Followup list shows as Pending (no call yet) — what its Pending filter opens
+        notCalled: list.filter(l => l.followUpListStatus === 'Pending' || l.followUpListStatus === 'Unassigned').length,
+        // Same rule as the Hot Customers page, so these match its tab counts
+        hot: list.filter(l => l.customerStatus === 'Hot' && !l.isLost).length,
+        warm: list.filter(l => l.customerStatus === 'Warm' && !l.isLost).length,
         conversionRate: list.length ? Math.round((converted / list.length) * 100) : 0
       };
     };
@@ -380,7 +401,7 @@ export default function Dashboard() {
     const byType = TABS.map(t => ({
       ...t,
       ...summarize(
-        data.leads.filter(l => l.category === t.key && byEmployee(l.callerAssigned)),
+        data.leads.filter(l => l.category === t.key && (byEmployee(l.callerAssigned) || byEmployee(l.assignedVisitor))),
         data.calls.filter(c => c.category === t.key && byEmployee(c.callerAssigned))
       )
     }));
@@ -392,7 +413,7 @@ export default function Dashboard() {
       .filter(c => c.timestampMs >= todayMs)
       .sort((a, b) => b.timestampMs - a.timestampMs);
     const hotWarm = leads
-      .filter(l => l.customerStatus === 'Hot' || l.customerStatus === 'Warm')
+      .filter(l => (l.customerStatus === 'Hot' || l.customerStatus === 'Warm') && !l.isLost)
       .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
 
     // ---- Per-employee MIS for the selected period ----
@@ -409,16 +430,16 @@ export default function Dashboard() {
     tabEmployees.filter(e => !isAdminRole(e)).forEach(e => ensureRow(e.name));
 
     leads.forEach(l => {
-      const row = ensureRow(l.callerAssigned || 'Unassigned');
+      const row = ensureRow(l.callerAssigned || l.assignedVisitor || 'Unassigned');
       if (!row) return;
       row.assigned += 1;
       if (l.createdDate && inRange(l.createdDate.getTime())) row.newLeads += 1;
       if (l.trackers.length === 0) row.notCalled += 1;
-      // Current outcome / temperature, counted when its latest call falls in the period
-      if (inRange(l.lastActivityMs) && l.trackers.length > 0) {
-        if (l.status === 'Interested') row.interested += 1;
+      // Current outcome / temperature, counted when its latest call or visit falls in the period
+      if (inRange(l.lastActivityMs) && (l.trackers.length > 0 || l.followUps?.length > 0)) {
+        if (l.status === 'Interested' || l.status === 'Deal Lock') row.interested += 1;
         if (l.status === 'Future Plan Date') row.futurePlan += 1;
-        if (l.status === 'Site Visit/Meeting' || l.status === 'Meeting') row.siteVisit += 1;
+        if (l.isSiteVisit || l.status === 'Site Visit/Meeting' || l.status === 'Meeting') row.siteVisit += 1;
         if (l.status === 'Not Interested') row.notInterested += 1;
         if (l.customerStatus === 'Hot') row.hot += 1;
         if (l.customerStatus === 'Warm') row.warm += 1;
@@ -509,10 +530,31 @@ export default function Dashboard() {
     .filter(r => r.assigned > 0 || r.calls > 0)
     .map(r => ({ name: r.name, Assigned: r.assigned, Calls: r.calls, Converted: r.interested }));
 
+  // Only open pages the user has access to (Setting → Page Access); links to the rest are hidden or refused
+  const canOpen = (path) => canViewPage(user, PATH_PAGE_KEYS[path]);
+  const openPage = (path, options) => {
+    if (!canOpen(path)) {
+      toast.error("You don't have access to this page");
+      return;
+    }
+    navigate(path, options);
+  };
+
+  // KPI drill-downs into lead data pages open even without page access — view-only and limited to the
+  // user's own records (see AccessGuard); the sidebar still hides those pages
+  const canDrillInto = (path) => canOpen(path) || DASHBOARD_DRILLDOWN_PATHS.includes(path);
+
   // Open a page on the same lead type (the All tab lets the page pick its default tab)
-  const go = (path, state = {}, tabKey = tab) => navigate(path, {
-    state: tabKey && tabKey !== 'All' ? { tab: tabKey, ...state } : state
-  });
+  const go = (path, state = {}, tabKey = tab) => {
+    if (!canDrillInto(path)) {
+      toast.error("You don't have access to this page");
+      return;
+    }
+    const navState = { ...state, fromDashboard: true };
+    navigate(path, {
+      state: tabKey && tabKey !== 'All' ? { tab: tabKey, ...navState } : navState
+    });
+  };
 
   const loadingOr = (text) => (loading ? 'Loading...' : text);
 
@@ -651,7 +693,7 @@ export default function Dashboard() {
               value={kpis.total}
               note={`${kpis.notCalled} not called`}
               noteClass="text-indigo-500"
-              onClick={() => go('/lead')}
+              onClick={() => go('/lead', { dateFilter: 'all' })}
             />
             <MetricBlock
               label="Today's Leads"
@@ -664,28 +706,28 @@ export default function Dashboard() {
               value={kpis.todayCalls}
               note="logged today"
               noteClass="text-sky-600"
-              onClick={() => go('/call-tracker')}
+              onClick={() => go('/call-tracker', { dateFilter: 'today' })}
             />
             <MetricBlock
               label="Future Plan"
               value={kpis.futurePlan}
               note="awaiting next call"
               noteClass="text-amber-600"
-              onClick={() => go('/call-tracker', { statusFilter: 'Future Plan Date' })}
+              onClick={() => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })}
             />
             <MetricBlock
               label="Converted"
               value={kpis.converted}
               note={`▲ ${kpis.conversionRate}% of leads`}
               noteClass="text-emerald-600"
-              onClick={() => go('/call-tracker', { statusFilter: 'Interested' })}
+              onClick={() => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })}
             />
             <MetricBlock
               label="Site Visits"
               value={kpis.siteVisit}
               note={`${kpis.notInterested} not interested`}
               noteClass="text-rose-500"
-              onClick={() => go('/call-tracker', { statusFilter: 'Site Visit/Meeting' })}
+              onClick={() => go('/site-visit-meeting', { dateFilter: 'all' })}
             />
           </Card>
 
@@ -694,13 +736,13 @@ export default function Dashboard() {
             <CardHeader
               title="Hot Clients"
               subtitle="Customer temperature"
-              action={<ViewAll onClick={() => go('/customer-master')} label="Open" />}
+              action={canDrillInto('/customer-master') && <ViewAll onClick={() => go('/customer-master')} label="Open" />}
             />
             <div className="grid grid-cols-2 gap-2 px-4">
               <button
                 type="button"
                 onClick={() => go('/customer-master', { customerStatus: 'Hot' })}
-                className="text-left rounded-xl p-3 bg-gradient-to-br from-rose-500 to-orange-400 text-white shadow-sm hover:shadow-md transition"
+                className="text-left rounded-xl p-3 bg-gradient-to-br from-rose-500 to-orange-400 text-white shadow-sm hover:shadow-md transition cursor-pointer"
               >
                 <p className="text-[10px] uppercase tracking-wide font-semibold opacity-90 flex items-center gap-1"><Flame size={11} /> Hot</p>
                 <p className="text-2xl font-bold leading-tight mt-2">{kpis.hot}</p>
@@ -709,7 +751,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => go('/customer-master', { customerStatus: 'Warm' })}
-                className="text-left rounded-xl p-3 bg-gradient-to-br from-amber-300 to-yellow-200 text-amber-900 shadow-sm hover:shadow-md transition"
+                className="text-left rounded-xl p-3 bg-gradient-to-br from-amber-300 to-yellow-200 text-amber-900 shadow-sm hover:shadow-md transition cursor-pointer"
               >
                 <p className="text-[10px] uppercase tracking-wide font-semibold opacity-90 flex items-center gap-1"><Thermometer size={11} /> Warm</p>
                 <p className="text-2xl font-bold leading-tight mt-2">{kpis.warm}</p>
@@ -720,13 +762,13 @@ export default function Dashboard() {
             {/* Quick actions */}
             <div className="grid grid-cols-5 gap-1 px-3 pt-3">
               {[
-                { label: 'Leads', icon: UserPlus, onClick: () => go('/lead') },
-                { label: 'Calls', icon: PhoneCall, onClick: () => go('/call-tracker') },
-                { label: 'Visits', icon: Handshake, onClick: () => navigate('/site-visit-meeting') },
-                { label: 'Products', icon: Package, onClick: () => navigate('/products') },
-                { label: 'MIS', icon: FileBarChart, onClick: () => navigate('/mis-report') }
-              ].map(({ label, icon: Icon, onClick }) => (
-                <button key={label} type="button" onClick={onClick} className="flex flex-col items-center gap-1 py-1.5 rounded-lg hover:bg-gray-50 transition">
+                { label: 'Leads', icon: UserPlus, path: '/lead', onClick: () => go('/lead', { dateFilter: 'all' }) },
+                { label: 'Calls', icon: PhoneCall, path: '/call-tracker', onClick: () => go('/call-tracker') },
+                { label: 'Visits', icon: Handshake, path: '/site-visit-meeting', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
+                { label: 'Products', icon: Package, path: '/products', onClick: () => openPage('/products') },
+                { label: 'MIS', icon: FileBarChart, path: '/mis-report', onClick: () => openPage('/mis-report') }
+              ].filter(a => canOpen(a.path)).map(({ label, icon: Icon, onClick }) => (
+                <button key={label} type="button" onClick={onClick} className="flex flex-col items-center gap-1 py-1.5 rounded-lg hover:bg-gray-50 transition cursor-pointer">
                   <span className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-700">
                     <Icon size={15} />
                   </span>
@@ -741,7 +783,7 @@ export default function Dashboard() {
                 <>
                   <p className="text-[11px] font-semibold text-gray-500 flex items-center justify-between mb-2">
                     <span>Present today · {present.length}{teamSize ? `/${teamSize}` : ''}</span>
-                    <button type="button" onClick={() => navigate('/attendance-report')} className="text-indigo-600 hover:underline">View</button>
+                    {canOpen('/attendance-report') && <button type="button" onClick={() => openPage('/attendance-report')} className="text-indigo-600 hover:underline">View</button>}
                   </p>
                   {present.length > 0 ? (
                     <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
@@ -760,7 +802,7 @@ export default function Dashboard() {
                   )}
                 </>
               ) : (
-                <button type="button" onClick={() => navigate('/attendance')} className={`w-full text-left rounded-xl border px-3 py-2.5 transition hover:shadow-sm ${myToday ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
+                <button type="button" onClick={() => openPage('/attendance')} className={`w-full text-left rounded-xl border px-3 py-2.5 transition hover:shadow-sm ${myToday ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
                   <p className={`text-[10px] font-semibold uppercase tracking-wide ${myToday ? 'text-emerald-700' : 'text-rose-600'}`}>My attendance today</p>
                   <p className={`text-sm font-bold ${myToday ? 'text-emerald-800' : 'text-rose-700'}`}>
                     {myToday ? `In ${myToday.inTime || '-'}${myToday.outTime ? ` · Out ${myToday.outTime}` : ' · Working'}` : 'Not marked yet'}
@@ -781,7 +823,7 @@ export default function Dashboard() {
               const segments = [
                 { label: 'Converted', value: kpis.converted, color: 'bg-emerald-500', status: 'Interested' },
                 { label: 'Future Plan', value: kpis.futurePlan, color: 'bg-amber-400', status: 'Future Plan Date' },
-                { label: 'Site Visit', value: kpis.siteVisit, color: 'bg-cyan-500', status: 'Site Visit/Meeting' },
+                { label: 'Site Visit', value: kpis.siteVisit, color: 'bg-cyan-500', path: '/site-visit-meeting' },
                 { label: 'Not Interested', value: kpis.notInterested, color: 'bg-rose-400', status: 'Not Interested' },
                 { label: 'Not Called', value: kpis.notCalled, color: 'bg-gray-300', status: 'Pending' }
               ];
@@ -799,8 +841,8 @@ export default function Dashboard() {
                       <button
                         key={x.label}
                         type="button"
-                        onClick={() => go('/call-tracker', { statusFilter: x.status })}
-                        className="w-full flex items-center justify-between text-xs py-1 px-1 -mx-1 rounded-md hover:bg-gray-50 transition"
+                        onClick={() => (x.path ? go(x.path, { dateFilter: 'all' }) : go('/call-tracker', { statusFilter: x.status, dateFilter: 'all' }))}
+                        className="w-full flex items-center justify-between text-xs py-1 px-1 -mx-1 rounded-md hover:bg-gray-50 transition cursor-pointer"
                       >
                         <span className="flex items-center gap-2 text-gray-600">
                           <span className={`w-2.5 h-2.5 rounded-sm ${x.color}`} /> {x.label}
@@ -828,14 +870,19 @@ export default function Dashboard() {
             </div>
             <div className="grid grid-cols-3 gap-2 px-4 pb-4 pt-3">
               {[
-                { label: 'Hot', value: kpis.hot, cls: 'text-rose-600' },
-                { label: 'Warm', value: kpis.warm, cls: 'text-amber-600' },
-                { label: 'Visits', value: kpis.siteVisit, cls: 'text-cyan-600' }
+                { label: 'Hot', value: kpis.hot, cls: 'text-rose-600', onClick: () => go('/customer-master', { customerStatus: 'Hot' }) },
+                { label: 'Warm', value: kpis.warm, cls: 'text-amber-600', onClick: () => go('/customer-master', { customerStatus: 'Warm' }) },
+                { label: 'Visits', value: kpis.siteVisit, cls: 'text-cyan-600', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) }
               ].map(x => (
-                <div key={x.label} className="rounded-xl bg-gray-50 py-2 text-center">
+                <button
+                  key={x.label}
+                  type="button"
+                  onClick={x.onClick}
+                  className="rounded-xl bg-gray-50 hover:bg-gray-100/80 py-2 text-center transition cursor-pointer"
+                >
                   <p className={`text-base font-bold ${x.cls}`}>{x.value}</p>
                   <p className="text-[10px] text-gray-500 uppercase tracking-wide">{x.label}</p>
-                </div>
+                </button>
               ))}
             </div>
           </Card>
@@ -851,18 +898,18 @@ export default function Dashboard() {
               {(isAll
                 ? byType.map(t => ({
                   key: t.key, label: t.label, icon: t.icon, done: t.converted, total: t.total,
-                  hint: `${t.todayCalls} calls today · ${t.hot} hot`, onClick: () => setActiveTab(t.key)
+                  hint: `${t.todayCalls} calls today · ${t.hot} hot`, onClick: () => go('/lead', { dateFilter: 'all' }, t.key)
                 }))
                 : [
-                  { key: 'fp', label: 'Future Plan', icon: Clock, done: kpis.futurePlan, total: kpis.total, hint: 'Awaiting next call', onClick: () => go('/call-tracker', { statusFilter: 'Future Plan Date' }) },
-                  { key: 'sv', label: 'Site Visit / Meeting', icon: Handshake, done: kpis.siteVisit, total: kpis.total, hint: 'Visits scheduled', onClick: () => go('/call-tracker', { statusFilter: 'Site Visit/Meeting' }) },
-                  { key: 'nc', label: 'Not Called', icon: PhoneOff, done: kpis.notCalled, total: kpis.total, hint: 'Still to be called', onClick: () => go('/call-tracker', { statusFilter: 'Pending' }) }
+                  { key: 'fp', label: 'Future Plan', icon: Clock, done: kpis.futurePlan, total: kpis.total, hint: 'Awaiting next call', onClick: () => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' }) },
+                  { key: 'sv', label: 'Site Visit / Meeting', icon: Handshake, done: kpis.siteVisit, total: kpis.total, hint: 'Visits scheduled', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
+                  { key: 'nc', label: 'Not Called', icon: PhoneOff, done: kpis.notCalled, total: kpis.total, hint: 'Still to be called', onClick: () => go('/call-tracker', { statusFilter: 'Pending', dateFilter: 'all' }) }
                 ]
               ).map(item => {
                 const Icon = item.icon;
                 const pct = item.total ? Math.round((item.done / item.total) * 100) : 0;
                 return (
-                  <button key={item.key} type="button" onClick={item.onClick} className="w-full text-left flex items-center gap-3 group">
+                  <button key={item.key} type="button" onClick={item.onClick} className="w-full text-left flex items-center gap-3 group cursor-pointer">
                     <span className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-100 transition">
                       <Icon size={17} className="text-indigo-600" />
                     </span>
@@ -895,7 +942,7 @@ export default function Dashboard() {
               title="Today's Calling"
               subtitle={`${todayCalls.length} calls logged today`}
               icon={PhoneCall}
-              action={<ViewAll onClick={() => go('/call-tracker')} />}
+              action={canDrillInto('/call-tracker') && <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today' })} />}
             />
             {todayCalls.length > 0 ? (
               <div className="max-h-[380px] overflow-y-auto pb-1">
@@ -926,7 +973,7 @@ export default function Dashboard() {
               title="Today's Leads"
               subtitle={`${todayLeads.length} new leads today`}
               icon={UserPlus}
-              action={<ViewAll onClick={() => go('/lead', { dateFilter: 'today' })} />}
+              action={canDrillInto('/lead') && <ViewAll onClick={() => go('/lead', { dateFilter: 'today' })} />}
             />
             {todayLeads.length > 0 ? (
               <div className="max-h-[380px] overflow-y-auto pb-1">
@@ -954,7 +1001,7 @@ export default function Dashboard() {
               title="Recent Hot & Warm"
               subtitle="Latest interested clients"
               icon={Flame}
-              action={<ViewAll onClick={() => go('/customer-master')} />}
+              action={canDrillInto('/customer-master') && <ViewAll onClick={() => go('/customer-master', { customerStatus: 'all' })} />}
             />
             {hotWarm.length > 0 ? (
               <div className="max-h-[380px] overflow-y-auto pb-1">
@@ -997,6 +1044,7 @@ export default function Dashboard() {
         lead={detailsLead}
         onShareProducts={(lead) => {
           setDetailsLead(null);
+          // Sharing products opens Products even without its page access (see AccessGuard)
           navigate('/products', { state: { shareClient: buildShareClient(lead) } });
         }}
       />

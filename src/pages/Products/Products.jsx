@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
   Building2,
@@ -325,12 +325,23 @@ export default function Products() {
     />
   );
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setStatusFilter('all');
     setFeaturedFilter('all');
     setCurrentPage(1);
-  };
+  }, []);
+
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/products') {
+        handleClearFilters();
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, [handleClearFilters]);
 
   // Actions
   const handleOpenAdd = () => {

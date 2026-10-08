@@ -4,7 +4,8 @@ import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { useAuthStore } from '../../store/authStore';
-import { hasFullAccess, getUserLeadTypeScope } from '../../utils/authUtils';
+import { hasFullAccess, getUserLeadTypeScope, matchesUserConnection } from '../../utils/authUtils';
+import { useDashboardDrilldown } from '../../components/AccessGuard';
 import LeadCategoryView from './LeadCategoryView';
 import LeadForm from './LeadForm';
 import LeadEdit from './LeadEdit';
@@ -26,7 +27,9 @@ import { buildShareClient } from '../../utils/productShare';
  */
 export default function Lead() {
   const user = useAuthStore(state => state.user);
-  const canEdit = hasFullAccess(user, 'lead');
+  // Opened from a Dashboard KPI without Lead page access — only the user's own leads
+  const isDrilldown = useDashboardDrilldown('lead');
+  const canEdit = hasFullAccess(user, 'lead') && !isDrilldown;
   const navigate = useNavigate();
   // Tab / filter handed over from a Dashboard card, e.g. { tab: 'Insurance', dateFilter: 'today' }
   const navState = useLocation().state || {};
@@ -46,6 +49,14 @@ export default function Lead() {
   }, [user, navState.tab]);
 
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Sync activeTab when navigating with new tab state
+  useEffect(() => {
+    if (navState.tab) {
+      setActiveTab(navState.tab);
+    }
+  }, [navState.tab]);
+
   const [allLeads, setAllLeads] = useState([]);
   const [callersMaster, setCallersMaster] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -122,26 +133,31 @@ export default function Lead() {
   }, [loadData, user]);
 
   // Show all leads of the same lead type without restricting by caller name, username, or role
+  // (a Dashboard drill-down without page access only sees the user's own connected leads)
+  const visibleLeads = useMemo(() => (
+    isDrilldown ? allLeads.filter(l => matchesUserConnection(l, user)) : allLeads
+  ), [allLeads, isDrilldown, user]);
+
   const realEstateLeads = useMemo(() => {
-    return allLeads.filter(l => {
+    return visibleLeads.filter(l => {
       const type = (l.leadType || '').toLowerCase();
       return type.includes('real') || type.includes('estate') || (l.leadNo && l.leadNo.startsWith('LR'));
     });
-  }, [allLeads]);
+  }, [visibleLeads]);
 
   const insuranceLeads = useMemo(() => {
-    return allLeads.filter(l => {
+    return visibleLeads.filter(l => {
       const type = (l.leadType || '').toLowerCase();
       return type.includes('insurance') || (l.leadNo && l.leadNo.startsWith('LI'));
     });
-  }, [allLeads]);
+  }, [visibleLeads]);
 
   const mutualFundLeads = useMemo(() => {
-    return allLeads.filter(l => {
+    return visibleLeads.filter(l => {
       const type = (l.leadType || '').toLowerCase();
       return type.includes('mutual') || type.includes('fund') || (l.leadNo && l.leadNo.startsWith('LM'));
     });
-  }, [allLeads]);
+  }, [visibleLeads]);
 
   // Tab configurations with live badge counters
   const tabs = [
@@ -197,11 +213,11 @@ export default function Lead() {
       {/* Category View Panel containing the Single Row Toolbar (Tabs + Actions) + Data Table */}
       <div className="flex-1 min-h-0">
         <LeadCategoryView
-          key={currentTabObj.key}
+          key={`${currentTabObj.key}_${navState.dateFilter || 'default'}`}
           category={currentTabObj.key}
           tabs={visibleTabs}
           activeTab={currentTabObj.key}
-          initialDateFilter={navState.tab === currentTabObj.key ? navState.dateFilter : undefined}
+          initialDateFilter={navState.dateFilter}
           onTabChange={setActiveTab}
           leads={currentTabObj.data}
           loading={loading}

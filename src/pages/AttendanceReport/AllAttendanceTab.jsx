@@ -271,11 +271,22 @@ export default function AllAttendanceTab({ tabBar }) {
     loadData();
   }, [user]);
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setFilters({ ...initialFilters });
     setCurrentPage(1);
     toast.success('Filters cleared');
-  };
+  }, [initialFilters]);
+
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/attendance-report') {
+        handleClearFilters();
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, [handleClearFilters]);
 
   const statusOptions = [
     { value: '', label: 'All Status' },

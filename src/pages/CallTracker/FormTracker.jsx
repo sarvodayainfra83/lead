@@ -9,8 +9,9 @@ import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { ENQUIRY_STATUSES, TERMINAL_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES } from './callTrackerConstants';
+import { FOLLOW_UP_CALL_STATUSES, NO_CONTACT_STATUSES, TERMINAL_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES, tomorrowInputDate } from './callTrackerConstants';
 import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
+import { getInvestmentBudgetsForLeadType } from '../Lead/leadConstants';
 import { useAuthStore } from '../../store/authStore';
 
 const DEAL_STATUS_OPTIONS = [
@@ -140,22 +141,32 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         r => !isOtherValue(r.requirement) && r.requirement.toLowerCase() === req.toLowerCase()
       );
 
+      // Saved values show selected in their dropdowns (master spelling when listed, otherwise as saved —
+      // the option lists below include them); "Add New" + text box only when the user picks it
+      const matchProduct = (list, raw) => list.find(o => !isOtherValue(o.productType) && o.productType.toLowerCase() === raw.toLowerCase())?.productType || raw;
+      const productValue = isProductPreset ? matchProduct(masterProductList, rawProduct) : rawProduct;
+      const insValue = isInsPreset ? matchProduct(insuranceProductsList, rawIns) : rawIns;
+      const subValue = isSubPreset
+        ? (insuranceSubProductsList.find(o => !isOtherValue(o.subProductType) && o.subProductType.toLowerCase() === rawSub.toLowerCase())?.subProductType || rawSub)
+        : rawSub;
+      const reqValue = isReqPreset
+        ? (requirementsList.find(r => r.requirement.toLowerCase() === req.toLowerCase())?.requirement || req)
+        : req;
+
       setFormData({
         status: '',
         customerStatus: lead.customerStatus || '',
         customerSaid: '',
         nextDate: '',
-        requirement: req,
-        requirementOption: isReqPreset
-          ? requirementsList.find(r => r.requirement.toLowerCase() === req.toLowerCase())?.requirement
-          : (req ? 'Others' : ''),
-        customRequirement: isReqPreset ? '' : req,
-        productType: isProductPreset ? rawProduct : (rawProduct ? 'Others' : ''),
-        customProductType: isProductPreset ? '' : rawProduct,
-        insuranceType: isInsPreset ? rawIns : (rawIns ? 'Others' : ''),
-        customInsuranceType: isInsPreset ? '' : rawIns,
-        insuranceSubType: isSubPreset ? rawSub : (rawSub ? 'Others' : ''),
-        customInsuranceSubType: isSubPreset ? '' : rawSub,
+        requirement: reqValue,
+        requirementOption: reqValue,
+        customRequirement: '',
+        productType: productValue,
+        customProductType: '',
+        insuranceType: insValue,
+        customInsuranceType: '',
+        insuranceSubType: subValue,
+        customInsuranceSubType: '',
         investmentBudget: lead.investmentBudget || '',
         whenToBuyPlan: lead.whenToBuyPlan || '',
         siteVisited: false,
@@ -170,8 +181,19 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
   const handleChange = (field, value) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
-      if (field === 'status' && !DATE_STATUSES.includes(value) && value !== 'Meeting') {
+      if (field === 'status' && NO_CONTACT_STATUSES.includes(value)) {
+        // Unanswered call / WhatsApp: try again tomorrow by default (the user can pick another date)
+        if (!NO_CONTACT_STATUSES.includes(prev.status) || !prev.nextDate) updated.nextDate = tomorrowInputDate();
+      } else if (field === 'status' && !DATE_STATUSES.includes(value) && value !== 'Meeting') {
         updated.nextDate = '';
+      }
+      // Real Estate's Site Visit/Meeting starts on "Site Visit" (the user can switch to Meeting); Meeting = meeting
+      if (field === 'status' && value === 'Site Visit/Meeting' && prev.status !== value) {
+        updated.siteVisited = true;
+        updated.meeting = false;
+      } else if (field === 'status' && value === 'Meeting' && prev.status !== value) {
+        updated.siteVisited = false;
+        updated.meeting = true;
       }
       if (field === 'productType' && !isOtherValue(value)) {
         updated.customProductType = '';
@@ -206,55 +228,76 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     }));
   };
 
+  // Keep the selected value listed even when it isn't in the master (e.g. a value saved on the lead)
+  const withSelected = (options, value) => (
+    value && !isOtherValue(value) && !options.some(o => o.value === value)
+      ? [...options, { value, label: value }]
+      : options
+  );
+
   const requirementOptions = useMemo(() => {
-    return (requirementsList || [])
+    return withSelected((requirementsList || [])
       .filter(r => !isOtherValue(r.requirement))
-      .map(r => ({ value: r.requirement, label: r.requirement }));
-  }, [requirementsList]);
+      .map(r => ({ value: r.requirement, label: r.requirement })), formData.requirementOption);
+  }, [requirementsList, formData.requirementOption]);
 
   const realEstateProductOptions = useMemo(() => {
-    return (realEstateProductsList || [])
+    return withSelected((realEstateProductsList || [])
       .filter(t => !isOtherValue(t.productType))
-      .map(t => ({ value: t.productType, label: t.productType }));
-  }, [realEstateProductsList]);
+      .map(t => ({ value: t.productType, label: t.productType })), formData.productType);
+  }, [realEstateProductsList, formData.productType]);
 
   const mutualFundProductOptions = useMemo(() => {
-    return (mutualFundProductsList || [])
+    return withSelected((mutualFundProductsList || [])
       .filter(t => !isOtherValue(t.productType))
-      .map(t => ({ value: t.productType, label: t.productType }));
-  }, [mutualFundProductsList]);
+      .map(t => ({ value: t.productType, label: t.productType })), formData.productType);
+  }, [mutualFundProductsList, formData.productType]);
 
   const insuranceProductOptions = useMemo(() => {
-    return (insuranceProductsList || [])
+    return withSelected((insuranceProductsList || [])
       .filter(t => !isOtherValue(t.productType))
-      .map(t => ({ value: t.productType, label: t.productType }));
-  }, [insuranceProductsList]);
+      .map(t => ({ value: t.productType, label: t.productType })), formData.insuranceType);
+  }, [insuranceProductsList, formData.insuranceType]);
 
   const insuranceSubProductOptions = useMemo(() => {
     const currentInsType = isOtherValue(formData.insuranceType)
       ? (formData.customInsuranceType || '')
       : formData.insuranceType;
-    return (insuranceSubProductsList || [])
+    return withSelected((insuranceSubProductsList || [])
       .filter(s => !isOtherValue(s.subProductType) && s.productType?.toLowerCase().trim() === currentInsType?.toLowerCase().trim())
-      .map(s => ({ value: s.subProductType, label: s.subProductType }));
-  }, [insuranceSubProductsList, formData.insuranceType, formData.customInsuranceType]);
+      .map(s => ({ value: s.subProductType, label: s.subProductType })), formData.insuranceSubType);
+  }, [insuranceSubProductsList, formData.insuranceType, formData.customInsuranceType, formData.insuranceSubType]);
 
-  const investmentBudgetOptions = investmentBudgetsList.map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
+  // Budgets for this lead's type; keep the lead's existing budget selectable even if it isn't tagged for it
+  const investmentBudgetOptions = useMemo(() => {
+    const options = getInvestmentBudgetsForLeadType(investmentBudgetsList, lead?.leadType)
+      .map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
+    if (formData.investmentBudget && !options.some(o => o.value === formData.investmentBudget)) {
+      options.push({ value: formData.investmentBudget, label: formData.investmentBudget });
+    }
+    return options;
+  }, [investmentBudgetsList, lead?.leadType, formData.investmentBudget]);
 
+  // Visitors = users permitted for this lead's type (by lead type id, or by name in their lead type list —
+  // "Real State" and multi-type values like "Real Estate, Mutual Fund" included). Users with no lead type
+  // (Admin, HR, Accountant, ...) are not offered.
   const visitorOptions = useMemo(() => {
-    const leadTypeClean = String(lead?.leadType || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    const matching = (visitorsList || []).filter(v => {
-      if (!leadTypeClean) return true;
-      const vTypeClean = String(v.leadType || '').replace(/\s+/g, ' ').trim().toLowerCase();
-      return !vTypeClean || vTypeClean === leadTypeClean || vTypeClean.includes(leadTypeClean) || leadTypeClean.includes(vTypeClean);
-    });
+    const leadCategoryKey = isRealEstate ? 'real' : (isInsurance ? 'insurance' : (isMutualFund ? 'mutual' : ''));
+    const leadTypeId = lead?.leadTypeId || lead?.lead_type_id || '';
+    const hasLeadTypePermission = (person) => {
+      if (!leadCategoryKey) return true;
+      const personTypeId = String(person?.leadTypeId || person?.lead_type_id || '');
+      if (leadTypeId && personTypeId && personTypeId === String(leadTypeId)) return true;
+      const text = `${person?.leadTypeText || ''},${person?.leadType || ''}`.toLowerCase();
+      return text.includes(leadCategoryKey);
+    };
 
-    const pool = matching.length > 0 ? matching : (visitorsList || []);
+    const pool = (visitorsList || []).filter(hasLeadTypePermission);
     const seen = new Set();
     const opts = [];
 
-    // Prepend logged in user
-    if (user?.name) {
+    // Logged-in user first, when they are permitted for this lead type
+    if (user?.name && hasLeadTypePermission(user)) {
       const cleanUser = String(user.name).replace(/\s+/g, ' ').trim();
       seen.add(cleanUser.toLowerCase());
       opts.push({ value: cleanUser, label: `${cleanUser} (You)` });
@@ -272,25 +315,30 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     });
 
     return opts;
-  }, [visitorsList, lead, user]);
+  }, [visitorsList, lead, user, isRealEstate, isInsurance, isMutualFund]);
+
+  const isNoContact = NO_CONTACT_STATUSES.includes(formData.status);
 
   const statusOptions = useMemo(() => {
     const isNonRealEstate = isInsurance || isMutualFund;
-    return ENQUIRY_STATUSES.map(v => {
+    // Real Estate: "Interested" isn't offered when logging a follow-up call (older calls keep it)
+    return FOLLOW_UP_CALL_STATUSES.filter(v => !(isRealEstate && v === 'Interested')).map(v => {
       if (v === 'Site Visit/Meeting' && isNonRealEstate) {
         return { value: 'Meeting', label: 'Meeting' };
       }
       return { value: v, label: v };
     });
-  }, [isInsurance, isMutualFund]);
+  }, [isRealEstate, isInsurance, isMutualFund]);
 
   // Default assignedVisitor if status is Site Visit/Meeting or Meeting
   useEffect(() => {
     const isMeeting = formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting';
-    if (isMeeting && !formData.assignedVisitor) {
+    if (isMeeting && visitorOptions.length > 0 && !visitorOptions.some(o => o.value === formData.assignedVisitor)) {
+      // Default to the lead's visitor, else you, else the first permitted visitor
+      const preferred = [lead?.assignedVisitor, user?.name].find(name => name && visitorOptions.some(o => o.value === name));
       setFormData(prev => ({
         ...prev,
-        assignedVisitor: lead?.assignedVisitor || user?.name || (visitorOptions[0]?.value || '')
+        assignedVisitor: preferred || visitorOptions[0].value
       }));
     }
   }, [formData.status, visitorOptions, user, lead, formData.assignedVisitor]);
@@ -328,8 +376,9 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     if (loading) return;
 
     if (!formData.status) { toast.error('Enquiry Received Status is required'); return; }
-    if (!formData.customerStatus) { toast.error('Customer Status is required'); return; }
-    if (!formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
+    // Call Not Received / No WhatsApp Reply only record the attempt — the other details are optional
+    if (!isNoContact && !formData.customerStatus) { toast.error('Customer Status is required'); return; }
+    if (!isNoContact && !formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
 
     let finalProductType = formData.productType;
     if ((isRealEstate || isMutualFund) && isOtherValue(formData.productType)) {
@@ -473,7 +522,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         status: formData.status,
         customerStatus: formData.customerStatus,
         customerSaid: formData.customerSaid,
-        nextDate: (DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') ? formData.nextDate : '',
+        nextDate: (DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting' || isNoContact) ? formData.nextDate : '',
         timestamp,
         timestampMs: now.getTime()
       };
@@ -518,7 +567,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
           const parentId = (previousFollowUp?.id && siteVisitMeetingApi.isUuid(previousFollowUp.id)) ? previousFollowUp.id : null;
           const followUpNo = (existingFollowUps?.length || 0) + 1;
           const closingAmt = formData.dealStatus === 'Closed' ? (formData.exactBudget || formData.investmentBudget || '') : '';
-          const mappedStatus = formData.dealStatus === 'Closed' ? 'Closed Won' : (formData.dealStatus === 'Not Interested' ? 'Not Interested' : 'Interested');
+          // Closed deal = Deal Lock in the visit records; a pending meeting stays 'Interested'
+          const mappedStatus = formData.dealStatus === 'Closed' ? 'Deal Lock' : (formData.dealStatus === 'Not Interested' ? 'Not Interested' : 'Interested');
 
           await siteVisitMeetingApi.saveVisitorFollowUp({
             leadId: lead.id,
@@ -624,7 +674,6 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customProductType}
                     onChange={(e) => handleChange('customProductType', e.target.value)}
                     placeholder="Enter new product type"
@@ -651,7 +700,6 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customRequirement}
                     onChange={(e) => handleCustomRequirementChange(e.target.value)}
                     placeholder="Enter new requirement"
@@ -683,7 +731,6 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 <input
                   type="text"
                   autoFocus
-                  ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                   value={formData.customProductType}
                   onChange={(e) => handleChange('customProductType', e.target.value)}
                   placeholder="Enter new product type"
@@ -715,7 +762,6 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceType}
                     onChange={(e) => handleChange('customInsuranceType', e.target.value)}
                     placeholder="Enter new product type"
@@ -743,7 +789,6 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceSubType}
                     onChange={(e) => handleChange('customInsuranceSubType', e.target.value)}
                     placeholder="Enter new sub product type"
@@ -781,6 +826,17 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
           </div>
         </div>
 
+        {/* Customer Status (Hot / Warm / Cold) */}
+        <div className="space-y-1 col-span-1">
+          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Status {isNoContact ? <span className="normal-case font-normal text-gray-400">(optional)</span> : '*'}</label>
+          <SearchableDropdown
+            options={CUSTOMER_STATUSES.map(v => ({ value: v, label: v }))}
+            value={formData.customerStatus}
+            onChange={(val) => handleChange('customerStatus', val)}
+            placeholder="Select Hot / Warm / Cold"
+          />
+        </div>
+
         {/* Enquiry Received Status */}
         <div className="space-y-1 col-span-1">
           <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Status *</label>
@@ -792,24 +848,13 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
           />
         </div>
 
-        {/* Customer Status (Hot / Warm / Cold) */}
-        <div className="space-y-1 col-span-1">
-          <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer Status *</label>
-          <SearchableDropdown
-            options={CUSTOMER_STATUSES.map(v => ({ value: v, label: v }))}
-            value={formData.customerStatus}
-            onChange={(val) => handleChange('customerStatus', val)}
-            placeholder="Select Hot / Warm / Cold"
-          />
-        </div>
-
         {formData.status && (
           <>
-            {/* Date — Future Plan Date's next-call date, or the Site Visit/Meeting date */}
-            {(DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') && (
+            {/* Date — Future Plan Date's / unanswered call's next-call date, or the Site Visit/Meeting date */}
+            {(DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting' || isNoContact) && (
               <div className="space-y-1 col-span-1 animate-in fade-in duration-200">
                 <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                  {formData.status === 'Future Plan Date' ? 'Future Plan Date' : ((isInsurance || isMutualFund) ? 'Meeting Date' : 'Visit/Meeting Date')}
+                  {isNoContact ? 'Next Call Date' : (formData.status === 'Future Plan Date' ? 'Future Plan Date' : ((isInsurance || isMutualFund) ? 'Meeting Date' : 'Visit/Meeting Date'))}
                 </label>
                 <input
                   type="date"
@@ -820,52 +865,69 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
               </div>
             )}
 
-            {/* When status is Site Visit/Meeting or Meeting: Checkboxes (Site Visited, Meeting), Deal Status dropdown, Assigned Visitor, and Budget */}
+            {/* When status is Site Visit/Meeting or Meeting: visit type (radio for Real Estate), Deal Status (not Real Estate), Assigned Visitor */}
             {(formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') && (
               <div className="space-y-3 col-span-2 p-2.5 sm:p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl animate-in fade-in duration-200">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-center">
+                <div className={`grid grid-cols-1 ${isRealEstate ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-2.5 sm:gap-3 items-center`}>
                   {/* Checkboxes: Site Visited & Meeting */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
                       {isInsurance || isMutualFund ? 'Meeting' : 'Visit / Meeting Type'}
                     </label>
                     <div className="flex items-center gap-4 pt-1">
-                      {isRealEstate && (
+                      {isRealEstate ? (
+                        <>
+                          {/* Real Estate: one choice — Site Visit or Meeting */}
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
+                            <input
+                              type="radio"
+                              name="visitMeetingType"
+                              checked={Boolean(formData.siteVisited)}
+                              onChange={() => setFormData(prev => ({ ...prev, siteVisited: true, meeting: false }))}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>Site Visit</span>
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
+                            <input
+                              type="radio"
+                              name="visitMeetingType"
+                              checked={Boolean(formData.meeting)}
+                              onChange={() => setFormData(prev => ({ ...prev, siteVisited: false, meeting: true }))}
+                              className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                            />
+                            <span>Meeting</span>
+                          </label>
+                        </>
+                      ) : (
                         <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
                           <input
                             type="checkbox"
-                            checked={formData.siteVisited}
-                            onChange={(e) => handleChange('siteVisited', e.target.checked)}
+                            checked={formData.meeting}
+                            onChange={(e) => handleChange('meeting', e.target.checked)}
                             className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
                           />
-                          <span>Site Visited</span>
+                          <span>Meeting</span>
                         </label>
                       )}
-                      <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
-                        <input
-                          type="checkbox"
-                          checked={formData.meeting}
-                          onChange={(e) => handleChange('meeting', e.target.checked)}
-                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                        />
-                        <span>Meeting</span>
-                      </label>
                     </div>
                   </div>
 
-                  {/* Deal Status Dropdown */}
-                  <div className="space-y-1">
-                    <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                      Deal Status
-                    </label>
-                    <SearchableDropdown
-                      options={DEAL_STATUS_OPTIONS}
-                      value={formData.dealStatus || 'Pending'}
-                      onChange={(val) => handleChange('dealStatus', val)}
-                      placeholder="Select deal status"
-                      height="h-[30px] md:h-[34px]"
-                    />
-                  </div>
+                  {/* Deal Status Dropdown (not asked for Real Estate) */}
+                  {!isRealEstate && (
+                    <div className="space-y-1">
+                      <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
+                        Deal Status
+                      </label>
+                      <SearchableDropdown
+                        options={DEAL_STATUS_OPTIONS}
+                        value={formData.dealStatus || 'Pending'}
+                        onChange={(val) => handleChange('dealStatus', val)}
+                        placeholder="Select deal status"
+                        height="h-[30px] md:h-[34px]"
+                      />
+                    </div>
+                  )}
 
                   {/* Assigned Visitor Dropdown */}
                   <div className="space-y-1">
@@ -874,7 +936,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                     </label>
                     <SearchableDropdown
                       options={visitorOptions}
-                      value={formData.assignedVisitor || lead.assignedVisitor || user?.name || ''}
+                      value={formData.assignedVisitor || ''}
                       onChange={(val) => handleChange('assignedVisitor', val)}
                       placeholder="Select assigned visitor"
                       height="h-[30px] md:h-[34px]"
@@ -883,7 +945,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                 </div>
 
                 {/* Exact Budget text field if Deal is Closed */}
-                {formData.dealStatus === 'Closed' && (
+                {!isRealEstate && formData.dealStatus === 'Closed' && (
                   <div className="space-y-1 pt-1 animate-in fade-in duration-150">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-emerald-800 uppercase tracking-tight font-bold">
                       Closing Budget / Exact Budget *
@@ -903,15 +965,15 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
               </div>
             )}
 
-            {/* What did Customer said — asked for every status */}
+            {/* What did Customer said — asked for every status (optional for an unanswered call / WhatsApp) */}
             <div className="space-y-1 col-span-2">
-              <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">What did Customer said *</label>
+              <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">What did Customer said {isNoContact ? <span className="normal-case font-normal text-gray-400">(optional)</span> : '*'}</label>
               <div className="relative">
                 <MessageSquare className="absolute left-2.5 top-2.5 text-gray-400" size={13} />
                 <textarea
                   value={formData.customerSaid}
                   onChange={(e) => handleChange('customerSaid', e.target.value)}
-                  placeholder="Enter what the customer said"
+                  placeholder={isNoContact ? 'Optional note, e.g. phone switched off / message seen' : 'Enter what the customer said'}
                   rows={2}
                   className="w-full border border-gray-300 rounded pl-7 pr-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] resize-none"
                 />

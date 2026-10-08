@@ -141,6 +141,18 @@ export default function Attendance() {
     };
   }, []);
 
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/attendance') {
+        setSearchQuery('');
+        setCurrentPage(1);
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, []);
+
   // Check for restored attendance session on mount (survives Android low-memory tab reload)
   useEffect(() => {
     try {

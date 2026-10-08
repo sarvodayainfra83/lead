@@ -9,7 +9,7 @@ import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
-import { isDirectSiteVisitLead } from './leadConstants';
+import { isDirectSiteVisitLead, getInvestmentBudgetsForLeadType } from './leadConstants';
 
 export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
   const user = useAuthStore(state => state.user);
@@ -174,10 +174,15 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
   }, [insuranceSubProductsMaster, formData.insuranceType, formData.customInsuranceType]);
 
   const investmentBudgetOptions = useMemo(() => {
-    return (investmentBudgetsMaster || [])
+    const options = getInvestmentBudgetsForLeadType(investmentBudgetsMaster, formData.leadType)
       .filter(t => !isOtherValue(t.investmentBudget))
       .map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
-  }, [investmentBudgetsMaster]);
+    // Keep the lead's saved budget selectable even if it isn't tagged for this lead type
+    if (formData.investmentBudget && !isOtherValue(formData.investmentBudget) && !options.some(o => o.value === formData.investmentBudget)) {
+      options.push({ value: formData.investmentBudget, label: formData.investmentBudget });
+    }
+    return options;
+  }, [investmentBudgetsMaster, formData.leadType, formData.investmentBudget]);
 
   const wasOpenRef = useRef(false);
   const lastLeadIdRef = useRef(null);
@@ -272,6 +277,8 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
       if (field === 'leadType') {
         updated.leadReceiver = '';
         updated.callerAssigned = '';
+        updated.investmentBudget = '';
+        updated.customInvestmentBudget = '';
         updated.productType = '';
         updated.customProductType = '';
         updated.customInsuranceType = '';
@@ -568,7 +575,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
               <input
                 type="text"
                 autoFocus
-                ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                 value={formData.customLeadSource}
                 onChange={(e) => handleChange('customLeadSource', e.target.value)}
                 placeholder="Enter new lead source"
@@ -616,7 +622,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customProductType}
                     onChange={(e) => handleChange('customProductType', e.target.value)}
                     placeholder="Enter new product type"
@@ -643,7 +648,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customRequirement}
                     onChange={(e) => handleCustomRequirementChange(e.target.value)}
                     placeholder="Enter new requirement"
@@ -675,7 +679,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
                 <input
                   type="text"
                   autoFocus
-                  ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                   value={formData.customProductType}
                   onChange={(e) => handleChange('customProductType', e.target.value)}
                   placeholder="Enter new product type"
@@ -707,7 +710,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceType}
                     onChange={(e) => handleChange('customInsuranceType', e.target.value)}
                     placeholder="Enter new product type"
@@ -735,7 +737,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
                   <input
                     type="text"
                     autoFocus
-                    ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                     value={formData.customInsuranceSubType}
                     onChange={(e) => handleChange('customInsuranceSubType', e.target.value)}
                     placeholder="Enter new sub product type"
@@ -853,7 +854,6 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
               <input
                 type="text"
                 autoFocus
-                ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                 value={formData.customInvestmentBudget}
                 onChange={(e) => handleChange('customInvestmentBudget', e.target.value)}
                 placeholder="Enter new budget range (e.g. 1 Cr - 2 Cr)"

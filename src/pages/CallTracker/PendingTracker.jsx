@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { Phone, Search, Info, RotateCcw } from 'lucide-react';
+import { Phone, Search, Info, RotateCcw, CalendarDays } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import { callTrackerApi } from '../../api/callTrackerApi';
 import DataTable from '../../components/DataTable';
@@ -17,12 +17,14 @@ const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
+  'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200'
 };
 
 const DATE_FILTER_OPTIONS = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'All Dates' },
   { value: 'today', label: "Today's Lead" },
   { value: 'yesterday', label: 'Yesterday' },
   { value: 'overdue', label: 'Overdue' },
@@ -36,6 +38,13 @@ const getTodayStr = () => {
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const formatShortDate = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+  return dateStr;
 };
 
 /**
@@ -77,7 +86,8 @@ export default function PendingTracker({ tabBar }) {
     leadType: '',
     callerAssigned: '',
     dateFilter: '',
-    customDate: ''
+    customFrom: '',
+    customTo: ''
   };
   const [filters, setFilters] = useState({ ...initialFilters });
 
@@ -123,6 +133,18 @@ export default function PendingTracker({ tabBar }) {
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
 
+  const dateFilterOptions = useMemo(() => {
+    return DATE_FILTER_OPTIONS.map(opt => {
+      if (opt.value === 'custom' && filters.customFrom && filters.customTo) {
+        return {
+          value: 'custom',
+          label: `Custom: ${formatShortDate(filters.customFrom)} – ${formatShortDate(filters.customTo)}`
+        };
+      }
+      return opt;
+    });
+  }, [filters.customFrom, filters.customTo]);
+
   const filteredRows = pendingRows.filter(l => {
     if (filters.leadType && l.leadType !== filters.leadType) return false;
     if (filters.callerAssigned && l.callerAssigned !== filters.callerAssigned) return false;
@@ -139,11 +161,24 @@ export default function PendingTracker({ tabBar }) {
       } else if (filters.dateFilter === 'upcoming') {
         if (d.getTime() <= today.getTime()) return false;
       } else if (filters.dateFilter === 'custom') {
-        if (!filters.customDate) return true;
-        const [cy, cm, cd] = filters.customDate.split('-').map(Number);
-        if (cy && cm && cd) {
-          const targetDate = new Date(cy, cm - 1, cd);
-          if (d.getTime() !== targetDate.getTime()) return false;
+        let fromMs = null;
+        let toMs = null;
+        if (filters.customFrom) {
+          const fromParts = filters.customFrom.split('-').map(Number);
+          if (fromParts.length === 3) {
+            fromMs = new Date(fromParts[0], fromParts[1] - 1, fromParts[2], 0, 0, 0, 0).getTime();
+          }
+        }
+        if (filters.customTo) {
+          const toParts = filters.customTo.split('-').map(Number);
+          if (toParts.length === 3) {
+            toMs = new Date(toParts[0], toParts[1] - 1, toParts[2], 23, 59, 59, 999).getTime();
+          }
+        }
+        if (fromMs !== null || toMs !== null) {
+          const dMs = d.getTime();
+          if (fromMs !== null && dMs < fromMs) return false;
+          if (toMs !== null && dMs > toMs) return false;
         }
       }
     }
@@ -356,28 +391,51 @@ export default function PendingTracker({ tabBar }) {
         {/* Mobile Filters (Always visible) */}
         <div className="grid lg:hidden grid-cols-1 sm:grid-cols-3 gap-2 w-full">
           <SearchableDropdown
-            options={DATE_FILTER_OPTIONS}
+            options={dateFilterOptions}
             value={filters.dateFilter}
             onChange={(val) => {
-              const next = { ...filters, dateFilter: val };
-              if (val === 'custom' && !filters.customDate) {
-                next.customDate = getTodayStr();
-              }
-              setFilters(next);
+              setFilters(prev => {
+                const next = { ...prev, dateFilter: val };
+                if (val === 'custom' && !next.customFrom && !next.customTo) {
+                  const t = getTodayStr();
+                  next.customFrom = t;
+                  next.customTo = t;
+                }
+                return next;
+              });
               setCurrentPage(1);
             }}
             placeholder="All Lead Dates"
             height="h-[32px]"
           />
           {filters.dateFilter === 'custom' && (
-            <div className="col-span-1 sm:col-span-3">
-              <input
-                type="date"
-                value={filters.customDate || ''}
-                onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
-                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1 focus:outline-none focus:border-indigo-500 text-xs h-[32px] text-gray-700 shadow-sm"
-                title="Select custom date"
-              />
+            <div className="col-span-1 sm:col-span-3 flex items-center gap-1.5 animate-in fade-in duration-150">
+              <div className="flex-1 flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[32px] shadow-xs">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                <input
+                  type="date"
+                  value={filters.customFrom || ''}
+                  onChange={(e) => {
+                    setFilters(prev => ({ ...prev, customFrom: e.target.value }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="From Date"
+                />
+              </div>
+              <div className="flex-1 flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[32px] shadow-xs">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                <input
+                  type="date"
+                  value={filters.customTo || ''}
+                  onChange={(e) => {
+                    setFilters(prev => ({ ...prev, customTo: e.target.value }));
+                    setCurrentPage(1);
+                  }}
+                  className="w-full text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="To Date"
+                />
+              </div>
             </div>
           )}
           <SearchableDropdown
@@ -410,14 +468,18 @@ export default function PendingTracker({ tabBar }) {
           </div>
           <div className="flex-1 min-w-0">
             <SearchableDropdown
-              options={DATE_FILTER_OPTIONS}
+              options={dateFilterOptions}
               value={filters.dateFilter}
               onChange={(val) => {
-                const next = { ...filters, dateFilter: val };
-                if (val === 'custom' && !filters.customDate) {
-                  next.customDate = getTodayStr();
-                }
-                setFilters(next);
+                setFilters(prev => {
+                  const next = { ...prev, dateFilter: val };
+                  if (val === 'custom' && !next.customFrom && !next.customTo) {
+                    const t = getTodayStr();
+                    next.customFrom = t;
+                    next.customTo = t;
+                  }
+                  return next;
+                });
                 setCurrentPage(1);
               }}
               placeholder="All Lead Dates"
@@ -425,14 +487,33 @@ export default function PendingTracker({ tabBar }) {
             />
           </div>
           {filters.dateFilter === 'custom' && (
-            <div className="min-w-[140px] max-w-[160px] animate-in fade-in duration-150">
-              <input
-                type="date"
-                value={filters.customDate || ''}
-                onChange={(e) => { setFilters({ ...filters, customDate: e.target.value }); setCurrentPage(1); }}
-                className="w-full bg-white border border-indigo-300 rounded px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm h-[38px] text-gray-700 shadow-sm font-medium"
-                title="Select custom date"
-              />
+            <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-2 h-[38px] shadow-xs">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                <input
+                  type="date"
+                  value={filters.customFrom || ''}
+                  onChange={(e) => {
+                    setFilters(prev => ({ ...prev, customFrom: e.target.value }));
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="From Date"
+                />
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-2 h-[38px] shadow-xs">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                <input
+                  type="date"
+                  value={filters.customTo || ''}
+                  onChange={(e) => {
+                    setFilters(prev => ({ ...prev, customTo: e.target.value }));
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="To Date"
+                />
+              </div>
             </div>
           )}
           <div className="flex-1 min-w-0">

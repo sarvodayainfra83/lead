@@ -341,6 +341,29 @@ export const attendanceApi = {
       outGeocodingStatus: isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.outGeocodingStatus || 'RESOLVED')
     };
 
+    console.groupCollapsed(`📝 [Attendance Log Saved] ${entry.userName || 'User'} marked ${entry.status || 'In'}`);
+    console.log('Action:', isMarkingOut ? 'PUNCH OUT' : 'PUNCH IN');
+    console.log('Captured IN Location:', {
+      latitude: payloadWithPhoto.latitude,
+      longitude: payloadWithPhoto.longitude,
+      accuracy: payloadWithPhoto.accuracy,
+      address: payloadWithPhoto.locationName,
+      status: payloadWithPhoto.geocodingStatus,
+      mapsUrl: getGoogleMapsUrl(payloadWithPhoto.latitude, payloadWithPhoto.longitude)
+    });
+    if (isMarkingOut) {
+      console.log('Captured OUT Location:', {
+        latitude: payloadWithPhoto.outLatitude,
+        longitude: payloadWithPhoto.outLongitude,
+        accuracy: payloadWithPhoto.outAccuracy,
+        address: payloadWithPhoto.outLocationName,
+        status: payloadWithPhoto.outGeocodingStatus,
+        mapsUrl: getGoogleMapsUrl(payloadWithPhoto.outLatitude, payloadWithPhoto.outLongitude)
+      });
+    }
+    console.log('Complete Payload:', payloadWithPhoto);
+    console.groupEnd();
+
     if (existingTodayLog) {
       payloadWithPhoto.id = existingTodayLog.id;
     }
@@ -550,144 +573,177 @@ async updateAttendanceLog(id, updatedFields) {
     return true;
   },
 
-  // 1. Search for nearby cached location within radius (default 100 meters)
+  // 1. Search for nearby cached location (BLOCKED FOR TESTING - ALWAYS CALLS EXTERNAL API)
   async findNearbyLocationInCache(lat, lng, radiusMeters = 100) {
-    if (lat == null || lng == null) return null;
-    const numLat = Number(lat);
-    const numLng = Number(lng);
-
-    // Check local storage cache first
-    try {
-      const localCache = getLocalLocationCache();
-      if (Array.isArray(localCache) && localCache.length > 0) {
-        let closest = null;
-        let minDistance = Infinity;
-
-        for (const item of localCache) {
-          if (item.latitude != null && item.longitude != null && item.address) {
-            const dist = calculateDistanceMeters(numLat, numLng, item.latitude, item.longitude);
-            if (dist <= radiusMeters && dist < minDistance) {
-              minDistance = dist;
-              closest = { ...item, distance: dist };
-            }
-          }
-        }
-
-        if (closest) {
-          return closest;
-        }
-      }
-    } catch (err) {
-      console.warn('Error reading local location cache:', err);
-    }
-
-    // Check Supabase location_cache table if configured
-    if (isSupabaseConfigured) {
-      try {
-        // Bounding box pre-filter (~220m radius)
-        const latDelta = 0.002;
-        const lngDelta = 0.002;
-
-        const { data, error } = await supabase
-          .from('location_cache')
-          .select('*')
-          .gte('latitude', numLat - latDelta)
-          .lte('latitude', numLat + latDelta)
-          .gte('longitude', numLng - lngDelta)
-          .lte('longitude', numLng + lngDelta)
-          .limit(20);
-
-        if (!error && Array.isArray(data) && data.length > 0) {
-          let closest = null;
-          let minDistance = Infinity;
-
-          for (const item of data) {
-            if (item.latitude != null && item.longitude != null && item.address) {
-              const dist = calculateDistanceMeters(numLat, numLng, item.latitude, item.longitude);
-              if (dist <= radiusMeters && dist < minDistance) {
-                minDistance = dist;
-                closest = { ...item, distance: dist };
-              }
-            }
-          }
-
-          if (closest) {
-            // Also store in local cache for offline reuse
-            addLocalLocationCacheEntry({
-              latitude: closest.latitude,
-              longitude: closest.longitude,
-              address: closest.address,
-              accuracy: closest.accuracy
-            });
-            return closest;
-          }
-        }
-      } catch (err) {
-        console.warn('Error querying Supabase location_cache:', err);
-      }
-    }
-
+    console.log('🚫 [Location Cache BYPASSED] Location cache lookup disabled for testing. Query will go directly to OpenStreetMap API.');
     return null;
   },
 
-  // 2. Save resolved location to cache (both Supabase and local storage)
+  // 2. Save resolved location to cache (BLOCKED FOR TESTING)
   async saveLocationToCache(lat, lng, address, accuracy = null) {
-    if (lat == null || lng == null || !address) return;
-    const numLat = Number(lat);
-    const numLng = Number(lng);
-    const numAcc = accuracy != null ? Number(accuracy) : null;
-
-    // Save to local storage
-    addLocalLocationCacheEntry({
-      latitude: numLat,
-      longitude: numLng,
-      address,
-      accuracy: numAcc
-    });
-
-    // Save to Supabase location_cache table
-    if (isSupabaseConfigured) {
-      try {
-        await supabase
-          .from('location_cache')
-          .insert({
-            latitude: numLat,
-            longitude: numLng,
-            address,
-            accuracy: numAcc
-          });
-      } catch (err) {
-        console.warn('Could not save to Supabase location_cache table:', err);
-      }
-    }
+    console.log('🚫 [Location Cache BYPASSED] Saving to cache is currently disabled for testing.');
   },
 
-  // 3. Direct Nominatim reverse geocode call
-  async reverseGeocodeNominatim(lat, lng) {
+  // 3. Direct LocationIQ reverse geocode call (Primary External Service)
+  async reverseGeocodeLocationIQ(lat, lng) {
     if (lat == null || lng == null) return null;
+    const startTime = Date.now();
+    const apiKey = import.meta.env.VITE_LOCATIONIQ_API_KEY || 'pk.1adde45db2f5ae1b33dd981425f6db1a';
+    const url = `https://us1.locationiq.com/v1/reverse?key=${apiKey}&lat=${lat}&lon=${lng}&format=json&addressdetails=1&normalizeaddress=1`;
+
+    console.group(`🌐 [LocationIQ API Request] Fetching exact address for Coordinates: (${lat}, ${lng})`);
+    console.log('📡 Endpoint URL:', url);
+    console.log('🎯 Parameters:', { latitude: lat, longitude: lng, format: 'json', addressdetails: 1, normalizeaddress: 1 });
+    console.log('🗺️ View exact location on Google Maps:', getGoogleMapsUrl(lat, lng));
+
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-        {
-          headers: { 'Accept-Language': 'en' },
-          signal: controller.signal
-        }
-      );
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timeoutId);
-      if (!res.ok) throw new Error(`Geocoding HTTP status: ${res.status}`);
+      const durationMs = Date.now() - startTime;
+      console.log(`⏱️ HTTP Response Status: ${res.status} ${res.statusText} (${durationMs}ms)`);
+
+      if (!res.ok) throw new Error(`LocationIQ HTTP status: ${res.status} ${res.statusText}`);
       const data = await res.json();
-      return data.display_name || null;
+
+      console.log('📦 Complete Raw Response JSON from LocationIQ:', data);
+
+      // Build structured human-readable address
+      const addr = data.address || {};
+      const specific = addr.name || addr.amenity || addr.shop || addr.building || '';
+      const street = addr.road || addr.street || '';
+      const neighbourhood = addr.neighbourhood || addr.suburb || addr.residential || '';
+      const city = addr.city || addr.town || addr.village || '';
+      const county = addr.county || '';
+      const state = addr.state || '';
+      const postcode = addr.postcode || '';
+      const country = addr.country || '';
+
+      const parts = [];
+      if (specific) parts.push(specific);
+      if (street && !parts.includes(street)) parts.push(street);
+      if (neighbourhood && !parts.includes(neighbourhood)) parts.push(neighbourhood);
+      if (city && !parts.includes(city)) parts.push(city);
+      if (county && !parts.includes(county) && !county.toLowerCase().includes(city.toLowerCase())) parts.push(county);
+      if (state && !parts.includes(state)) parts.push(state);
+      if (postcode) parts.push(postcode);
+      if (country && !parts.includes(country)) parts.push(country);
+
+      const resolvedAddress = parts.length > 0 ? parts.join(', ') : (data.display_name || null);
+
+      console.log('📍 Extracted Full Address:', resolvedAddress);
+      console.log('🏠 Breakdown of Address Components:');
+      if (data?.address) {
+        console.table(data.address);
+      }
+      console.groupEnd();
+
+      return resolvedAddress;
     } catch (err) {
-      console.warn('Nominatim reverse geocode error:', err);
+      const durationMs = Date.now() - startTime;
+      console.error(`❌ LocationIQ API call failed after ${durationMs}ms:`, err);
+      console.groupEnd();
       return null;
     }
   },
 
-  // 4. 5-Tier Location Address Resolution
+  // 4. Direct BigDataCloud reverse geocode call (Secondary External Service)
+  async reverseGeocodeBigDataCloud(lat, lng) {
+    if (lat == null || lng == null) return null;
+    const startTime = Date.now();
+    const apiKey = import.meta.env.VITE_BIGDATACLOUD_API_KEY || 'bdc_9f845c6872ff4c8bbbecaf159f115f5d';
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode?latitude=${lat}&longitude=${lng}&localityLanguage=en&key=${apiKey}`;
+
+    console.group(`🌐 [BigDataCloud API Request] Fetching address for Coordinates: (${lat}, ${lng})`);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      const durationMs = Date.now() - startTime;
+
+      if (!res.ok) throw new Error(`BigDataCloud HTTP status: ${res.status} ${res.statusText}`);
+      const data = await res.json();
+
+      const parts = [];
+      const locality = data.locality || '';
+      const city = data.city || '';
+      const state = data.principalSubdivision || '';
+      const country = data.countryName || '';
+      const postcode = data.postcode || '';
+
+      const adminNames = (data.localityInfo?.administrative || [])
+        .map(a => a.name)
+        .filter(name => name && name !== country && name !== state && name !== city && name !== locality);
+
+      if (locality) parts.push(locality);
+      if (city && city.toLowerCase() !== locality.toLowerCase()) parts.push(city);
+      if (adminNames.length > 0) {
+        adminNames.forEach(name => {
+          if (!parts.some(p => p.toLowerCase() === name.toLowerCase())) {
+            parts.push(name);
+          }
+        });
+      }
+      if (state && !parts.some(p => p.toLowerCase() === state.toLowerCase())) parts.push(state);
+      if (postcode) parts.push(postcode);
+      if (country && !parts.some(p => p.toLowerCase() === country.toLowerCase())) parts.push(country);
+
+      const resolvedAddress = parts.length > 0 ? parts.join(', ') : (data.locality || data.city || data.principalSubdivision || null);
+      console.log('📍 BigDataCloud Resolved Address:', resolvedAddress);
+      console.groupEnd();
+      return resolvedAddress;
+    } catch (err) {
+      console.error(`❌ BigDataCloud API call failed:`, err);
+      console.groupEnd();
+      return null;
+    }
+  },
+
+  // 5. OpenStreetMap Nominatim reverse geocode call (Tertiary / Fallback)
+  async reverseGeocodeNominatim(lat, lng) {
+    if (lat == null || lng == null) return null;
+    const startTime = Date.now();
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+
+    console.group(`🌐 [OpenStreetMap API Fallback] Fetching live address for Coordinates: (${lat}, ${lng})`);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'en',
+          'User-Agent': 'SarvodayaLeadManagementApp/1.0'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const durationMs = Date.now() - startTime;
+
+      if (!res.ok) throw new Error(`Geocoding HTTP status: ${res.status} ${res.statusText}`);
+      const data = await res.json();
+      console.log('📦 OpenStreetMap Response:', data);
+      console.groupEnd();
+
+      return data.display_name || null;
+    } catch (err) {
+      console.error(`❌ OpenStreetMap Nominatim API call failed:`, err);
+      console.groupEnd();
+      return null;
+    }
+  },
+
+  // 6. Location Address Resolution Pipeline (LocationIQ Primary)
   async resolveLocationAddress(lat, lng, accuracy = null) {
+    console.group(`🎯 [Location Detection Pipeline] Resolving location via LocationIQ for Lat: ${lat}, Lng: ${lng}, Accuracy: ${accuracy}m`);
+    console.log('⏰ Triggered At:', new Date().toISOString());
+    console.log('📶 Online Status:', typeof navigator !== 'undefined' ? navigator.onLine : 'unknown');
+    console.log('🗺️ Google Maps Link:', getGoogleMapsUrl(lat, lng));
+
     if (lat == null || lng == null) {
+      console.warn('⚠️ Missing coordinates (latitude or longitude is null/undefined)');
+      console.groupEnd();
       return {
         address: '',
         geocodingStatus: 'RESOLVED',
@@ -699,57 +755,63 @@ async updateAttendanceLog(id, updatedFields) {
     const numLat = Number(lat);
     const numLng = Number(lng);
 
-    // Tier 1: Check Location Cache (within 100m radius)
+    // Primary: LocationIQ Reverse Geocoding API
+    console.log('🚀 Calling LocationIQ Reverse Geocoding API...');
     try {
-      const cached = await this.findNearbyLocationInCache(numLat, numLng, 100);
-      if (cached && cached.address) {
-        saveLastResolvedAddress(cached.address);
+      const liqAddress = await this.reverseGeocodeLocationIQ(numLat, numLng);
+      if (liqAddress) {
+        console.log('🎉 [LocationIQ SUCCESS] Received exact human-readable address:', liqAddress);
+        console.groupEnd();
         return {
-          address: cached.address,
+          address: liqAddress,
           geocodingStatus: 'RESOLVED',
-          source: 'cache',
+          source: 'locationiq',
+          isFallback: false
+        };
+      } else {
+        console.warn('⚠️ LocationIQ did not return address. Attempting BigDataCloud fallback...');
+      }
+    } catch (liqErr) {
+      console.error('❌ LocationIQ call failed:', liqErr);
+    }
+
+    // Secondary Fallback: BigDataCloud
+    try {
+      const bdcAddress = await this.reverseGeocodeBigDataCloud(numLat, numLng);
+      if (bdcAddress) {
+        console.log('🎉 [BigDataCloud Fallback SUCCESS] Address:', bdcAddress);
+        console.groupEnd();
+        return {
+          address: bdcAddress,
+          geocodingStatus: 'RESOLVED',
+          source: 'bigdatacloud',
           isFallback: false
         };
       }
-    } catch (cacheErr) {
-      console.warn('Cache lookup failed:', cacheErr);
+    } catch (bdcErr) {
+      console.error('❌ BigDataCloud fallback failed:', bdcErr);
     }
 
-    // Tier 2: OpenStreetMap Nominatim Reverse Geocoding
-    if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
-      try {
-        const nominatimAddress = await this.reverseGeocodeNominatim(numLat, numLng);
-        if (nominatimAddress) {
-          // Save to shared cache & local storage
-          this.saveLocationToCache(numLat, numLng, nominatimAddress, accuracy);
-          saveLastResolvedAddress(nominatimAddress);
-          return {
-            address: nominatimAddress,
-            geocodingStatus: 'RESOLVED',
-            source: 'nominatim',
-            isFallback: false
-          };
-        }
-      } catch (nomErr) {
-        console.warn('Nominatim resolution failed:', nomErr);
+    // Tertiary Fallback: OpenStreetMap
+    try {
+      const osmAddress = await this.reverseGeocodeNominatim(numLat, numLng);
+      if (osmAddress) {
+        console.log('🎉 [OpenStreetMap Fallback SUCCESS] Address:', osmAddress);
+        console.groupEnd();
+        return {
+          address: osmAddress,
+          geocodingStatus: 'RESOLVED',
+          source: 'nominatim',
+          isFallback: false
+        };
       }
+    } catch (osmErr) {
+      console.error('❌ OpenStreetMap fallback failed:', osmErr);
     }
 
-    // Tier 3: Local Last Known Address Fallback
-    const lastKnownAddress = getLastResolvedAddress();
-    if (lastKnownAddress) {
-      return {
-        address: `${lastKnownAddress} (Approximate / Offline)`,
-        geocodingStatus: 'PENDING',
-        source: 'last_known',
-        isFallback: true
-      };
-    }
-
-    // Tier 4: GPS Coordinates Only (Final Fallback)
-    // NOTE: Raw coordinates are NOT stored as human address.
-    // Address is left empty with geocodingStatus = 'PENDING' so the UI displays
-    // "Current Location -> View on Map" while retaining the actual GPS coordinates.
+    // Final Fallback if all APIs fail
+    console.log('⚠️ [Fallback] Unable to fetch address. Storing coordinates with PENDING status.');
+    console.groupEnd();
     return {
       address: '',
       geocodingStatus: 'PENDING',
@@ -770,6 +832,8 @@ async updateAttendanceLog(id, updatedFields) {
     if (this._isRetrying) return;
     this._isRetrying = true;
 
+    console.groupCollapsed('🔄 [Location Service] Retrying pending geocoding records...');
+
     try {
       if (isSupabaseConfigured) {
         // Query pending attendance_logs from Supabase
@@ -780,6 +844,7 @@ async updateAttendanceLog(id, updatedFields) {
           .limit(10);
 
         if (!error && Array.isArray(pendingLogs) && pendingLogs.length > 0) {
+          console.log(`Found ${pendingLogs.length} pending records in Supabase to resolve`);
           let updatedCount = 0;
 
           for (const log of pendingLogs) {
@@ -820,9 +885,12 @@ async updateAttendanceLog(id, updatedFields) {
             }
           }
 
+          console.log(`Successfully updated ${updatedCount} records in Supabase`);
           if (updatedCount > 0 && typeof onSuccessCallback === 'function') {
             onSuccessCallback();
           }
+        } else {
+          console.log('No pending Supabase records found.');
         }
       }
 
@@ -854,13 +922,15 @@ async updateAttendanceLog(id, updatedFields) {
       }
       if (localModified) {
         saveLocalAttendanceLogs(localLogs);
+        console.log('Updated pending records in local storage.');
         if (typeof onSuccessCallback === 'function') {
           onSuccessCallback();
         }
       }
     } catch (err) {
-      console.warn('retryPendingGeocoding error:', err);
+      console.warn('⚠️ retryPendingGeocoding error:', err);
     } finally {
+      console.groupEnd();
       this._isRetrying = false;
     }
   },

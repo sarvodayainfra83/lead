@@ -39,6 +39,16 @@ export const generateLeadNo = (leadType, existingLeads) => {
 // masterApi.getInvestmentBudgets / the Investment Budget Master page) — editable at runtime
 // instead of hardcoded here.
 
+// Budgets that apply to a lead type: those tagged with it in the master, plus untagged ones
+// (shared across all lead types). With no lead type yet, every budget is offered.
+export const getInvestmentBudgetsForLeadType = (budgets, leadType) => {
+  const target = String(leadType || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return (budgets || []).filter(b => {
+    if (!target || !b.leadTypes?.length) return true;
+    return b.leadTypes.some(t => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase() === target);
+  });
+};
+
 // Requirement options for Real Estate leads now live in the master_real_estate_requirements
 // table (see masterApi.getRealEstateRequirements / the Real Estate Requirement Master page) —
 // editable at runtime instead of hardcoded here.

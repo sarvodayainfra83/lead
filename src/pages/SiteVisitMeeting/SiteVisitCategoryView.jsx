@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
   Search, RotateCcw, RefreshCw, UserCheck, MessageSquare,
   Phone, MapPin, Calendar, Eye, X, ChevronDown, ChevronUp,
-  FileSpreadsheet, Mail, Briefcase, FileText, Clock, IndianRupee, Check, CheckCircle2
+  FileSpreadsheet, Mail, Briefcase, FileText, Clock, IndianRupee, Check, CheckCircle2,
+  CalendarDays
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -16,59 +17,51 @@ import {
 import { CUSTOMER_STATUS_STYLES } from '../CallTracker/callTrackerConstants';
 import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, matchesUserVisitor } from '../../utils/authUtils';
+import { isUserAdmin } from '../../utils/authUtils';
+import { leadApi } from '../../api/leadApi';
 
-// Check if a lead has a Closed (Won) deal
+// Check if a lead has a locked (closed) deal: a visit follow-up with outcome 'Deal Lock' (or an explicit legacy
+// "Closed Won" status). The closing amount / deal_outcome aren't used: older visits saved as plain "Interested"
+// got deal_outcome 'Closed (Won)' and the pre-filled budget as closing amount without the deal being final.
+const isLockedStatus = (status) => {
+  const s = String(status || '').toLowerCase().trim();
+  return s === 'deal lock' || s === 'closed won' || s === 'closed' || s === 'deal closed';
+};
 export const isDealClosed = (item) => {
   if (!item) return false;
-  const statusNorm = String(item.status || '').toLowerCase().trim();
-  const dealOutcomeNorm = String(item.dealOutcome || item.deal_outcome || '').toLowerCase().trim();
-  
-  if (
-    dealOutcomeNorm.includes('won') ||
-    dealOutcomeNorm.includes('closed') ||
-    dealOutcomeNorm.includes('token')
-  ) {
-    return true;
-  }
-  if (
-    statusNorm.includes('closed won') ||
-    statusNorm === 'closed' ||
-    statusNorm === 'deal closed'
-  ) {
-    return true;
-  }
-  if (item.closingAmount && Number(String(item.closingAmount).replace(/[^0-9.]/g, '')) > 0) {
-    return true;
-  }
+  if (isLockedStatus(item.status)) return true;
+  return Array.isArray(item.followUps) && item.followUps.some(f => isLockedStatus(f.status));
+};
+
+export const getActualVisitsCount = (item) => {
+  if (!item) return 0;
   if (Array.isArray(item.followUps) && item.followUps.length > 0) {
-    return item.followUps.some(f => {
-      const fOutcome = String(f.dealOutcome || f.deal_outcome || '').toLowerCase().trim();
-      const fStatus = String(f.status || '').toLowerCase().trim();
-      const hasAmt = f.closingAmount && Number(String(f.closingAmount).replace(/[^0-9.]/g, '')) > 0;
-      return (
-        fOutcome.includes('won') ||
-        fOutcome.includes('closed') ||
-        fOutcome.includes('token') ||
-        fStatus.includes('closed won') ||
-        fStatus === 'closed' ||
-        hasAmt
-      );
-    });
+    return item.followUps.filter(f => {
+      const status = String(f.status || '').trim();
+      if (status === 'Call Not Received' || status === 'No WhatsApp Reply' || status === 'Not Interested') return false;
+      const hasVM = Boolean(f.visitMeet?.['site-visit'] || f.visitMeet?.siteVisit || f.visitMeet?.site_visit || f.visitMeet?.meeting);
+      return hasVM || ['Deal Lock', 'Interested', 'Future Plan', 'Under Negotiation', 'Did Not Show'].includes(status);
+    }).length;
   }
-  return false;
+  const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply' || item.status === 'Not Interested';
+  const hasVM = Boolean(item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit || item.visitMeet?.meeting);
+  return hasVM && !isNoContact ? 1 : 0;
 };
 
 const STATUS_STYLES = {
+  'Deal Lock': 'bg-emerald-100 text-emerald-800 border-emerald-400',
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan': 'bg-amber-50 text-amber-700 border-amber-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
+  'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Assigned: 'bg-sky-50 text-sky-700 border-sky-200',
   'Pending Assignment': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Did Not Show': 'bg-slate-100 text-slate-700 border-slate-300',
+  'Under Negotiation': 'bg-orange-50 text-orange-700 border-orange-200',
   'Closed Won': 'bg-emerald-100 text-emerald-800 border-emerald-300',
   'Closed Lost': 'bg-rose-50 text-rose-700 border-rose-200',
   Pending: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -100,11 +93,20 @@ const formatDate = (val) => {
   return str || '-';
 };
 
+const getTodayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function SiteVisitCategoryView({
   category, // 'Real Estate' | 'Insurance' | 'Mutual Fund'
   tabs = [],
   activeTab,
   onTabChange,
+  initialDateFilter,
   leads = [],
   loading = false,
   visitorsMaster = [],
@@ -117,13 +119,30 @@ export default function SiteVisitCategoryView({
   const isAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('today');
-  const [customDate, setCustomDate] = useState('');
+  const [dateFilter, setDateFilter] = useState(initialDateFilter || 'today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [showClosedDealsOnly, setShowClosedDealsOnly] = useState(false);
+
+  // React to prop updates from Dashboard navigation
+  useEffect(() => {
+    if (initialDateFilter !== undefined) {
+      setDateFilter(initialDateFilter || 'today');
+      setCurrentPage(1);
+    }
+  }, [initialDateFilter]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+
+  // Helper to format short date DD/MM
+  const formatShortDate = (str) => {
+    if (!str) return '';
+    const parts = str.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+    return str;
+  };
 
   // Today reference and helper to check if a date is today
   const today = useMemo(() => {
@@ -139,6 +158,60 @@ export default function SiteVisitCategoryView({
       d.getMonth() === today.getMonth() &&
       d.getDate() === today.getDate();
   }, [today]);
+
+  // "Site visit done today" mark in Today's Followup — the user ticks a lead after visiting, ticks again to undo.
+  // Saved on the lead (leads.visit_marked_at); only counts on the day it was set. Overrides show a tick instantly.
+  const [visitMarkOverrides, setVisitMarkOverrides] = useState({});
+  const isVisitMarkedToday = useCallback((item) => {
+    const key = String(item.leadId || '');
+    const markedAt = key in visitMarkOverrides ? visitMarkOverrides[key] : item.visitMarkedAt;
+    if (!markedAt) return false;
+    const d = new Date(markedAt);
+    return !isNaN(d.getTime()) && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  }, [visitMarkOverrides, today]);
+
+  const toggleVisitMark = (item) => {
+    if (!item.leadId) return;
+    const key = String(item.leadId);
+    const marked = !isVisitMarkedToday(item);
+    const previous = visitMarkOverrides[key];
+    setVisitMarkOverrides(prev => ({ ...prev, [key]: marked ? new Date().toISOString() : null }));
+    leadApi.setVisitMark(item.leadId, marked, user?.name || user?.id)
+      .then(({ markedAt, savedInDb }) => {
+        setVisitMarkOverrides(prev => ({ ...prev, [key]: markedAt }));
+        if (!savedInDb) toast('Saved on this device only — the visit-mark columns are missing in the database', { id: 'visit-mark-local', icon: '⚠️' });
+      })
+      .catch(err => {
+        console.error('Could not save visit mark:', err);
+        setVisitMarkOverrides(prev => ({ ...prev, [key]: previous }));
+        toast.error('Could not save the visit mark');
+      });
+  };
+
+  // ✓ button shown in Today's Followup (desktop icon / mobile pill)
+  const renderVisitMarkButton = (item, compact) => {
+    const done = isVisitMarkedToday(item);
+    const title = done ? 'Marked as site visit done today — click to undo' : 'Mark site visit done today';
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); toggleVisitMark(item); }}
+        title={title}
+        aria-label={title}
+        aria-pressed={done}
+        className={compact
+          ? `w-7 h-7 inline-flex items-center justify-center rounded-md border transition active:scale-95 ${done
+            ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+            : 'bg-white text-gray-400 border-gray-300 hover:text-emerald-600 hover:border-emerald-400'}`
+          : `inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border active:scale-95 transition cursor-pointer shrink-0 ${done
+            ? 'bg-emerald-600 text-white border-emerald-600'
+            : 'bg-white text-gray-600 border-gray-300 hover:border-emerald-400 hover:text-emerald-700'}`}
+      >
+        <CheckCircle2 size={compact ? 13 : 12} />
+        {!compact && <span>{done ? 'Visited' : 'Mark visited'}</span>}
+      </button>
+    );
+  };
 
   // Mobile card view: expanded accordion card IDs (hide & drop details)
   const [expandedCardIds, setExpandedCardIds] = useState(new Set());
@@ -169,23 +242,26 @@ export default function SiteVisitCategoryView({
   // Live counts for each date filter
   const dateCounts = useMemo(() => {
     let list = leads || [];
-    if (!isAdmin) {
-      list = list.filter(l => matchesUserVisitor(l, user));
-    }
     const todayTime = today.getTime();
     const yesterdayTime = new Date(today.getTime() - 86400000).getTime();
 
     let allCount = list.length;
     let todayCount = 0;
+    let todayVisitedCount = 0;
     let yesterdayCount = 0;
     let overdueCount = 0;
     let upcomingCount = 0;
     let customCount = 0;
 
-    let chosenCustomTime = null;
-    if (customDate) {
-      const parts = customDate.split('-').map(Number);
-      if (parts.length === 3) chosenCustomTime = new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+    let fromMs = null;
+    let toMs = null;
+    if (customFrom && customTo) {
+      const fParts = customFrom.split('-').map(Number);
+      const tParts = customTo.split('-').map(Number);
+      if (fParts.length === 3 && tParts.length === 3) {
+        fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
+        toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
+      }
     }
 
     list.forEach(item => {
@@ -203,41 +279,48 @@ export default function SiteVisitCategoryView({
       const isTodayMatch = mTime === todayTime || nextTime === todayTime || callTime === todayTime;
       const isYesterdayMatch = mTime === yesterdayTime || nextTime === yesterdayTime || callTime === yesterdayTime;
 
-      if (isTodayMatch) todayCount++;
+      if (isTodayMatch) {
+        todayCount++;
+        if (isVisitMarkedToday(item)) todayVisitedCount++;
+      }
       if (isYesterdayMatch) yesterdayCount++;
-      if (targetTime < todayTime && (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan')) overdueCount++;
+      if (targetTime < todayTime && (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan' || item.status === 'Under Negotiation' || item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply')) overdueCount++;
       if ((nextTime && nextTime > todayTime) || (callTime && callTime > todayTime) || (mTime && mTime > todayTime)) upcomingCount++;
-      if (chosenCustomTime !== null && (mTime === chosenCustomTime || nextTime === chosenCustomTime || callTime === chosenCustomTime)) customCount++;
+      if (fromMs !== null && toMs !== null) {
+        const isCustomMatch = (mTime && mTime >= fromMs && mTime <= toMs) ||
+                              (nextTime && nextTime >= fromMs && nextTime <= toMs) ||
+                              (callTime && callTime >= fromMs && callTime <= toMs);
+        if (isCustomMatch) customCount++;
+      }
     });
 
-    return { all: allCount, today: todayCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
-  }, [leads, isAdmin, user, today, customDate]);
+    return { all: allCount, today: todayCount, todayVisited: todayVisitedCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
+  }, [leads, today, customFrom, customTo, isVisitMarkedToday]);
+
+  const customDropdownLabel = useMemo(() => {
+    if (customFrom && customTo) {
+      return `Custom: ${formatShortDate(customFrom)} – ${formatShortDate(customTo)} (${dateCounts.custom})`;
+    }
+    return 'Custom Date Range';
+  }, [customFrom, customTo, dateCounts.custom]);
 
   const allDatesFilterOptions = useMemo(() => [
     { value: 'all', label: `All Dates (${dateCounts.all})` },
     { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
     { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
     { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
-    { value: 'custom', label: customDate ? `Custom Date (${dateCounts.custom})` : 'Custom Date' }
-  ], [dateCounts, customDate]);
+    { value: 'custom', label: customDropdownLabel }
+  ], [dateCounts, customDropdownLabel]);
 
   // Count total closed deals in this category
   const closedDealsCount = useMemo(() => {
     let list = leads || [];
-    if (!isAdmin) {
-      list = list.filter(l => matchesUserVisitor(l, user));
-    }
     return list.filter(isDealClosed).length;
-  }, [leads, isAdmin, user]);
+  }, [leads]);
 
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
     let list = leads || [];
-
-    // For USER role (non-admin): only show assigned leads matching logged-in user
-    if (!isAdmin) {
-      list = list.filter(l => matchesUserVisitor(l, user));
-    }
 
     // Filter for Closed Deals only if button is active (shows closed deals of any date)
     if (showClosedDealsOnly) {
@@ -247,6 +330,23 @@ export default function SiteVisitCategoryView({
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
+
+      let fromMs = null;
+      let toMs = null;
+      if (dateFilter === 'custom') {
+        if (customFrom) {
+          const fParts = customFrom.split('-').map(Number);
+          if (fParts.length === 3) {
+            fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
+          }
+        }
+        if (customTo) {
+          const tParts = customTo.split('-').map(Number);
+          if (tParts.length === 3) {
+            toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
+          }
+        }
+      }
 
       list = list.filter(item => {
         const mObj = parseDateObj(item.meetingDate || item.visitDate);
@@ -269,17 +369,19 @@ export default function SiteVisitCategoryView({
         }
         if (dateFilter === 'overdue') {
           return targetTime < today.getTime() &&
-            (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan');
+            (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan' || item.status === 'Under Negotiation' || item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply');
         }
         if (dateFilter === 'upcoming') {
           return (nextTime && nextTime > today.getTime()) || (callTime && callTime > today.getTime()) || (mTime && mTime > today.getTime());
         }
-        if (dateFilter === 'custom' && customDate) {
-          const parts = customDate.split('-');
-          if (parts.length === 3) {
-            const cDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getTime();
-            return mTime === cDate || nextTime === cDate || callTime === cDate;
-          }
+        if (dateFilter === 'custom') {
+          const inRange = (t) => {
+            if (!t) return false;
+            if (fromMs !== null && t < fromMs) return false;
+            if (toMs !== null && t > toMs) return false;
+            return true;
+          };
+          return inRange(mTime) || inRange(nextTime) || inRange(callTime);
         }
         return true;
       });
@@ -328,19 +430,31 @@ export default function SiteVisitCategoryView({
     });
 
     return sorted;
-  }, [leads, searchQuery, dateFilter, customDate, category, isAdmin, user, showClosedDealsOnly]);
+  }, [leads, searchQuery, dateFilter, customFrom, customTo, category, isAdmin, user, showClosedDealsOnly]);
 
   // Check if any non-default filter is active
-  const isFilterActive = dateFilter !== 'today' || searchQuery || showClosedDealsOnly || (dateFilter === 'custom' && customDate);
+  const isFilterActive = dateFilter !== 'today' || searchQuery || showClosedDealsOnly || (dateFilter === 'custom' && customFrom && customTo);
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setDateFilter('today');
-    setCustomDate('');
+    setCustomFrom('');
+    setCustomTo('');
     setShowClosedDealsOnly(false);
     setCurrentPage(1);
     toast.success('Filters reset to Today');
   }, []);
+
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/site-visit-meeting') {
+        handleClearFilters();
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, [handleClearFilters]);
 
   // Export to Excel
   const exportToExcel = () => {
@@ -349,22 +463,26 @@ export default function SiteVisitCategoryView({
       return;
     }
 
-    const exportData = filteredLeads.map((item, idx) => ({
-      'SR No': idx + 1,
-      'Meeting Date': formatDate(item.meetingDate || item.visitDate),
-      'Next Meeting Date': formatDate(item.nextMeetingDate || item.nextVisitDate),
-      'Customer Name': item.customerName || item.personName || '-',
-      ...(isAdmin ? { 'Status': item.status || '-' } : {}),
-      'Site Visited': (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) ? 'Yes' : 'No',
-      'Meeting': item.visitMeet?.meeting ? 'Yes' : 'No',
-      'Customer Status': item.customerStatus || '-',
-      'Latest Feedback': item.whatHappened || item.visitorRemarks || '-',
-      'Phone Number': item.customerNumber || item.number || '-',
-      'Assigned Visitor': item.assignedVisitor || '-',
-      'Total Visits': item.followUpCount || 0,
-      'Location': item.location || item.customerAddress || '-',
-      'Remarks': item.leadRemarks || item.remarks || '-'
-    }));
+    const exportData = filteredLeads.map((item, idx) => {
+      const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
+      const actualVisits = getActualVisitsCount(item);
+      return {
+        'SR No': idx + 1,
+        'Meeting Date': formatDate(item.meetingDate || item.visitDate),
+        'Next Meeting Date': formatDate(item.nextMeetingDate || item.nextVisitDate),
+        'Customer Name': item.customerName || item.personName || '-',
+        ...(isAdmin ? { 'Status': item.status || '-' } : {}),
+        'Site Visited': (!isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) ? 'Yes' : 'No',
+        'Meeting': (!isNoContact && item.visitMeet?.meeting) ? 'Yes' : 'No',
+        'Customer Status': item.customerStatus || '-',
+        'Latest Feedback': item.whatHappened || item.visitorRemarks || '-',
+        'Phone Number': item.customerNumber || item.number || '-',
+        'Assigned Visitor': item.assignedVisitor || '-',
+        'Total Visits': actualVisits,
+        'Location': item.location || item.customerAddress || '-',
+        'Remarks': item.leadRemarks || item.remarks || '-'
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
@@ -400,8 +518,12 @@ export default function SiteVisitCategoryView({
   // Render Table Row (Desktop)
   const renderRow = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
-    const hasSiteVisited = Boolean(item.visitMeet?.['site-visit'] ?? item.visitMeet?.siteVisit ?? item.visitMeet?.site_visit);
-    const hasMeeting = Boolean(item.visitMeet?.meeting);
+    const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
+    const hasSiteVisited = !isNoContact && Boolean(item.visitMeet?.['site-visit'] ?? item.visitMeet?.siteVisit ?? item.visitMeet?.site_visit);
+    const hasMeeting = !isNoContact && Boolean(item.visitMeet?.meeting);
+    const actualVisits = getActualVisitsCount(item);
+    // Site-visit-done mark only in the Today's Followup view
+    const visitedToday = dateFilter === 'today' && isVisitMarkedToday(item);
 
     return (
       <tr
@@ -411,7 +533,7 @@ export default function SiteVisitCategoryView({
           if (e.target.closest('button, a, input, select, label, [role="combobox"], [role="listbox"]')) return;
           onViewHistory(item);
         }}
-        className="group cursor-pointer transition-colors border-b border-gray-100 hover:bg-indigo-50/40"
+        className={`group cursor-pointer transition-colors border-b border-gray-100 ${visitedToday ? 'bg-emerald-50/70 hover:bg-emerald-100/60' : 'hover:bg-indigo-50/40'}`}
       >
         {/* Action column: compact icon buttons, same as Call Followup (tooltips carry the labels) */}
         <td className="px-2 py-1.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -426,6 +548,9 @@ export default function SiteVisitCategoryView({
                 <Phone size={13} />
               </button>
             )}
+
+            {/* Today's Followup: tick the lead once the site visit is done today */}
+            {onLogFollowUp && dateFilter === 'today' && renderVisitMarkButton(item, true)}
 
             {/* View history timeline (visit count badge) */}
             <button
@@ -604,7 +729,7 @@ export default function SiteVisitCategoryView({
         {/* 11. Total Visits */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            {item.followUpCount || 0} {item.followUpCount === 1 ? 'Visit' : 'Visits'}
+            {actualVisits} {actualVisits === 1 ? 'Visit' : 'Visits'}
           </span>
         </td>
 
@@ -625,6 +750,9 @@ export default function SiteVisitCategoryView({
   const renderCard = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
     const isExpanded = expandedCardIds.has(leadKey);
+    const visitedToday = dateFilter === 'today' && isVisitMarkedToday(item);
+    const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
+    const actualVisits = getActualVisitsCount(item);
 
     // Filter populated fields (skip empty/null/'-')
     const isValid = (val) => {
@@ -638,8 +766,8 @@ export default function SiteVisitCategoryView({
     if (isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget || item.budget)) details.push({ label: 'Budget', value: item.investmentBudget || item.budget, icon: IndianRupee });
-    if (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });
-    if (item.visitMeet?.meeting) details.push({ label: 'Meeting', value: 'Yes', icon: Check });
+    if (!isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });
+    if (!isNoContact && item.visitMeet?.meeting) details.push({ label: 'Meeting', value: 'Yes', icon: Check });
     if (isValid(item.relationshipManager)) details.push({ label: 'Relationship Manager', value: item.relationshipManager, icon: UserCheck });
     if (isValid(item.whenToBuyPlan)) details.push({ label: 'When to Buy', value: item.whenToBuyPlan, icon: Clock });
     if (isValid(item.leadRemarks || item.remarks)) details.push({ label: 'Remarks', value: item.leadRemarks || item.remarks, icon: MessageSquare, isLong: true });
@@ -647,7 +775,7 @@ export default function SiteVisitCategoryView({
     return (
       <div
         key={leadKey}
-        className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200'}`}
+        className={`rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${visitedToday ? 'bg-emerald-50/70' : 'bg-white'} ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200' : (visitedToday ? 'border-emerald-300' : 'border-gray-200')}`}
       >
         {/* Card Header: Name, Lead # on left; Details dropdown on top right */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
@@ -718,7 +846,7 @@ export default function SiteVisitCategoryView({
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits</span>
             <span className="font-bold text-gray-700 mt-0.5 inline-block">
-              {item.followUpCount || 0} {item.followUpCount === 1 ? 'Visit' : 'Visits'}
+              {actualVisits} {actualVisits === 1 ? 'Visit' : 'Visits'}
             </span>
           </div>
 
@@ -826,6 +954,7 @@ export default function SiteVisitCategoryView({
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {onLogFollowUp && dateFilter === 'today' && renderVisitMarkButton(item, false)}
             {onLogFollowUp && (
               <button
                 type="button"
@@ -915,7 +1044,7 @@ export default function SiteVisitCategoryView({
                 setShowClosedDealsOnly(false);
                 setCurrentPage(1);
               }}
-              title="Show Today's Followups"
+              title={`Show Today's Followups — ${dateCounts.todayVisited} of ${dateCounts.today} site visits done today`}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
@@ -927,7 +1056,7 @@ export default function SiteVisitCategoryView({
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
                 dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
               }`}>
-                {dateCounts.today}
+                {dateCounts.todayVisited}/{dateCounts.today}
               </span>
             </button>
 
@@ -939,15 +1068,17 @@ export default function SiteVisitCategoryView({
                 onMainClick={() => {
                   setDateFilter('all');
                   setShowClosedDealsOnly(false);
-                  setCustomDate('');
+                  setCustomFrom('');
+                  setCustomTo('');
                   setCurrentPage(1);
                 }}
                 onChange={(val) => {
                   setDateFilter(val);
                   setShowClosedDealsOnly(false);
-                  if (val === 'custom' && !customDate) {
-                    const now = new Date();
-                    setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+                  if (val === 'custom' && !customFrom && !customTo) {
+                    const t = getTodayStr();
+                    setCustomFrom(t);
+                    setCustomTo(t);
                   }
                   setCurrentPage(1);
                 }}
@@ -962,14 +1093,36 @@ export default function SiteVisitCategoryView({
               />
             </div>
 
-            {/* Custom Date Input if 'custom' is selected */}
+            {/* Custom Date Range Inline Inputs */}
             {dateFilter === 'custom' && (
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => { setCustomDate(e.target.value); setCurrentPage(1); }}
-                className="bg-white border border-gray-300 rounded-lg px-2 text-xs font-medium text-gray-700 h-[34px] focus:outline-none focus:border-indigo-500 shadow-xs cursor-pointer shrink-0"
-              />
+              <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => {
+                      setCustomFrom(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                    title="From Date"
+                  />
+                </div>
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => {
+                      setCustomTo(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                    title="To Date"
+                  />
+                </div>
+              </div>
             )}
 
             {/* Closed Deal Toggle Button */}

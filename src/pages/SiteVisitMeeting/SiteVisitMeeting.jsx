@@ -3,7 +3,7 @@ import { Building2, ShieldCheck, TrendingUp } from 'lucide-react';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
-import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, matchesUserVisitor } from '../../utils/authUtils';
+import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, matchesUserConnection } from '../../utils/authUtils';
 import SiteVisitCategoryView from './SiteVisitCategoryView';
 import AssignVisitorModal from './AssignVisitorModal';
 import VisitorFollowUpModal from './VisitorFollowUpModal';
@@ -43,6 +43,14 @@ export default function SiteVisitMeeting() {
   }, [user, navState.tab]);
 
   const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Sync activeTab when navigating from Dashboard with new tab state
+  useEffect(() => {
+    if (navState.tab) {
+      setActiveTab(navState.tab);
+    }
+  }, [navState.tab]);
+
   const [allLeads, setAllLeads] = useState([]);
   const [visitorsMaster, setVisitorsMaster] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -73,10 +81,10 @@ export default function SiteVisitMeeting() {
     loadData();
   }, [loadData, user]);
 
-  // For USER role (non-admin): only show records where assigned visitor matches the logged-in user
+  // For USER role (non-admin): show records where user is connected (as assigned visitor, caller, or receiver)
   const displayLeads = useMemo(() => {
     if (isAdmin) return allLeads;
-    return allLeads.filter(l => matchesUserVisitor(l, user));
+    return allLeads.filter(l => matchesUserConnection(l, user));
   }, [allLeads, isAdmin, user]);
 
   // Partition leads by the 3 category tables
@@ -144,10 +152,11 @@ export default function SiteVisitMeeting() {
     <div className="flex flex-col h-full min-h-0">
       {/* Category View Panel */}
       <SiteVisitCategoryView
-        key={currentTabObj.key}
+        key={`${currentTabObj.key}_${navState.dateFilter || 'default'}`}
         category={currentTabObj.key}
         tabs={visibleTabs}
         activeTab={currentTabObj.key}
+        initialDateFilter={navState.dateFilter}
         onTabChange={setActiveTab}
         leads={currentTabObj.data}
         loading={loading}

@@ -1,14 +1,28 @@
 // Shared constants for the Call Tracker module
 
-export const ENQUIRY_STATUSES = ['Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Deal Closed'];
+export const ENQUIRY_STATUSES = ['Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting'];
 
-// All four resolve a lead — it leaves the Pending call queue. Only Future Plan Date leaves
+// Unsuccessful contact attempts — logged without the full follow-up details (customer status and remarks
+// are optional). Not terminal: the lead stays in the follow-up queue for another try.
+export const NO_CONTACT_STATUSES = ['Call Not Received', 'No WhatsApp Reply'];
+
+// Status choices when logging a follow-up call
+export const FOLLOW_UP_CALL_STATUSES = [...ENQUIRY_STATUSES, ...NO_CONTACT_STATUSES];
+
+// Tomorrow as YYYY-MM-DD (for <input type="date">) — the default retry date after an unanswered call / WhatsApp
+export const tomorrowInputDate = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// All of these resolve a lead — it leaves the Pending call queue. Only Future Plan Date leaves
 // it open, awaiting a further call on the date given.
-export const TERMINAL_STATUSES = ['Interested', 'Not Interested', 'Site Visit/Meeting', 'Meeting', 'Deal Closed'];
+export const TERMINAL_STATUSES = ['Interested', 'Not Interested', 'Site Visit/Meeting', 'Meeting'];
 
 // Which terminal outcomes convert the lead into a Customer Master record.
 // Site Visit/Meeting moves to Assign Visitor stage instead of Customer Master.
-export const CONVERTED_STATUSES = ['Interested', 'Deal Closed'];
+export const CONVERTED_STATUSES = ['Interested'];
 
 // Statuses that also collect a date — Future Plan Date's next-call-on date, or the scheduled
 // Site Visit/Meeting date.
@@ -20,17 +34,69 @@ export const CUSTOMER_STATUSES = ['Hot', 'Warm', 'Cold'];
 // Customer Master lists leads whose latest Customer Status is one of these
 export const CUSTOMER_MASTER_STATUSES = ['Hot', 'Warm'];
 
-// Normalize any stored casing/spacing ('warm', ' HOT ') to 'Hot' / 'Warm' / 'Cold'
+// Normalize any stored casing/spacing ('warm', ' HOT ', 'High', 'Medium', 'Low') to 'Hot' / 'Warm' / 'Cold'
 export const normalizeCustomerStatus = (val) => {
   const s = String(val || '').trim().toLowerCase();
+  if (s === 'high' || s === 'hot') return 'Hot';
+  if (s === 'medium' || s === 'warm') return 'Warm';
+  if (s === 'low' || s === 'cold') return 'Cold';
   return CUSTOMER_STATUSES.find(c => c.toLowerCase() === s) || '';
 };
 
-// Latest non-empty Hot / Warm / Cold recorded across a lead's calls ('' if never recorded)
-export const getLatestCustomerStatus = (trackers, leadId, leadNo) => {
+// All follow-up entries for one lead, oldest first
+export const getFollowUpsForLead = (followUps, leadId, leadNo, leadNumber = null) => {
+  const sId = leadId != null ? String(leadId) : null;
+  const sNo = leadNo != null ? String(leadNo).trim() : null;
+  const sNum = leadNumber != null ? String(leadNumber).trim() : null;
+
+  return (followUps || [])
+    .filter(f => {
+      const fLeadId = (f.leadId || f.lead_id) != null ? String(f.leadId || f.lead_id) : null;
+      const fLeadNo = (f.leadNo || f.lead_no) != null ? String(f.leadNo || f.lead_no).trim() : null;
+      const fNum = (f.number || f.customerNumber) != null ? String(f.number || f.customerNumber).trim() : null;
+
+      if (sId && (fLeadId === sId || fLeadNo === sId)) return true;
+      if (sNo && (fLeadNo === sNo || fLeadId === sNo)) return true;
+      if (sNum && fNum && sNum === fNum) return true;
+      return false;
+    })
+    .sort((a, b) => {
+      const aMs = Number(a.timestampMs) || (a.createdAt ? new Date(a.createdAt).getTime() : (a.created_at ? new Date(a.created_at).getTime() : 0));
+      const bMs = Number(b.timestampMs) || (b.createdAt ? new Date(b.createdAt).getTime() : (b.created_at ? new Date(b.created_at).getTime() : 0));
+      return aMs - bMs;
+    });
+};
+
+// Latest non-empty Hot / Warm / Cold recorded across a lead's calls AND site visit follow-ups
+export const getEffectiveCustomerStatus = (trackers, followUps, leadId, leadNo, leadNumber = null) => {
+  const leadTrackers = getTrackersForLead(trackers, leadId, leadNo, leadNumber);
+  const leadFollowUps = getFollowUpsForLead(followUps, leadId, leadNo, leadNumber);
+
+  const timeline = [
+    ...leadTrackers.map(t => ({
+      status: normalizeCustomerStatus(t.customerStatus || t.customer_status || t.interestLevel),
+      timestampMs: Number(t.timestampMs) || (t.createdAt ? new Date(t.createdAt).getTime() : 0)
+    })),
+    ...leadFollowUps.map(f => ({
+      status: normalizeCustomerStatus(f.customerStatus || f.customer_status || f.interestLevel || f.interest_level),
+      timestampMs: Number(f.timestampMs) || (f.createdAt ? new Date(f.createdAt).getTime() : (f.created_at ? new Date(f.created_at).getTime() : 0))
+    }))
+  ].sort((a, b) => a.timestampMs - b.timestampMs);
+
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    if (timeline[i].status) return timeline[i].status;
+  }
+  return '';
+};
+
+// Latest non-empty Hot / Warm / Cold recorded across a lead's calls (or calls + follow-ups if provided)
+export const getLatestCustomerStatus = (trackers, leadId, leadNo, followUps = null) => {
+  if (Array.isArray(followUps)) {
+    return getEffectiveCustomerStatus(trackers, followUps, leadId, leadNo);
+  }
   const forLead = getTrackersForLead(trackers, leadId, leadNo);
   for (let i = forLead.length - 1; i >= 0; i--) {
-    const status = normalizeCustomerStatus(forLead[i].customerStatus);
+    const status = normalizeCustomerStatus(forLead[i].customerStatus || forLead[i].customer_status || forLead[i].interestLevel);
     if (status) return status;
   }
   return '';
@@ -98,6 +164,27 @@ export const isDirectSiteVisitLead = (lead) => {
     }
   }
   return false;
+};
+
+// Lead ids / lead numbers that have at least one call tracker entry
+export const buildCalledLeadKeys = (trackers) => {
+  const keys = new Set();
+  (trackers || []).forEach(t => {
+    if (t.leadId != null) keys.add(String(t.leadId));
+    if (t.leadNo) keys.add(String(t.leadNo).trim());
+  });
+  return keys;
+};
+
+// Lead & Followup lists a lead once it has a caller (or is a Direct lead), or already has call history.
+// Unassigned leads stay on the Lead page until a caller is assigned.
+export const isInFollowUpQueue = (lead, calledLeadKeys) => {
+  if (!lead) return false;
+  if (lead.callerAssigned || lead.processType === 'Direct') return true;
+  return Boolean(calledLeadKeys && (
+    (lead.id != null && calledLeadKeys.has(String(lead.id))) ||
+    (lead.leadNo && calledLeadKeys.has(String(lead.leadNo).trim()))
+  ));
 };
 
 // A lead only enters the Call Tracker's Pending queue once it has an assigned caller —

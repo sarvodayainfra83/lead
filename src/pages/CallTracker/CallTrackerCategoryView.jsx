@@ -4,7 +4,8 @@ import * as XLSX from 'xlsx';
 import {
   Search, X, RotateCcw, Phone, Eye, ChevronDown, ChevronUp,
   Calendar, FileSpreadsheet, Plus, RefreshCw, UserCheck,
-  Mail, Briefcase, FileText, MapPin, Clock, IndianRupee, MessageSquare, Bell, Pencil, Reply
+  Mail, Briefcase, FileText, MapPin, Clock, IndianRupee, MessageSquare, Bell, Pencil, Reply,
+  CalendarDays, Upload, CheckCircle
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -14,15 +15,24 @@ import CallTrackerViewModal from './CallTrackerViewModal';
 import RemarkThreadModal from './RemarkThreadModal';
 import { formatIST, leadApi } from '../../api/leadApi';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, matchesUserAssignment } from '../../utils/authUtils';
+import { isUserAdmin, matchesUserConnection } from '../../utils/authUtils';
 import { TERMINAL_STATUSES, getTrackersForLead, CUSTOMER_STATUS_STYLES, formatDateTime } from './callTrackerConstants';
 import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 
+const getTodayStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Deal Closed': 'bg-purple-50 text-purple-700 border-purple-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
+  'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Pending: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -42,11 +52,21 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'All Status' },
   { value: 'Pending', label: 'Pending (Not Called)' },
   { value: 'Interested', label: 'Interested' },
-  { value: 'Deal Closed', label: 'Deal Closed' },
   { value: 'Future Plan Date', label: 'Future Plan Date' },
   { value: 'Site Visit/Meeting', label: 'Site Visit/Meeting' },
-  { value: 'Not Interested', label: 'Not Interested' }
+  { value: 'Not Interested', label: 'Not Interested' },
+  { value: 'Call Not Received', label: 'Call Not Received' },
+  { value: 'No WhatsApp Reply', label: 'No WhatsApp Reply' }
 ];
+
+const matchesStatusFilter = (item, statusFilter) => {
+  if (statusFilter === 'all') return true;
+  if (statusFilter === 'Pending') return item.status === 'Pending' || item.status === 'Unassigned';
+  if (statusFilter === 'Site Visit/Meeting' || statusFilter === 'Meeting') {
+    return item.status === 'Site Visit/Meeting' || item.status === 'Meeting';
+  }
+  return item.status === statusFilter;
+};
 
 // Strictly format YYYY-MM-DD or DD/MM/YYYY to DD/MM/YYYY (date only)
 const formatDate = (val) => {
@@ -112,7 +132,9 @@ export default function CallTrackerCategoryView({
   canEdit = false,
   onRefresh,
   onOpenDirect,
+  onBulkUpload,
   initialStatusFilter, // e.g. 'Interested' when opened from a Dashboard card
+  initialDateFilter, // e.g. 'all' or 'today'
   openRemarkLeadId, // open this lead's remark conversation (from a navbar notification)
   openRemarkNonce // changes on every notification click, so the same lead can be reopened
 }) {
@@ -122,9 +144,31 @@ export default function CallTrackerCategoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || 'all');
-  const [dateFilter, setDateFilter] = useState('today');
-  const [customDate, setCustomDate] = useState('');
+  const [dateFilter, setDateFilter] = useState(initialDateFilter || (initialStatusFilter ? 'all' : 'today'));
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [callerFilter, setCallerFilter] = useState('all');
+
+  // Helper to format short date DD/MM
+  const formatShortDate = (str) => {
+    if (!str) return '';
+    const parts = str.split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+    return str;
+  };
+
+  // React to prop updates from Dashboard navigation
+  useEffect(() => {
+    if (initialStatusFilter !== undefined) {
+      setStatusFilter(initialStatusFilter || 'all');
+      if (initialDateFilter === undefined && initialStatusFilter) {
+        setDateFilter('all');
+      }
+    }
+    if (initialDateFilter !== undefined) {
+      setDateFilter(initialDateFilter);
+    }
+  }, [initialStatusFilter, initialDateFilter]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -139,6 +183,8 @@ export default function CallTrackerCategoryView({
   // Remarks saved in this session, applied on top of the loaded leads until the next refresh
   const [remarkOverrides, setRemarkOverrides] = useState({});
   const [newRemarksOnly, setNewRemarksOnly] = useState(false);
+  // "Called today" ticks made in this session, applied on top of the loaded leads ({ leadId: markedAt | null })
+  const [callMarkOverrides, setCallMarkOverrides] = useState({});
 
   // Open the remark conversation; opening it counts as "seen" so the blink stops right away
   const openRemark = (item) => {
@@ -172,11 +218,23 @@ export default function CallTrackerCategoryView({
     setSearchQuery('');
     setStatusFilter('all');
     setDateFilter('today');
-    setCustomDate('');
+    setCustomFrom('');
+    setCustomTo('');
     setCallerFilter('all');
     setCurrentPage(1);
     toast.success('Filters reset to Today');
   }, []);
+
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/call-tracker') {
+        handleClearFilters();
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, [handleClearFilters]);
 
   // Prepare full caller report & tracker connected records for each lead
   const enrichedLeads = useMemo(() => {
@@ -233,7 +291,8 @@ export default function CallTrackerCategoryView({
         .filter((v, idx, arr) => arr.findIndex(x => x.id === v.id) === idx)
         .sort((a, b) => (Number(a.timestampMs || a.timestamp_ms || 0)) - (Number(b.timestampMs || b.timestamp_ms || 0)));
       const latestVisitorFollowUp = leadFollowUps.length > 0 ? leadFollowUps[leadFollowUps.length - 1] : null;
-      const siteVisitStatus = latestVisitorFollowUp?.status || '';
+      // Lead & Followup keeps calling a locked deal "Interested" — 'Deal Lock' is the Site Visit page's term
+      const siteVisitStatus = latestVisitorFollowUp?.status === 'Deal Lock' ? 'Interested' : (latestVisitorFollowUp?.status || '');
 
       // Assigned Visitor
       const leadAssignments = [
@@ -383,10 +442,70 @@ export default function CallTrackerCategoryView({
       d.getDate() === today.getDate();
   }, [today]);
 
+  const isSameDayAsToday = useCallback((val) => {
+    if (!val) return false;
+    const d = new Date(val);
+    return !isNaN(d.getTime()) && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  }, [today]);
+
+  // The user ticked "Mark called" on this lead today (yesterday's ticks no longer count)
+  const isMarkedToday = useCallback((item) => {
+    const key = String(item.id);
+    const markedAt = key in callMarkOverrides ? callMarkOverrides[key] : item.callMarkedAt;
+    return isSameDayAsToday(markedAt);
+  }, [callMarkOverrides, isSameDayAsToday]);
+
+  // "Punch-in" mark in Today's Followup — only set by the user ticking it (logging a call doesn't set it)
+  const isCalledToday = isMarkedToday;
+
+  const saveCallMark = (item, marked) => {
+    if (!item.id) return;
+    const key = String(item.id);
+    const previous = callMarkOverrides[key];
+    setCallMarkOverrides(prev => ({ ...prev, [key]: marked ? new Date().toISOString() : null }));
+    leadApi.setCallMark(item.id, marked, user?.name || user?.id)
+      .then(({ callMarkedAt, savedInDb }) => {
+        setCallMarkOverrides(prev => ({ ...prev, [key]: callMarkedAt }));
+        if (!savedInDb) toast('Saved on this device only — the call-mark columns are missing in the database', { id: 'call-mark-local', icon: '⚠️' });
+      })
+      .catch(err => {
+        console.error('Could not save called mark:', err);
+        setCallMarkOverrides(prev => ({ ...prev, [key]: previous }));
+        toast.error('Could not save the called mark');
+      });
+  };
+
+  const toggleCallMark = (item) => saveCallMark(item, !isMarkedToday(item));
+
+  // ✓ button shown in Today's Followup (desktop icon / mobile pill): tick after calling, tick again to undo
+  const renderCallMarkButton = (item, compact) => {
+    const done = isMarkedToday(item);
+    const title = done ? 'Marked as called today — click to undo' : 'Mark as called today';
+    return (
+      <button
+        type="button"
+        onClick={() => toggleCallMark(item)}
+        title={title}
+        aria-label={title}
+        aria-pressed={done}
+        className={compact
+          ? `w-7 h-7 inline-flex items-center justify-center rounded-md border transition active:scale-95 ${done
+            ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+            : 'bg-white text-gray-400 border-gray-300 hover:text-emerald-600 hover:border-emerald-400'}`
+          : `inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border active:scale-95 transition cursor-pointer shrink-0 ${done
+            ? 'bg-emerald-600 text-white border-emerald-600'
+            : 'bg-white text-gray-600 border-gray-300 hover:border-emerald-400 hover:text-emerald-700'}`}
+      >
+        <CheckCircle size={compact ? 13 : 12} />
+        {!compact && <span>{done ? 'Called' : 'Mark called'}</span>}
+      </button>
+    );
+  };
+
   // Base accessible leads for the current user in this category
   const accessibleEnrichedLeads = useMemo(() => {
     return enrichedLeads.filter(item => {
-      if (!isAdmin && !matchesUserAssignment(item, user)) return false;
+      if (!isAdmin && !matchesUserConnection(item, user)) return false;
       return true;
     });
   }, [enrichedLeads, isAdmin, user]);
@@ -398,16 +517,20 @@ export default function CallTrackerCategoryView({
 
     let allCount = accessibleEnrichedLeads.length;
     let todayCount = 0;
+    let todayCalledCount = 0;
     let yesterdayCount = 0;
     let overdueCount = 0;
     let upcomingCount = 0;
     let customCount = 0;
 
-    let chosenCustomTime = null;
-    if (customDate) {
-      const [cy, cm, cd] = customDate.split('-').map(Number);
-      if (cy && cm && cd) {
-        chosenCustomTime = new Date(cy, cm - 1, cd).getTime();
+    let fromMs = null;
+    let toMs = null;
+    if (customFrom && customTo) {
+      const fParts = customFrom.split('-').map(Number);
+      const tParts = customTo.split('-').map(Number);
+      if (fParts.length === 3 && tParts.length === 3) {
+        fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
+        toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
       }
     }
 
@@ -422,11 +545,15 @@ export default function CallTrackerCategoryView({
 
       const targetTime = nextCallTime || nextMeetTime || meetTime;
 
-      const isTodayMatch = nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime;
+      // USER roles: a lead called today also counts as today's follow-up
+      const lastCallObj = !isAdmin ? parseTrackerDateStr(item.dateOfCallRaw) : null;
+      const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
+      const isTodayMatch = nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday;
       const isYesterdayMatch = nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime;
 
       if (isTodayMatch) {
         todayCount++;
+        if (isCalledToday(item)) todayCalledCount++;
       } else if (isYesterdayMatch) {
         yesterdayCount++;
       }
@@ -437,20 +564,31 @@ export default function CallTrackerCategoryView({
         upcomingCount++;
       }
 
-      if (chosenCustomTime !== null && (nextCallTime === chosenCustomTime || meetTime === chosenCustomTime || nextMeetTime === chosenCustomTime)) {
-        customCount++;
+      if (fromMs !== null && toMs !== null) {
+        const isCustomMatch = (nextCallTime && nextCallTime >= fromMs && nextCallTime <= toMs) ||
+                              (meetTime && meetTime >= fromMs && meetTime <= toMs) ||
+                              (nextMeetTime && nextMeetTime >= fromMs && nextMeetTime <= toMs);
+        if (isCustomMatch) customCount++;
       }
     });
 
     return {
       all: allCount,
       today: todayCount,
+      todayCalled: todayCalledCount,
       yesterday: yesterdayCount,
       overdue: overdueCount,
       upcoming: upcomingCount,
       custom: customCount
     };
-  }, [accessibleEnrichedLeads, today, yesterday, customDate]);
+  }, [accessibleEnrichedLeads, today, yesterday, customFrom, customTo, isAdmin, isCalledToday]);
+
+  const customDropdownLabel = useMemo(() => {
+    if (customFrom && customTo) {
+      return `Custom: ${formatShortDate(customFrom)} – ${formatShortDate(customTo)} (${dateCounts.custom})`;
+    }
+    return 'Custom Date Range';
+  }, [customFrom, customTo, dateCounts.custom]);
 
   // Dynamic Date Filter Options with live counts for all dates
   const dateFilterOptions = useMemo(() => {
@@ -460,9 +598,9 @@ export default function CallTrackerCategoryView({
       { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
       { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
       { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
-      { value: 'custom', label: customDate ? `Custom Date (${dateCounts.custom})` : 'Custom Date' }
+      { value: 'custom', label: customDropdownLabel }
     ];
-  }, [dateCounts, customDate]);
+  }, [dateCounts, customDropdownLabel]);
 
   // Dropdown options for All Dates and other timeframes (excluding separate Today's Followup tab)
   const allDatesFilterOptions = useMemo(() => {
@@ -471,12 +609,12 @@ export default function CallTrackerCategoryView({
       { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
       { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
       { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
-      { value: 'custom', label: customDate ? `Custom Date (${dateCounts.custom})` : 'Custom Date' }
+      { value: 'custom', label: customDropdownLabel }
     ];
-  }, [dateCounts, customDate]);
+  }, [dateCounts, customDropdownLabel]);
 
-  // Filter leads
-  const filteredLeads = useMemo(() => {
+  // Filter leads by everything except status (the status dropdown counts come from this list)
+  const leadsBeforeStatus = useMemo(() => {
     return accessibleEnrichedLeads.filter(item => {
 
       // "New remarks" chip: unread admin remarks for users, new user replies for admins
@@ -485,17 +623,6 @@ export default function CallTrackerCategoryView({
       // Caller filter
       if (callerFilter !== 'all' && item.callerAssigned !== callerFilter) {
         return false;
-      }
-
-      // Status filter
-      if (statusFilter !== 'all') {
-        if (statusFilter === 'Pending') {
-          if (item.status !== 'Pending' && item.status !== 'Unassigned') return false;
-        } else if (statusFilter === 'Site Visit/Meeting' || statusFilter === 'Meeting') {
-          if (item.status !== 'Site Visit/Meeting' && item.status !== 'Meeting') return false;
-        } else if (item.status !== statusFilter) {
-          return false;
-        }
       }
 
       // Date filter (evaluates Next Call Date, Last Meeting Date, and Next Meeting Date)
@@ -513,7 +640,10 @@ export default function CallTrackerCategoryView({
         const yesterdayTime = yesterday.getTime();
 
         if (dateFilter === 'today') {
-          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime)) return false;
+          // USER roles: a lead called today also counts as today's follow-up
+          const lastCallObj = !isAdmin ? parseTrackerDateStr(item.dateOfCallRaw) : null;
+          const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
+          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday)) return false;
         } else if (dateFilter === 'yesterday') {
           if (!(nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime)) return false;
         } else if (dateFilter === 'overdue') {
@@ -521,12 +651,23 @@ export default function CallTrackerCategoryView({
         } else if (dateFilter === 'upcoming') {
           if (!((nextCallTime && nextCallTime > todayTime) || (nextMeetTime && nextMeetTime > todayTime) || (meetTime && meetTime > todayTime))) return false;
         } else if (dateFilter === 'custom') {
-          if (!customDate) return true;
-          const [cy, cm, cd] = customDate.split('-').map(Number);
-          if (cy && cm && cd) {
-            const chosen = new Date(cy, cm - 1, cd).getTime();
-            if (!(nextCallTime === chosen || meetTime === chosen || nextMeetTime === chosen)) return false;
+          let fromMs = null;
+          let toMs = null;
+          if (customFrom) {
+            const fParts = customFrom.split('-').map(Number);
+            if (fParts.length === 3) fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
           }
+          if (customTo) {
+            const tParts = customTo.split('-').map(Number);
+            if (tParts.length === 3) toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
+          }
+          const inRange = (t) => {
+            if (!t) return false;
+            if (fromMs !== null && t < fromMs) return false;
+            if (toMs !== null && t > toMs) return false;
+            return true;
+          };
+          if (!(inRange(nextCallTime) || inRange(meetTime) || inRange(nextMeetTime))) return false;
         }
       }
 
@@ -551,7 +692,18 @@ export default function CallTrackerCategoryView({
 
       return true;
     });
-  }, [accessibleEnrichedLeads, callerFilter, statusFilter, dateFilter, customDate, searchQuery, today, yesterday, newRemarksOnly, isAdmin]);
+  }, [accessibleEnrichedLeads, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin]);
+
+  const filteredLeads = useMemo(
+    () => leadsBeforeStatus.filter(item => matchesStatusFilter(item, statusFilter)),
+    [leadsBeforeStatus, statusFilter]
+  );
+
+  // Status dropdown with live counts for the leads the other filters leave in view
+  const statusFilterOptions = useMemo(() => STATUS_FILTER_OPTIONS.map(opt => ({
+    ...opt,
+    label: `${opt.label} (${leadsBeforeStatus.filter(item => matchesStatusFilter(item, opt.value)).length})`
+  })), [leadsBeforeStatus]);
 
   // Guaranteed newest / latest updated or added record at top (from top to bottom showing latest call dates first)
   const sortedLeads = useMemo(() => {
@@ -675,6 +827,8 @@ export default function CallTrackerCategoryView({
   // Render Table Row with standard text sizes and popup View modal
   const renderRow = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
+    // Called-today mark only in the Today's Followup view
+    const calledToday = dateFilter === 'today' && isCalledToday(item);
 
     return (
       <tr
@@ -684,7 +838,7 @@ export default function CallTrackerCategoryView({
           if (e.target.closest('button, a, input, select, label, [role="combobox"], [role="listbox"]')) return;
           setViewingLead(item);
         }}
-        className="group cursor-pointer hover:bg-indigo-50/40 transition-colors border-b border-gray-100"
+        className={`group cursor-pointer transition-colors border-b border-gray-100 ${calledToday ? 'bg-emerald-50/70 hover:bg-emerald-100/60' : 'hover:bg-indigo-50/40'}`}
       >
         {/* Action column: compact icon buttons (tooltips carry the labels) */}
         <td className="px-2 py-1.5 text-center whitespace-nowrap">
@@ -699,6 +853,9 @@ export default function CallTrackerCategoryView({
                 <Phone size={13} />
               </button>
             )}
+
+            {/* Today's Followup: tick the lead once you've called it today */}
+            {canEdit && dateFilter === 'today' && renderCallMarkButton(item, true)}
 
             {/* View all records (call count badge) */}
             <button
@@ -986,6 +1143,8 @@ export default function CallTrackerCategoryView({
   const renderCard = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
     const isExpanded = expandedCardIds.has(leadKey);
+    // Called-today mark only in the Today's Followup view
+    const calledToday = dateFilter === 'today' && isCalledToday(item);
 
     // Filter populated fields (skip empty/null/'-')
     const isValid = (val) => {
@@ -1009,7 +1168,7 @@ export default function CallTrackerCategoryView({
     return (
       <div
         key={leadKey}
-        className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200'}`}
+        className={`rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${calledToday ? 'bg-emerald-50/70' : 'bg-white'} ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200' : (calledToday ? 'border-emerald-300' : 'border-gray-200')}`}
       >
         {/* Card Header: Name, Lead # on left; Details dropdown on top right */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
@@ -1024,6 +1183,9 @@ export default function CallTrackerCategoryView({
               <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-gray-100 text-gray-600 border border-gray-200 shrink-0">
                 #{item.leadNo}
               </span>
+            )}
+            {calledToday && (
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-600 text-white shrink-0">Called today</span>
             )}
           </div>
           <button
@@ -1185,6 +1347,7 @@ export default function CallTrackerCategoryView({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {canEdit && dateFilter === 'today' && renderCallMarkButton(item, false)}
             {canEdit && (
               <button
                 type="button"
@@ -1364,7 +1527,7 @@ export default function CallTrackerCategoryView({
                 setDateFilter('today');
                 setCurrentPage(1);
               }}
-              title="Show Today's Followups"
+              title={`Show Today's Followups — ${dateCounts.todayCalled} of ${dateCounts.today} called today`}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
@@ -1376,7 +1539,7 @@ export default function CallTrackerCategoryView({
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
                 dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
               }`}>
-                {dateCounts.today}
+                {dateCounts.todayCalled}/{dateCounts.today}
               </span>
             </button>
 
@@ -1387,14 +1550,16 @@ export default function CallTrackerCategoryView({
                 value={dateFilter === 'today' ? 'all' : dateFilter}
                 onMainClick={() => {
                   setDateFilter('all');
-                  setCustomDate('');
+                  setCustomFrom('');
+                  setCustomTo('');
                   setCurrentPage(1);
                 }}
                 onChange={(val) => {
                   setDateFilter(val);
-                  if (val === 'custom' && !customDate) {
-                    const now = new Date();
-                    setCustomDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+                  if (val === 'custom' && !customFrom && !customTo) {
+                    const t = getTodayStr();
+                    setCustomFrom(t);
+                    setCustomTo(t);
                   }
                   setCurrentPage(1);
                 }}
@@ -1409,17 +1574,36 @@ export default function CallTrackerCategoryView({
               />
             </div>
 
-            {/* Custom Date Input */}
+            {/* Custom Date Range Inline Inputs */}
             {dateFilter === 'custom' && (
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => {
-                  setCustomDate(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="bg-white border border-gray-300 rounded-lg px-2 text-xs h-[34px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium shrink-0 cursor-pointer"
-              />
+              <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    onChange={(e) => {
+                      setCustomFrom(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                    title="From Date"
+                  />
+                </div>
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                  <input
+                    type="date"
+                    value={customTo}
+                    onChange={(e) => {
+                      setCustomTo(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                    title="To Date"
+                  />
+                </div>
+              </div>
             )}
 
             {canEdit && onOpenDirect && (
@@ -1429,6 +1613,16 @@ export default function CallTrackerCategoryView({
               >
                 <Plus size={14} className="shrink-0" />
                 <span>Add Lead</span>
+              </button>
+            )}
+
+            {canEdit && onBulkUpload && (
+              <button
+                onClick={() => onBulkUpload(activeTab || category)}
+                className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+              >
+                <Upload size={14} className="shrink-0" />
+                <span>Bulk Upload</span>
               </button>
             )}
           </div>
@@ -1480,7 +1674,7 @@ export default function CallTrackerCategoryView({
           {!isAdmin && (
             <div className="w-[125px] sm:w-[145px] shrink-0">
               <SearchableDropdown
-                options={STATUS_FILTER_OPTIONS}
+                options={statusFilterOptions}
                 value={statusFilter}
                 onChange={(val) => {
                   setStatusFilter(val);
@@ -1539,7 +1733,7 @@ export default function CallTrackerCategoryView({
           {/* Status Dropdown */}
           <div className="w-[130px] lg:w-[150px]">
             <SearchableDropdown
-              options={STATUS_FILTER_OPTIONS}
+              options={statusFilterOptions}
               value={statusFilter}
               onChange={(val) => {
                 setStatusFilter(val);
@@ -1557,6 +1751,11 @@ export default function CallTrackerCategoryView({
               value={dateFilter}
               onChange={(val) => {
                 setDateFilter(val);
+                if (val === 'custom' && !customFrom && !customTo) {
+                  const t = getTodayStr();
+                  setCustomFrom(t);
+                  setCustomTo(t);
+                }
                 setCurrentPage(1);
               }}
               placeholder="All Dates"
@@ -1564,17 +1763,36 @@ export default function CallTrackerCategoryView({
             />
           </div>
 
-          {/* Custom Date Input */}
+          {/* Custom Date Range Inline Inputs */}
           {dateFilter === 'custom' && (
-            <input
-              type="date"
-              value={customDate}
-              onChange={(e) => {
-                setCustomDate(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="bg-white border border-gray-300 rounded px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-indigo-500 shadow-2xs font-medium"
-            />
+            <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-2 h-[30px] shadow-2xs">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => {
+                    setCustomFrom(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="From Date"
+                />
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-2 h-[30px] shadow-2xs">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => {
+                    setCustomTo(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="To Date"
+                />
+              </div>
+            </div>
           )}
 
           {/* Caller Dropdown (if admin or multiple callers) */}

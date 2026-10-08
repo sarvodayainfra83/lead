@@ -7,6 +7,11 @@ import { siteVisitMeetingApi } from '../api/siteVisitMeetingApi';
 import { CUSTOMER_STATUS_STYLES } from '../pages/CallTracker/callTrackerConstants';
 
 const STATUS_STYLES = {
+  'Deal Lock': {
+    badge: 'bg-emerald-100 text-emerald-800 border-emerald-400',
+    dot: 'bg-emerald-600',
+    label: 'Deal Lock'
+  },
   Interested: {
     badge: 'bg-emerald-50 text-emerald-700 border-emerald-300',
     dot: 'bg-emerald-500',
@@ -26,6 +31,11 @@ const STATUS_STYLES = {
     badge: 'bg-slate-100 text-slate-700 border-slate-300',
     dot: 'bg-slate-500',
     label: 'Did Not Show'
+  },
+  'Under Negotiation': {
+    badge: 'bg-orange-50 text-orange-700 border-orange-300',
+    dot: 'bg-orange-500',
+    label: 'Under Negotiation'
   },
   Assigned: {
     badge: 'bg-sky-50 text-sky-700 border-sky-300',

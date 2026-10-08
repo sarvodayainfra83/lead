@@ -33,48 +33,74 @@ export const nonInterestedApi = {
       siteVisitMeetingApi.getAssignedVisitors(),
       siteVisitMeetingApi.getVisitorFollowUps()
     ]);
+    return this.buildNonInterestedLeads(leads, trackers, assignedVisitors, followUps);
+  },
 
-    const leadsById = Object.fromEntries(leads.map(l => [String(l.id), l]));
-    const leadsByNo = Object.fromEntries(leads.map(l => [String(l.leadNo), l]));
+  // Same as getNonInterestedLeads, from already-fetched data (used by the sidebar badge counts)
+  buildNonInterestedLeads(leads, trackers, assignedVisitors, followUps) {
+    const cleanKey = (val) => {
+      if (!val) return null;
+      const s = String(val).trim();
+      if (!s || s === 'null' || s === 'undefined' || s === '-' || s === '0') return null;
+      return s;
+    };
 
     // Group assigned visitors by lead
     const assignmentsByLeadId = {};
     const assignmentsByLeadNo = {};
     (assignedVisitors || []).forEach(a => {
       if (a.status === 'Cancelled') return;
-      if (a.leadId) {
-        const idKey = String(a.leadId);
-        if (!assignmentsByLeadId[idKey]) assignmentsByLeadId[idKey] = [];
-        assignmentsByLeadId[idKey].push(a);
+      const kId = cleanKey(a.leadId);
+      const kNo = cleanKey(a.leadNo);
+      if (kId) {
+        if (!assignmentsByLeadId[kId]) assignmentsByLeadId[kId] = [];
+        assignmentsByLeadId[kId].push(a);
       }
-      if (a.leadNo) {
-        const noKey = String(a.leadNo);
-        if (!assignmentsByLeadNo[noKey]) assignmentsByLeadNo[noKey] = [];
-        assignmentsByLeadNo[noKey].push(a);
+      if (kNo) {
+        if (!assignmentsByLeadNo[kNo]) assignmentsByLeadNo[kNo] = [];
+        assignmentsByLeadNo[kNo].push(a);
       }
     });
+
+    console.log("Not interested data : ")
 
     // Group follow-ups by lead
     const followUpsByLeadId = {};
     const followUpsByLeadNo = {};
     (followUps || []).forEach(f => {
-      if (f.leadId) {
-        const idKey = String(f.leadId);
-        if (!followUpsByLeadId[idKey]) followUpsByLeadId[idKey] = [];
-        followUpsByLeadId[idKey].push(f);
+      const kId = cleanKey(f.leadId);
+      const kNo = cleanKey(f.leadNo);
+      if (kId) {
+        if (!followUpsByLeadId[kId]) followUpsByLeadId[kId] = [];
+        followUpsByLeadId[kId].push(f);
       }
-      if (f.leadNo) {
-        const noKey = String(f.leadNo);
-        if (!followUpsByLeadNo[noKey]) followUpsByLeadNo[noKey] = [];
-        followUpsByLeadNo[noKey].push(f);
+      if (kNo) {
+        if (!followUpsByLeadNo[kNo]) followUpsByLeadNo[kNo] = [];
+        followUpsByLeadNo[kNo].push(f);
+      }
+    });
+
+    // Group call trackers by lead
+    const trackersByLeadId = {};
+    const trackersByLeadNo = {};
+    (trackers || []).forEach(t => {
+      const kId = cleanKey(t.leadId);
+      const kNo = cleanKey(t.leadNo);
+      if (kId) {
+        if (!trackersByLeadId[kId]) trackersByLeadId[kId] = [];
+        trackersByLeadId[kId].push(t);
+      }
+      if (kNo) {
+        if (!trackersByLeadNo[kNo]) trackersByLeadNo[kNo] = [];
+        trackersByLeadNo[kNo].push(t);
       }
     });
 
     const nonInterestedList = [];
 
     leads.forEach(lead => {
-      const leadKeyId = String(lead.id || '');
-      const leadKeyNo = String(lead.leadNo || '');
+      const kId = cleanKey(lead.id);
+      const kNo = cleanKey(lead.leadNo);
 
       // Latest call tracker
       const latestTracker = getLatestTrackerForLead(trackers, lead.id, lead.leadNo);
@@ -83,8 +109,8 @@ export const nonInterestedApi = {
       const seenAssignmentIds = new Set();
       const leadAssignments = [];
       const assignmentCandidates = [
-        ...(leadKeyId && assignmentsByLeadId[leadKeyId] ? assignmentsByLeadId[leadKeyId] : []),
-        ...(leadKeyNo && assignmentsByLeadNo[leadKeyNo] ? assignmentsByLeadNo[leadKeyNo] : [])
+        ...(kId && assignmentsByLeadId[kId] ? assignmentsByLeadId[kId] : []),
+        ...(kNo && assignmentsByLeadNo[kNo] ? assignmentsByLeadNo[kNo] : [])
       ];
       assignmentCandidates.forEach(a => {
         const aid = a.id || `${a.leadNo}-${a.timestamp || a.created_at}`;
@@ -100,8 +126,8 @@ export const nonInterestedApi = {
       const seenFollowUpIds = new Set();
       const leadFollowUps = [];
       const followUpCandidates = [
-        ...(leadKeyId && followUpsByLeadId[leadKeyId] ? followUpsByLeadId[leadKeyId] : []),
-        ...(leadKeyNo && followUpsByLeadNo[leadKeyNo] ? followUpsByLeadNo[leadKeyNo] : [])
+        ...(kId && followUpsByLeadId[kId] ? followUpsByLeadId[kId] : []),
+        ...(kNo && followUpsByLeadNo[kNo] ? followUpsByLeadNo[kNo] : [])
       ];
       followUpCandidates.forEach(f => {
         const fid = f.id || `${f.leadNo}-${f.timestampMs || f.createdAt}`;
@@ -113,20 +139,26 @@ export const nonInterestedApi = {
       leadFollowUps.sort((a, b) => (Number(a.timestampMs) || new Date(a.createdAt || 0).getTime()) - (Number(b.timestampMs) || new Date(b.createdAt || 0).getTime()));
       const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
 
-      // Determine if this lead is Non-interested
-      const isLeadStatusNotInterested = isNotInterestedStatus(lead.status);
-      const isTrackerNotInterested = isNotInterestedStatus(latestTracker?.status) || isNotInterestedStatus(latestTracker?.customerStatus);
-      const isFollowUpNotInterested = isNotInterestedStatus(latestFollowUp?.status) || isNotInterestedStatus(latestFollowUp?.dealOutcome);
+      // All trackers for this lead
+      const leadTrackers = [
+        ...(kId && trackersByLeadId[kId] ? trackersByLeadId[kId] : []),
+        ...(kNo && trackersByLeadNo[kNo] ? trackersByLeadNo[kNo] : [])
+      ];
 
-      // Must have at least one valid "Not Interested" indication as its latest state
-      const isCandidate = (
-        (latestFollowUp && isFollowUpNotInterested) ||
-        (!latestFollowUp && latestTracker && isTrackerNotInterested) ||
-        (!latestFollowUp && !latestTracker && isLeadStatusNotInterested) ||
-        isFollowUpNotInterested ||
-        isTrackerNotInterested ||
-        isLeadStatusNotInterested
-      );
+      // Determine if this lead is currently Non-interested based on latest activity
+      const latestFollowUpTime = latestFollowUp ? (Number(latestFollowUp.timestampMs) || new Date(latestFollowUp.createdAt || 0).getTime()) : 0;
+      const latestTrackerTime = latestTracker ? (Number(latestTracker.timestampMs) || new Date(latestTracker.timestamp || 0).getTime()) : 0;
+
+      let isCandidate = false;
+      if (latestFollowUp && latestFollowUpTime >= latestTrackerTime) {
+        isCandidate = isNotInterestedStatus(latestFollowUp.status) || isNotInterestedStatus(latestFollowUp.dealOutcome);
+      } else if (latestTracker) {
+        isCandidate = isNotInterestedStatus(latestTracker.status) || isNotInterestedStatus(latestTracker.customerStatus);
+      } else if (latestFollowUp) {
+        isCandidate = isNotInterestedStatus(latestFollowUp.status) || isNotInterestedStatus(latestFollowUp.dealOutcome);
+      } else {
+        isCandidate = isNotInterestedStatus(lead.status);
+      }
 
       if (!isCandidate) return;
 
@@ -172,7 +204,7 @@ export const nonInterestedApi = {
         investmentBudget: lead.investmentBudget || '',
         whenToBuyPlan: lead.whenToBuyPlan || '',
         leadRemarks: lead.remarks || '',
-        relationshipManager: lead.leadReceiver || lead.personName || '',
+        relationshipManager: lead.leadReceiver || '',
         // Dates
         meetingDate,
         nextMeetingDate,
@@ -180,12 +212,15 @@ export const nonInterestedApi = {
         nextCallDate: latestTracker?.nextDate || lead.nextCallDate || '',
         visitDate: meetingDate,
         // Call Tracker info
+        trackers: leadTrackers,
+        callerAssigned: lead.callerAssigned || latestTracker?.callerAssigned || '',
+        caller: lead.caller || latestTracker?.caller || lead.callerAssigned || '',
         callTrackerId: latestTracker?.id || null,
         callTrackerRemarks: latestTracker?.customerSaid || '',
         // Visitor Assignment info
         assignedVisitorId: latestAssignment?.id || null,
-        assignedVisitor: latestAssignment?.visitorName || latestFollowUp?.visitorName || '',
-        visitorId: latestAssignment?.visitorId || latestFollowUp?.visitorId || '',
+        assignedVisitor: latestAssignment?.visitorName || latestFollowUp?.visitorName || lead.assignedVisitor || '',
+        visitorId: latestAssignment?.visitorId || latestFollowUp?.visitorId || lead.visitorId || '',
         location: latestAssignment?.location || lead.customerAddress || lead.location || '',
         visitorRemarks: latestAssignment?.remarks || '',
         assignedAt: latestAssignment?.timestamp || latestAssignment?.created_at || '',

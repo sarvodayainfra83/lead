@@ -10,13 +10,17 @@ const buildPresets = () => {
   const today = new Date();
   const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const daysAgo = (n) => new Date(t.getFullYear(), t.getMonth(), t.getDate() - n);
+  const daysAhead = (n) => new Date(t.getFullYear(), t.getMonth(), t.getDate() + n);
   const monday = daysAgo((t.getDay() + 6) % 7);
   return [
+    { label: 'Today', from: t, to: t },
     { label: 'Yesterday', from: daysAgo(1), to: daysAgo(1) },
     { label: 'Last 7 Days', from: daysAgo(6), to: t },
     { label: 'This Week', from: monday, to: t },
+    { label: 'This Month', from: new Date(t.getFullYear(), t.getMonth(), 1), to: t },
     { label: 'Last 30 Days', from: daysAgo(29), to: t },
     { label: 'Last Month', from: new Date(t.getFullYear(), t.getMonth() - 1, 1), to: new Date(t.getFullYear(), t.getMonth(), 0) },
+    { label: 'Next 7 Days', from: t, to: daysAhead(7) },
     { label: 'This Year', from: new Date(t.getFullYear(), 0, 1), to: t }
   ].map(p => ({ ...p, from: toInput(p.from), to: toInput(p.to) }));
 };
@@ -27,20 +31,22 @@ const buildPresets = () => {
  * Props: isOpen, onClose, from, to (YYYY-MM-DD), onApply(from, to), title
  */
 export default function DateRangeModal({ isOpen, onClose, from, to, onApply, title = 'Select Date Range' }) {
-  const [draftFrom, setDraftFrom] = useState(from);
-  const [draftTo, setDraftTo] = useState(to);
+  const todayStr = toInput(new Date());
+  const monthStartStr = toInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+
+  const [draftFrom, setDraftFrom] = useState(from || monthStartStr);
+  const [draftTo, setDraftTo] = useState(to || todayStr);
 
   useEffect(() => {
     if (isOpen) {
-      setDraftFrom(from);
-      setDraftTo(to);
+      setDraftFrom(from || monthStartStr);
+      setDraftTo(to || todayStr);
     }
-  }, [isOpen, from, to]);
+  }, [isOpen, from, to, monthStartStr, todayStr]);
 
   if (!isOpen) return null;
 
   const presets = buildPresets();
-  const today = toInput(new Date());
   const invalid = !draftFrom || !draftTo || draftFrom > draftTo;
 
   return createPortal(
@@ -53,7 +59,7 @@ export default function DateRangeModal({ isOpen, onClose, from, to, onApply, tit
           <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
             <CalendarDays size={15} className="text-indigo-600" /> {title}
           </h3>
-          <button onClick={onClose} className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100">
+          <button onClick={onClose} className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 cursor-pointer">
             <X size={16} />
           </button>
         </div>
@@ -67,7 +73,7 @@ export default function DateRangeModal({ isOpen, onClose, from, to, onApply, tit
                   key={p.label}
                   type="button"
                   onClick={() => { setDraftFrom(p.from); setDraftTo(p.to); }}
-                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition ${
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-semibold border transition cursor-pointer ${
                     active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-indigo-50 hover:text-indigo-600'
                   }`}
                 >
@@ -79,22 +85,21 @@ export default function DateRangeModal({ isOpen, onClose, from, to, onApply, tit
 
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-1">
-              <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">From</span>
+              <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">From Date</span>
               <input
                 type="date"
                 value={draftFrom}
-                max={draftTo || today}
+                max={draftTo || undefined}
                 onChange={(e) => setDraftFrom(e.target.value)}
                 className="w-full bg-white border border-gray-300 rounded-lg px-2 text-xs h-[34px] text-gray-700 focus:outline-none focus:border-indigo-500 [color-scheme:light]"
               />
             </label>
             <label className="space-y-1">
-              <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">To</span>
+              <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide">To Date</span>
               <input
                 type="date"
                 value={draftTo}
-                min={draftFrom}
-                max={today}
+                min={draftFrom || undefined}
                 onChange={(e) => setDraftTo(e.target.value)}
                 className="w-full bg-white border border-gray-300 rounded-lg px-2 text-xs h-[34px] text-gray-700 focus:outline-none focus:border-indigo-500 [color-scheme:light]"
               />

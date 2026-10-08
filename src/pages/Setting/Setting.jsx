@@ -8,7 +8,7 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
 import { useAuthStore } from '../../store/authStore';
-import { hasFullAccess } from '../../utils/authUtils';
+import { hasFullAccess, parsePositions, hasPosition, addPosition, removePosition } from '../../utils/authUtils';
 
 // Every page an access level can be granted for — Admins bypass this and always get full access.
 const APP_PAGES = [
@@ -95,6 +95,19 @@ export default function Setting({ setHeaderAction }) {
     load();
   }, []);
 
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/master' || e.detail.path === '/setting') {
+        setPositionFilter('All');
+        setSearchQuery('');
+        setCurrentPage(1);
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, []);
+
   const handleChange = (field, value) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
@@ -127,20 +140,9 @@ export default function Setting({ setHeaderAction }) {
     setShowForm(true);
   }, []);
 
-  const STANDARD_POSITIONS = ['Caller', 'Visitor', 'Receptionist', 'Lead Receiver', 'Manager', 'HR'];
-
-  const isCustomPosition = (pos) => {
-    if (!pos) return false;
-    const lower = String(pos).toLowerCase().trim();
-    return lower === 'other' || lower === 'others' || lower === 'add new' || lower === 'add_new' || lower === '+ add new';
-  };
-
   const openEdit = (row) => {
     setEditRow(row);
     const existingMasterSetting = row.accessPages?.master || row.accessPages?.setting || 'none';
-    const isStandard = STANDARD_POSITIONS.includes(row.position);
-    const posValue = isStandard ? row.position : (row.position ? 'Add New' : '');
-    const customPosValue = isStandard ? '' : (row.position || '');
 
     setFormData({
       name: row.name || '',
@@ -149,8 +151,8 @@ export default function Setting({ setHeaderAction }) {
       id: row.id || '',
       password: row.password || '',
       role: row.role || 'USER',
-      position: posValue,
-      customPosition: customPosValue,
+      position: parsePositions(row.position).join(', '),
+      customPosition: '',
       leadTypeId: row.leadTypeId || '',
       leadType: row.leadType || '',
       accessPages: {
@@ -193,8 +195,11 @@ export default function Setting({ setHeaderAction }) {
     if (!formData.number.trim()) { toast.error('Number is required'); return; }
     if (!formData.id.trim()) { toast.error('User Name is required'); return; }
     if (!formData.password.trim()) { toast.error('Password is required'); return; }
-    if (isCustomPosition(formData.position) && !formData.customPosition?.trim()) {
-      toast.error('Please enter the custom position name');
+    // A custom position typed but not yet added with "Add" still counts
+    const typedPosition = formData.customPosition?.trim();
+    const resolvedPosition = (typedPosition ? addPosition(formData.position, typedPosition) : parsePositions(formData.position).join(', ')) || null;
+    if (!resolvedPosition && formData.role !== 'ADMIN' && formData.role !== 'TESTER') {
+      toast.error('Select at least one position');
       return;
     }
 
@@ -208,10 +213,6 @@ export default function Setting({ setHeaderAction }) {
       if (accessPagesPayload.master) {
         accessPagesPayload.setting = accessPagesPayload.master;
       }
-
-      const resolvedPosition = isCustomPosition(formData.position)
-        ? formData.customPosition.trim()
-        : (formData.position || null);
 
       const payload = {
         name: formData.name.trim(),
@@ -267,6 +268,26 @@ export default function Setting({ setHeaderAction }) {
     }));
   };
 
+  // Positions: several allowed (e.g. Manager + Caller), stored comma-separated like lead types
+  const selectedPositions = parsePositions(formData.position);
+  const positionChoices = [
+    ...POSITION_OPTIONS.map(o => o.value),
+    ...selectedPositions.filter(p => !POSITION_OPTIONS.some(o => o.value.toLowerCase() === p.toLowerCase()))
+  ];
+
+  const togglePosition = (name) => {
+    setFormData(prev => ({
+      ...prev,
+      position: (hasPosition(prev.position || '', name) ? removePosition(prev.position, name) : addPosition(prev.position, name)) || ''
+    }));
+  };
+
+  const addCustomPosition = () => {
+    const name = formData.customPosition?.trim();
+    if (!name) return;
+    setFormData(prev => ({ ...prev, position: addPosition(prev.position, name), customPosition: '' }));
+  };
+
   const handleDelete = async (row) => {
     if (row.id === 'admin') { toast.error("The default admin account can't be deleted"); return; }
     if (!window.confirm(`Delete user "${row.name}"?`)) return;
@@ -310,7 +331,7 @@ export default function Setting({ setHeaderAction }) {
       } else if (positionFilter === 'Testers') {
         if (row.role !== 'TESTER') return false;
       } else if (positionFilter === 'HR') {
-        if (row.role !== 'HR' && !String(row.position || '').toLowerCase().includes('hr')) return false;
+        if (row.role !== 'HR' && !hasPosition(row.position || '', 'HR')) return false;
       } else {
         const rowPos = String(row.position || '').toLowerCase();
         if (!rowPos.includes(positionFilter.toLowerCase())) return false;
@@ -342,7 +363,7 @@ export default function Setting({ setHeaderAction }) {
     { key: 'Caller', label: 'Callers', count: rows.filter(r => String(r.position || '').toLowerCase().includes('caller')).length },
     { key: 'Visitor', label: 'Visitors', count: rows.filter(r => String(r.position || '').toLowerCase().includes('visitor')).length },
     { key: 'Lead Receiver', label: 'Lead Receivers', count: rows.filter(r => String(r.position || '').toLowerCase().includes('receiver')).length },
-    { key: 'HR', label: 'HR', count: rows.filter(r => r.role === 'HR' || String(r.position || '').toLowerCase().includes('hr')).length },
+    { key: 'HR', label: 'HR', count: rows.filter(r => r.role === 'HR' || hasPosition(r.position || '', 'HR')).length },
     { key: 'Admins', label: 'Admins', count: rows.filter(r => r.role === 'ADMIN').length },
     { key: 'Testers', label: 'Testers', count: rows.filter(r => r.role === 'TESTER').length }
   ];
@@ -381,9 +402,13 @@ export default function Setting({ setHeaderAction }) {
       </td>
       <td className="px-4 py-2.5 text-center text-[13px] whitespace-nowrap">
         {row.position ? (
-          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase border ${getPositionBadgeClass(row.position)}`}>
-            {row.position}
-          </span>
+          <div className="flex flex-wrap gap-1 justify-center max-w-[220px] mx-auto">
+            {parsePositions(row.position).map(pos => (
+              <span key={pos} className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase border ${getPositionBadgeClass(pos)}`}>
+                {pos}
+              </span>
+            ))}
+          </div>
         ) : (
           <span className="text-gray-400 text-xs">-</span>
         )}
@@ -472,11 +497,11 @@ export default function Setting({ setHeaderAction }) {
           ) : (
             <span className="text-[10px] bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full font-semibold uppercase">User</span>
           )}
-          {row.position && (
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase border ${getPositionBadgeClass(row.position)}`}>
-              {row.position}
+          {parsePositions(row.position).map(pos => (
+            <span key={pos} className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase border ${getPositionBadgeClass(pos)}`}>
+              {pos}
             </span>
-          )}
+          ))}
         </div>
       </div>
 
@@ -625,41 +650,70 @@ export default function Setting({ setHeaderAction }) {
             </div>
           </div>
 
-          {/* Position Selection (Categorize user as Caller, Visitor, Lead Receiver, etc.) */}
-          <div className="space-y-1 col-span-2 sm:col-span-1">
-            <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">
-              Position / Category *
-            </label>
-            <SearchableDropdown
-              options={POSITION_OPTIONS}
-              value={formData.position}
-              onChange={(val) => {
-                handleChange('position', val);
-                if (!isCustomPosition(val)) {
-                  handleChange('customPosition', '');
-                }
-              }}
-              onAdd={(term) => {
-                handleChange('position', 'Add New');
-                if (term) handleChange('customPosition', term);
-              }}
-              placeholder="Select position (Caller, Visitor, etc.)"
-              height="h-[34px]"
-              required
-            />
-            {isCustomPosition(formData.position) && (
-              <div className="pt-1.5">
+          {/* Position Selection (Multi-Select, e.g. a Manager who also works as a Caller) */}
+          <div className="space-y-1.5 col-span-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold flex items-center gap-1.5">
+                <Briefcase size={13} className="text-indigo-600" />
+                Position / Category * (Multiple Allowed)
+              </label>
+              {selectedPositions.length > 0 && (
+                <span className="text-[11px] text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                  {selectedPositions.length} Selected
+                </span>
+              )}
+            </div>
+
+            <div className="p-2.5 bg-slate-50 border border-gray-200 rounded-lg space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {positionChoices.map(name => {
+                  const isSelected = hasPosition(formData.position || '', name);
+                  return (
+                    <label
+                      key={name}
+                      className={`flex items-center gap-2 p-2 rounded-lg border transition-all cursor-pointer select-none text-xs font-semibold ${isSelected
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                        : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50'
+                        }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => togglePosition(name)}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
+                      />
+                      <span className="truncate">{name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2">
                 <input
                   type="text"
-                  autoFocus
-                  ref={(el) => { if (el) setTimeout(() => el.focus(), 10); }}
                   value={formData.customPosition || ''}
                   onChange={(e) => handleChange('customPosition', e.target.value)}
-                  placeholder="Enter custom position name *"
-                  className="w-full border border-indigo-300 bg-indigo-50/20 rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[34px]"
-                  required
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomPosition(); } }}
+                  placeholder="Other position (optional)"
+                  className="flex-1 min-w-0 border border-gray-300 bg-white rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[32px]"
                 />
+                <button
+                  type="button"
+                  onClick={addCustomPosition}
+                  disabled={!formData.customPosition?.trim()}
+                  className="px-3 h-[32px] rounded border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center gap-1 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Plus size={13} /> Add
+                </button>
               </div>
+            </div>
+
+            {formData.position && (
+              <p className="text-[11px] text-gray-500 flex items-center gap-1 flex-wrap">
+                <span className="text-gray-400">Saved as:</span>
+                <span className="font-semibold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded text-[11px] border border-indigo-200 font-mono">
+                  {formData.position}
+                </span>
+              </p>
             )}
           </div>
 

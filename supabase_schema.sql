@@ -372,9 +372,13 @@ CREATE TABLE IF NOT EXISTS master_insurance_sub_products (
 CREATE TABLE IF NOT EXISTS master_investment_budgets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     investment_budget TEXT UNIQUE NOT NULL,
+    lead_type_ids UUID[] NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Existing databases: Lead Types (master_lead_types.id) each budget applies to; empty = shared across all lead types
+ALTER TABLE master_investment_budgets
+    ADD COLUMN IF NOT EXISTS lead_type_ids UUID[] NOT NULL DEFAULT '{}';
 
 -- 6A. REAL ESTATE LEADS TABLE (No lead_id column)
 CREATE TABLE IF NOT EXISTS real_state (
@@ -505,7 +509,7 @@ CREATE TABLE IF NOT EXISTS call_trackers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
     lead_no TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Deal Closed')),
+    status TEXT NOT NULL CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Meeting', 'Call Not Received', 'No WhatsApp Reply')),
     customer_said TEXT,
     next_date DATE,
     timestamp TEXT NOT NULL,
@@ -514,11 +518,11 @@ CREATE TABLE IF NOT EXISTS call_trackers (
 );
 
 -- Installs where this table already existed under the old 5-status scheme: replace the CHECK
--- constraint with the new 5-status one, and make next_date nullable again (Interested / Deal Closed / Not
+-- constraint with the current status list ('Deal Closed' removed, 'Meeting' for Insurance / Mutual Fund), and make next_date nullable again (Interested / Not
 -- Interested carry no date — only Future Plan Date / Site Visit/Meeting do).
 ALTER TABLE call_trackers DROP CONSTRAINT IF EXISTS call_trackers_status_check;
 ALTER TABLE call_trackers ADD CONSTRAINT call_trackers_status_check
-    CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Deal Closed'));
+    CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Meeting', 'Call Not Received', 'No WhatsApp Reply'));
 ALTER TABLE call_trackers ALTER COLUMN next_date DROP NOT NULL;
 
 -- Customer temperature (Hot / Warm / Cold), admin remark per call row, and last-updated time
@@ -559,7 +563,7 @@ CREATE TABLE IF NOT EXISTS visitor_follow_ups (
     visitor_name TEXT NOT NULL,
     visitor_id UUID REFERENCES users(id) ON DELETE SET NULL,
     visit_date DATE,
-    status TEXT NOT NULL CHECK (status IN ('Interested', 'Not Interested', 'Future Plan', 'Did Not Show')),
+    status TEXT NOT NULL CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply')),
     interest_level TEXT CHECK (interest_level IN ('High', 'Medium', 'Low')),
     what_happened TEXT,
     next_visit_date DATE,
@@ -580,6 +584,10 @@ CREATE INDEX IF NOT EXISTS idx_visitor_follow_ups_created_at ON visitor_follow_u
 
 -- Customer Status (Hot / Warm / Cold) & Deal Details captured on visitor follow-up
 ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS customer_status TEXT;
+-- Existing databases: allow the 'Under Negotiation' visit outcome
+ALTER TABLE visitor_follow_ups DROP CONSTRAINT IF EXISTS visitor_follow_ups_status_check;
+ALTER TABLE visitor_follow_ups ADD CONSTRAINT visitor_follow_ups_status_check
+    CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'));
 ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS deal_outcome TEXT;
 ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS closing_amount TEXT;
 ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS sales_executive TEXT;
@@ -1254,3 +1262,40 @@ CREATE POLICY "Allow public all on lead_remarks" ON public.lead_remarks FOR ALL 
 -- Remark "seen" markers: stop the blink once the other side has opened the conversation
 ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS admin_remark_seen_at TIMESTAMPTZ; -- user opened the admin's latest remark
 ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS user_remark_seen_at TIMESTAMPTZ;  -- admin opened the user's latest reply
+
+-- ============================================================================
+-- Follow-up call statuses: 'Call Not Received' (customer didn't pick up) and 'No WhatsApp Reply'
+-- (WhatsApp sent, no response) record unsuccessful contact attempts. Customer status / remark stay optional.
+-- ============================================================================
+ALTER TABLE call_trackers DROP CONSTRAINT IF EXISTS call_trackers_status_check;
+ALTER TABLE call_trackers ADD CONSTRAINT call_trackers_status_check
+    CHECK (status IN ('Interested', 'Not Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Meeting', 'Call Not Received', 'No WhatsApp Reply'));
+
+-- ============================================================================
+-- "Called today" mark: the user ticks a lead in Today's Followup once they've called it.
+-- Only counts on the day it was set (the app compares the date), so it clears itself each day.
+-- ============================================================================
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS call_marked_at TIMESTAMPTZ; -- when it was ticked (NULL = not ticked)
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS call_marked_by TEXT;        -- who ticked it
+
+-- ============================================================================
+-- "Site visit done today" mark: the user ticks a lead in Site Visit / Meeting → Today's Followup after visiting.
+-- Only counts on the day it was set (the app compares the date), so it clears itself each day.
+-- ============================================================================
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS visit_marked_at TIMESTAMPTZ; -- when it was ticked (NULL = not ticked)
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS visit_marked_by TEXT;        -- who ticked it
+
+-- ============================================================================
+-- Site visit outcome 'Deal Lock' (deal final) replaces 'Interested' on the Site Visit form.
+-- 'Interested' stays allowed: meetings logged from Lead & Followup with a pending deal still use it.
+-- Existing 'Interested' visits are NOT converted: the old form saved every "Interested" with deal_outcome
+-- 'Closed (Won)' and the pre-filled budget, so they can't be told apart from real closed deals. Mark the genuinely
+-- locked ones by hand (see the review query below).
+-- ============================================================================
+ALTER TABLE visitor_follow_ups DROP CONSTRAINT IF EXISTS visitor_follow_ups_status_check;
+ALTER TABLE visitor_follow_ups ADD CONSTRAINT visitor_follow_ups_status_check
+    CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'));
+-- Review old "Interested" visits and set the truly locked deals to 'Deal Lock' yourself, e.g.:
+--   SELECT id, lead_no, visit_date, closing_amount, reference_no, sales_executive, what_happened
+--     FROM visitor_follow_ups WHERE status = 'Interested' ORDER BY created_at DESC;
+--   UPDATE visitor_follow_ups SET status = 'Deal Lock' WHERE id IN ('<id>', '<id>');

@@ -31,14 +31,20 @@ export const DEFAULT_BUDGET_RANGES = [
   'Above 1 Cr'
 ];
 
+// Visit outcome 'Deal Lock' = deal final (Site Visit form). 'Interested' is still used by meetings logged from
+// Lead & Followup whose deal is pending, and by older records.
 export const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'All Statuses' },
   { value: 'Pending Assignment', label: 'Pending Assignment' },
   { value: 'Assigned', label: 'Visitor Assigned' },
   { value: 'Future Plan', label: 'Future Plan' },
+  { value: 'Deal Lock', label: 'Deal Lock' },
   { value: 'Interested', label: 'Interested' },
   { value: 'Not Interested', label: 'Not Interested' },
   { value: 'Did Not Show', label: 'Did Not Show' },
+  { value: 'Under Negotiation', label: 'Under Negotiation' },
+  { value: 'Call Not Received', label: 'Call Not Received' },
+  { value: 'No WhatsApp Reply', label: 'No WhatsApp Reply' },
 ];
 
 export const DATE_FILTER_OPTIONS = [
@@ -66,6 +72,11 @@ export const STATUS_STYLES = {
     dot: 'bg-purple-500',
     label: 'Future Plan'
   },
+  'Deal Lock': {
+    badge: 'bg-emerald-100 text-emerald-800 border-emerald-400',
+    dot: 'bg-emerald-600',
+    label: 'Deal Lock'
+  },
   'Interested': {
     badge: 'bg-emerald-50 text-emerald-700 border-emerald-300',
     dot: 'bg-emerald-500',
@@ -80,6 +91,21 @@ export const STATUS_STYLES = {
     badge: 'bg-slate-100 text-slate-700 border-slate-300',
     dot: 'bg-slate-500',
     label: 'Did Not Show'
+  },
+  'Under Negotiation': {
+    badge: 'bg-orange-50 text-orange-700 border-orange-300',
+    dot: 'bg-orange-500',
+    label: 'Under Negotiation'
+  },
+  'Call Not Received': {
+    badge: 'bg-orange-50 text-orange-700 border-orange-200',
+    dot: 'bg-orange-400',
+    label: 'Call Not Received'
+  },
+  'No WhatsApp Reply': {
+    badge: 'bg-slate-100 text-slate-700 border-slate-300',
+    dot: 'bg-slate-400',
+    label: 'No WhatsApp Reply'
   }
 };
 

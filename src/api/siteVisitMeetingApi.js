@@ -11,7 +11,7 @@ import {
   updateVisitorFollowUp as updateLocalVisitorFollowUp,
   deleteVisitorFollowUp as deleteLocalVisitorFollowUp
 } from '../utils/storageManager';
-import { refreshBadgeCounts } from '../store/badgeCountStore';
+import { refreshBadgeCounts } from '../utils/badgeNotifier';
 import { getLatestTrackerForLead, normalizeCustomerStatus } from '../pages/CallTracker/callTrackerConstants';
 
 const isUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
@@ -439,6 +439,25 @@ export const siteVisitMeetingApi = {
         created_at: new Date().toISOString()
       });
 
+      // Record follow-up in callTracker so it counts and appears inside Leads & Followups
+      try {
+        const now = new Date();
+        const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        await callTrackerApi.saveCallTracker({
+          leadId: normalizedEntry.leadId,
+          leadNo: normalizedEntry.leadNo,
+          status: normalizedEntry.status,
+          customerStatus: customerStatus || 'Warm',
+          customerSaid: normalizedEntry.whatHappened || normalizedEntry.dealRemarks || (normalizedEntry.status === 'Call Not Received' ? 'Call Not Received' : (normalizedEntry.status === 'No WhatsApp Reply' ? 'No WhatsApp Reply' : normalizedEntry.status || '')),
+          nextDate: normalizedEntry.nextVisitDate || '',
+          timestamp: normalizedEntry.timestamp || timestamp,
+          timestampMs: normalizedEntry.timestampMs || now.getTime(),
+          userRemark: normalizedEntry.visitorName ? `Visitor Follow-up (${normalizedEntry.visitorName})` : 'Visitor Follow-up'
+        });
+      } catch (trackerErr) {
+        console.warn('Could not save call tracker from visitor follow-up:', trackerErr);
+      }
+
       // Sync customer_status to call tracker
       if (customerStatus && (normalizedEntry.leadId || normalizedEntry.leadNo)) {
         try {
@@ -612,6 +631,25 @@ export const siteVisitMeetingApi = {
     const created = this.mapFollowUpFromDb(data);
     saveLocalVisitorFollowUp(created);
 
+    // Record follow-up in callTracker so it counts and appears inside Leads & Followups
+    try {
+      const now = new Date();
+      const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      await callTrackerApi.saveCallTracker({
+        leadId: leadId || (isUuid(normalizedEntry.leadId) ? normalizedEntry.leadId : null),
+        leadNo: normalizedEntry.leadNo,
+        status: normalizedEntry.status,
+        customerStatus: customerStatus || 'Warm',
+        customerSaid: normalizedEntry.whatHappened || normalizedEntry.dealRemarks || (normalizedEntry.status === 'Call Not Received' ? 'Call Not Received' : (normalizedEntry.status === 'No WhatsApp Reply' ? 'No WhatsApp Reply' : normalizedEntry.status || '')),
+        nextDate: normalizedEntry.nextVisitDate || '',
+        timestamp: normalizedEntry.timestamp || timestamp,
+        timestampMs: normalizedEntry.timestampMs || now.getTime(),
+        userRemark: normalizedEntry.visitorName ? `Visitor Follow-up (${normalizedEntry.visitorName})` : 'Visitor Follow-up'
+      });
+    } catch (trackerErr) {
+      console.warn('Could not save call tracker from visitor follow-up in Supabase mode:', trackerErr);
+    }
+
     // Sync customer_status to latest call tracker
     if (customerStatus && (normalizedEntry.leadId || normalizedEntry.leadNo)) {
       try {
@@ -694,6 +732,23 @@ export const siteVisitMeetingApi = {
 
     const updated = this.mapFollowUpFromDb(data);
     updateLocalVisitorFollowUp(id, updated);
+
+    // Sync customer_status to latest call tracker if updated
+    if (updated.customerStatus && (updated.leadId || updated.leadNo)) {
+      try {
+        const trackers = await callTrackerApi.getCallTrackers();
+        const leadTrackers = trackers
+          .filter(t => String(t.leadId) === String(updated.leadId) || String(t.leadNo) === String(updated.leadNo))
+          .sort((a, b) => (Number(a.timestampMs) || 0) - (Number(b.timestampMs) || 0));
+        const latestTracker = leadTrackers[leadTrackers.length - 1];
+        if (latestTracker?.id) {
+          await callTrackerApi.updateCustomerStatus(latestTracker.id, updated.customerStatus);
+        }
+      } catch (trackerErr) {
+        console.warn('Could not sync customer_status to call_tracker on update:', trackerErr);
+      }
+    }
+
     refreshBadgeCounts();
     return updated;
   },
@@ -727,6 +782,7 @@ export const siteVisitMeetingApi = {
    * - 'Interested' (Closed Won or In Progress)
    * - 'Not Interested' (Rejected)
    * - 'Did Not Show'
+   * - 'Under Negotiation' (negotiating, next follow-up scheduled)
    */
   async getAllSiteVisitMeetingLeads() {
     const [leads, trackers, assignedVisitors, followUps] = await Promise.all([
@@ -735,7 +791,11 @@ export const siteVisitMeetingApi = {
       this.getAssignedVisitors(),
       this.getVisitorFollowUps()
     ]);
+    return this.buildSiteVisitMeetingLeads(leads, trackers, assignedVisitors, followUps);
+  },
 
+  // The Site Visit / Meeting list from already-loaded data (also used for the sidebar badge, so they match)
+  buildSiteVisitMeetingLeads(leads, trackers, assignedVisitors, followUps) {
     const leadsById = Object.fromEntries(leads.map(l => [String(l.id), l]));
     const leadsByNo = Object.fromEntries(leads.map(l => [String(l.leadNo), l]));
 
@@ -956,7 +1016,7 @@ export const siteVisitMeetingApi = {
 
   async getPendingFollowUpsWithLeads() {
     const all = await this.getAllSiteVisitMeetingLeads();
-    return all.filter(item => item.status === 'Assigned' || item.status === 'Future Plan');
+    return all.filter(item => ['Assigned', 'Future Plan', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'].includes(item.status));
   },
 
   async getHistoryFollowUpsWithLeads() {

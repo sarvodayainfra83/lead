@@ -5,7 +5,7 @@ import {
   updateLead as updateLocalLead,
   deleteLead as deleteLocalLead
 } from '../utils/storageManager';
-import { refreshBadgeCounts } from '../store/badgeCountStore';
+import { refreshBadgeCounts } from '../utils/badgeNotifier';
 import { useAuthStore } from '../store/authStore';
 import { getUserLeadTypeScope, matchesUserLeadType, matchesUserAssignment, matchesUserReceiver } from '../utils/authUtils';
 
@@ -57,6 +57,30 @@ const latestOf = (a, b) => {
 
 // Tracks whether Supabase leads table has admin_remark_seen_at / user_remark_seen_at columns
 let seenColumnsAvailable = true;
+
+// Day marks the user ticks in a Today's Followup list; each only counts on the day it was set:
+//  - call:  leads.call_marked_at / call_marked_by   — "called today" (Lead & Followup)
+//  - visit: leads.visit_marked_at / visit_marked_by — "site visit done today" (Site Visit / Meeting)
+// Kept in this browser until the columns exist in Supabase.
+const DAY_MARKS = {
+  call: { atColumn: 'call_marked_at', byColumn: 'call_marked_by', atField: 'callMarkedAt', byField: 'callMarkedBy', storageKey: 'callMarks', available: true },
+  visit: { atColumn: 'visit_marked_at', byColumn: 'visit_marked_by', atField: 'visitMarkedAt', byField: 'visitMarkedBy', storageKey: 'visitMarks', available: true }
+};
+const readLocalDayMarks = (cfg) => {
+  try {
+    return JSON.parse(localStorage.getItem(cfg.storageKey) || '{}');
+  } catch {
+    return {};
+  }
+};
+const writeLocalDayMark = (cfg, leadId, mark) => {
+  try {
+    const all = readLocalDayMarks(cfg);
+    if (mark) all[String(leadId)] = mark;
+    else delete all[String(leadId)];
+    localStorage.setItem(cfg.storageKey, JSON.stringify(all));
+  } catch { /* storage unavailable */ }
+};
 
 export const leadApi = {
   // Helper to map DB row -> Frontend Lead model
@@ -361,8 +385,13 @@ export const leadApi = {
   // Fetch ALL leads across all 3 tables with unified structure, ignoring the user's lead type.
   // Only for system logic that must see every lead (e.g. generating the next unique Lead No).
   async getAllLeads() {
-    const leads = await this.fetchLeadRows();
-    if (!isSupabaseConfigured || leads.length === 0) return leads;
+    const fetched = await this.fetchLeadRows();
+    if (!isSupabaseConfigured || fetched.length === 0) return fetched;
+
+    // Day marks — one query per kind (started now, alongside the remarks one) so a missing column breaks nothing else
+    const dayMarkQueries = Object.values(DAY_MARKS).map(cfg => (cfg.available
+      ? Promise.resolve(supabase.from('leads').select(`id, ${cfg.atColumn}, ${cfg.byColumn}`))
+      : Promise.resolve({ data: null })));
 
     // Admin / user remark thread lives on the leads table (same id as call_trackers.lead_id)
     let remarkRows = null;
@@ -384,6 +413,26 @@ export const leadApi = {
         .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date'));
     }
 
+    const dayMarkResults = await Promise.all(dayMarkQueries);
+    const marksByKind = Object.values(DAY_MARKS).map((cfg, idx) => {
+      const { data: rows, error: markError } = dayMarkResults[idx];
+      if (markError) cfg.available = false; // columns not added in Supabase yet — use this browser's marks
+      const byId = cfg.available
+        ? Object.fromEntries((rows || []).map(r => [String(r.id), { at: r[cfg.atColumn], by: r[cfg.byColumn] }]))
+        : readLocalDayMarks(cfg);
+      return { cfg, byId };
+    });
+    const leads = fetched.map(l => {
+      let lead = l;
+      marksByKind.forEach(({ cfg, byId }) => {
+        const mark = byId[String(l.id)];
+        // A real tick always records who made it; a time without a name (e.g. a column default filling it on
+        // insert) isn't a tick, so new leads don't show up as already called / visited
+        if (mark?.at && mark.by) lead = { ...lead, [cfg.atField]: mark.at, [cfg.byField]: mark.by };
+      });
+      return lead;
+    });
+
     if (error || !remarkRows) {
       if (error) console.warn('Could not load lead remarks:', error);
       return leads;
@@ -393,6 +442,43 @@ export const leadApi = {
       const r = remarksById[String(l.id)];
       return r ? { ...l, ...this.mapRemarksFromDb(r) } : l;
     });
+  },
+
+  // Tick / untick a day mark on a lead ('call' or 'visit'). marked=false clears it.
+  async setDayMark(kind, leadId, marked, userName) {
+    const cfg = DAY_MARKS[kind];
+    const mark = marked ? { at: nowIST(), by: userName || 'User' } : null;
+    let savedInDb = !isSupabaseConfigured;
+    if (isSupabaseConfigured && cfg.available) {
+      const { error } = await supabase
+        .from('leads')
+        .update({ [cfg.atColumn]: mark?.at || null, [cfg.byColumn]: mark?.by || null })
+        .eq('id', leadId);
+      if (error) {
+        cfg.available = false;
+        console.warn(`Could not save ${kind} mark (run the leads ${cfg.atColumn} SQL):`, error.message);
+        writeLocalDayMark(cfg, leadId, mark);
+      } else {
+        savedInDb = true;
+      }
+    } else if (isSupabaseConfigured) {
+      writeLocalDayMark(cfg, leadId, mark);
+    } else {
+      const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
+      if (existing) updateLocalLead({ ...existing, [cfg.atField]: mark?.at || null, [cfg.byField]: mark?.by || '' });
+    }
+    return { markedAt: mark?.at || null, markedBy: mark?.by || '', savedInDb };
+  },
+
+  // "Called today" (Lead & Followup)
+  setCallMark(leadId, marked, userName) {
+    return this.setDayMark('call', leadId, marked, userName)
+      .then(r => ({ callMarkedAt: r.markedAt, callMarkedBy: r.markedBy, savedInDb: r.savedInDb }));
+  },
+
+  // "Site visit done today" (Site Visit / Meeting)
+  setVisitMark(leadId, marked, userName) {
+    return this.setDayMark('visit', leadId, marked, userName);
   },
 
   mapRemarksFromDb(row) {

@@ -20,11 +20,32 @@ export const isUserTester = (user) => {
 };
 
 /**
+ * A user can hold several positions, stored comma-separated in users.position (e.g. "Manager, Caller").
+ * Positions only add features (a Caller shows up in caller lists); what data a user sees still comes
+ * from their role and Page Access.
+ */
+export const parsePositions = (position) =>
+  String(position || '').split(',').map(s => s.trim()).filter(Boolean);
+
+export const hasPosition = (userOrPosition, name) => {
+  const position = typeof userOrPosition === 'string' ? userOrPosition : userOrPosition?.position;
+  const target = String(name || '').trim().toLowerCase();
+  return parsePositions(position).some(p => p.toLowerCase() === target);
+};
+
+// Position string with `name` added / removed, other positions kept (null when none are left)
+export const addPosition = (position, name) =>
+  (hasPosition(position || '', name) ? parsePositions(position) : [...parsePositions(position), name]).join(', ');
+
+export const removePosition = (position, name) =>
+  parsePositions(position).filter(p => p.toLowerCase() !== String(name).trim().toLowerCase()).join(', ') || null;
+
+/**
  * Check if the given user has an HR role or position (case-insensitive).
  */
 export const isUserHR = (user) => {
   if (!user) return false;
-  return (user.role || '').toUpperCase() === 'HR' || (user.position || '').toUpperCase() === 'HR';
+  return (user.role || '').toUpperCase() === 'HR' || hasPosition(user, 'HR');
 };
 
 /**
@@ -238,18 +259,181 @@ export const matchesUserLeadType = (lead, user) => {
 };
 
 /**
+ * Check if a lead, tracker, customer record, or visitor record has ANY connection to the current user.
+ * 
+ * Rules:
+ * - ADMIN / TESTER: always returns true (can view all data).
+ * - Regular USER: returns true if they are the assigned caller, visitor, receiver,
+ *   sales executive, creator, or mentioned in any call tracker / visitor follow-up.
+ */
+export const matchesUserConnection = (item, user) => {
+  if (!user) return false;
+  if (isUserAdmin(user) || isUserTester(user)) return true;
+
+  if (matchesUserAssignment(item, user)) return true;
+  if (matchesUserReceiver(item, user)) return true;
+  if (matchesUserVisitor(item, user)) return true;
+
+  if (!item || typeof item !== 'object') return false;
+
+  const userKeys = [
+    user.id,
+    user.dbId,
+    user.username,
+    user.name,
+    user.visitorId,
+    user.visitor_id,
+    user.number,
+    user.gmail
+  ]
+    .filter(Boolean)
+    .map(v => String(v).trim().toLowerCase());
+
+  if (userKeys.length === 0) return false;
+
+  const checkMatch = (val) => {
+    if (!val) return false;
+    const str = String(val).trim().toLowerCase();
+    if (!str || str === 'unassigned' || str === 'pending assignment' || str === 'null' || str === 'undefined' || str === '-') return false;
+    return userKeys.includes(str);
+  };
+
+  if (checkMatch(item.callerAssigned)) return true;
+  if (checkMatch(item.caller)) return true;
+  if (checkMatch(item.callerAssignedId)) return true;
+  if (checkMatch(item.leadReceiver)) return true;
+  if (checkMatch(item.assignedVisitor)) return true;
+  if (checkMatch(item.visitorName)) return true;
+  if (checkMatch(item.visitorId)) return true;
+  if (checkMatch(item.salesExecutive)) return true;
+  if (checkMatch(item.sales_executive)) return true;
+  if (checkMatch(item.createdBy)) return true;
+  if (checkMatch(item.created_by)) return true;
+
+  // Check in trackers array
+  if (Array.isArray(item.trackers) && item.trackers.length > 0) {
+    const hasMatch = item.trackers.some(t => (
+      checkMatch(t.callerAssigned) ||
+      checkMatch(t.caller) ||
+      checkMatch(t.callerAssignedId) ||
+      checkMatch(t.salesExecutive) ||
+      checkMatch(t.visitorName) ||
+      checkMatch(t.userName)
+    ));
+    if (hasMatch) return true;
+  }
+
+  // Check in visitor follow-ups array
+  if (Array.isArray(item.visitorFollowUps) && item.visitorFollowUps.length > 0) {
+    const hasMatch = item.visitorFollowUps.some(f => (
+      checkMatch(f.visitorName) ||
+      checkMatch(f.visitor_name) ||
+      checkMatch(f.visitorId) ||
+      checkMatch(f.visitor_id) ||
+      checkMatch(f.assignedVisitor) ||
+      checkMatch(f.salesExecutive) ||
+      checkMatch(f.sales_executive)
+    ));
+    if (hasMatch) return true;
+  }
+
+  // Check in followUps array
+  if (Array.isArray(item.followUps) && item.followUps.length > 0) {
+    const hasMatch = item.followUps.some(f => (
+      checkMatch(f.visitorName) ||
+      checkMatch(f.visitor_name) ||
+      checkMatch(f.visitorId) ||
+      checkMatch(f.visitor_id) ||
+      checkMatch(f.assignedVisitor) ||
+      checkMatch(f.salesExecutive) ||
+      checkMatch(f.sales_executive)
+    ));
+    if (hasMatch) return true;
+  }
+
+  return false;
+};
+
+/**
+ * Check if a non-interested lead record is authorized for the given user.
+ * - ADMIN role: can view all records (both assigned and unassigned).
+ * - Regular USER / EMPLOYEE role: can ONLY view records where they are the assigned visitor,
+ *   assigned caller, relationship manager / receiver, or have logged calls/follow-ups on that lead.
+ *   Unassigned records or records assigned to other users are strictly hidden.
+ */
+export const matchesAuthorizedUserForNonInterested = (item, user) => {
+  if (!user) return false;
+  const role = String(user.role || '').trim().toUpperCase();
+  if (role === 'ADMIN') return true;
+
+  if (!item || typeof item !== 'object') return false;
+
+  const userName = String(user.name || '').trim().toLowerCase();
+  const userId = String(user.id || '').trim().toLowerCase();
+  const userVisitorId = String(user.visitorId || user.visitor_id || '').trim().toLowerCase();
+
+  const isMatch = (val) => {
+    if (!val) return false;
+    const s = String(val).trim().toLowerCase();
+    if (!s || s === 'unassigned' || s === 'pending assignment' || s === 'null' || s === 'undefined' || s === '-' || s === '0') return false;
+    return s === userName || (userId && s === userId) || (userVisitorId && s === userVisitorId);
+  };
+
+  // 1. Check if user is the assigned visitor
+  if (isMatch(item.assignedVisitor) || isMatch(item.visitorName) || isMatch(item.visitorId) || isMatch(item.assignedVisitorId) || isMatch(item.salesExecutive)) {
+    return true;
+  }
+
+  // 2. Check if user is the assigned caller
+  if (isMatch(item.callerAssigned) || isMatch(item.caller) || isMatch(item.callerAssignedId)) {
+    return true;
+  }
+
+  // 3. Check if user is the lead receiver
+  if (isMatch(item.leadReceiver)) {
+    return true;
+  }
+
+  // 4. Check follow-ups history (did this user conduct/log a visit on this lead?)
+  if (Array.isArray(item.followUps) && item.followUps.length > 0) {
+    const matchedFollowUp = item.followUps.some(f => (
+      isMatch(f.visitorName) ||
+      isMatch(f.visitor_name) ||
+      isMatch(f.visitorId) ||
+      isMatch(f.visitor_id) ||
+      isMatch(f.assignedVisitor) ||
+      isMatch(f.salesExecutive) ||
+      isMatch(f.sales_executive)
+    ));
+    if (matchedFollowUp) return true;
+  }
+
+  // 5. Check call trackers history (did this user make/log a call on this lead?)
+  if (Array.isArray(item.trackers) && item.trackers.length > 0) {
+    const matchedTracker = item.trackers.some(t => (
+      isMatch(t.callerAssigned) ||
+      isMatch(t.caller) ||
+      isMatch(t.callerAssignedId)
+    ));
+    if (matchedTracker) return true;
+  }
+
+  return false;
+};
+
+/**
  * Check if the user has Full Access permission for a specific page.
  * Admins always have full access.
  */
 export const hasFullAccess = (user, pageKey) => getPageAccess(user, pageKey) === 'full';
 
 /**
- * The access level ('none' | 'view' | 'full') a user has on a page. Deny by default:
+ * The access level ('none' | 'view' | 'full') a user has on a page.
  * - Admins: always 'full'.
- * - Users: ONLY what the admin explicitly granted in Setting → Page Access. A page that isn't
- *   listed for the user (e.g. a page added later) is 'none' — never a built-in default.
- * - Each page is checked on its own key (Assign Visitor and Visitor Follow Up no longer grant
- *   each other); 'master' and 'setting' are the same page. Legacy 'edit' is treated as 'full'.
+ * - A page set to "No Access" in Setting → Page Access is always blocked.
+ * - Core lead/customer information pages (Dashboard, Lead, Call Tracker, Site Visit, Customer Master, Non-interested, Products, Attendance)
+ *   that were never configured for the user default to view, so they can see their connected customer records.
+ * - Administrative / Management pages (Setting, Master, Reports) strictly follow permissions configured in Setting → Page Access.
  */
 export const getPageAccess = (user, pageKey) => {
   if (!user) return 'none';
@@ -265,13 +449,13 @@ export const getPageAccess = (user, pageKey) => {
     // Old accounts stored one shared 'siteVisitMeeting' level for both visitor pages
     level = pages[pageKey] ?? pages.siteVisitMeeting;
   } else if (pageKey === 'nonInterested') {
-    // If explicitly configured in accessPages by admin, strictly honor that configuration
+    // If explicitly configured in accessPages by admin, honor that configuration
     if (pages.nonInterested !== undefined && pages.nonInterested !== null) {
       level = pages.nonInterested;
     } else if (isUserHR(user)) {
-      level = 'none'; // HR users default to no access unless explicitly granted by admin
+      level = 'none';
     } else {
-      level = pages.siteVisitMeeting ?? pages.callTracker ?? 'none';
+      level = pages.siteVisitMeeting ?? pages.callTracker ?? 'view';
     }
   } else {
     level = pages[pageKey];
@@ -283,6 +467,16 @@ export const getPageAccess = (user, pageKey) => {
   // HR users default to full access for Attendance & Attendance Report unless explicitly set to 'none'
   if (isUserHR(user) && (pageKey === 'attendance' || pageKey === 'attendanceReport')) {
     return level === 'none' ? 'none' : 'full';
+  }
+
+  // An explicit "No Access" from Setting → Page Access always wins (sidebar, Dashboard links and the route guard)
+  if (level === 'none') return 'none';
+
+  // Core customer information & lead pages the admin never configured for this user default to
+  // view mode, so they can still see their connected leads/customers.
+  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance'];
+  if (CUSTOMER_INFO_PAGES.includes(pageKey)) {
+    return 'view';
   }
 
   return 'none';

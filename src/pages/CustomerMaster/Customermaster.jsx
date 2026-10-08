@@ -7,7 +7,7 @@ import PageTabs from '../../components/PageTabs';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { LEAD_SOURCES } from '../Lead/leadConstants';
 import { useAuthStore } from '../../store/authStore';
-import { matchesUserAssignment, getUserLeadTypeScope } from '../../utils/authUtils';
+import { matchesUserConnection, getUserLeadTypeScope } from '../../utils/authUtils';
 import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 import { CUSTOMER_MASTER_STATUSES, CUSTOMER_STATUS_STYLES } from '../CallTracker/callTrackerConstants';
 import LeadDetailsModal from '../Lead/LeadDetailsModal';
@@ -19,6 +19,8 @@ const TABS = [
   { key: 'Insurance', label: 'Insurance', icon: ShieldCheck },
   { key: 'Mutual Fund', label: 'Mutual Fund', icon: TrendingUp }
 ];
+
+const DEFAULT_CUSTOMER_STATUS = 'Hot';
 
 // Same category partitioning as the Lead and Call Tracker pages
 const getCategory = (l) => {
@@ -63,22 +65,34 @@ export default function Customermaster() {
     ? TABS.filter(t => scope.categories.includes(t.key))
     : (scope?.category ? TABS.filter(t => t.key === scope.category) : TABS);
 
+  // The page opens on Hot customers; 'all' shows Hot & Warm together
   const initialFilters = {
     searchQuery: '',
     leadSource: '',
     callerAssigned: '',
-    customerStatus: ''
+    customerStatus: DEFAULT_CUSTOMER_STATUS
   };
-  const [filters, setFilters] = useState({ ...initialFilters, customerStatus: navState.customerStatus || '' });
+  const [filters, setFilters] = useState({ ...initialFilters, customerStatus: navState.customerStatus || DEFAULT_CUSTOMER_STATUS });
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+
+  // Listen for navState updates from Dashboard navigation
+  useEffect(() => {
+    if (navState.customerStatus !== undefined) {
+      setFilters(prev => ({ ...prev, customerStatus: navState.customerStatus || DEFAULT_CUSTOMER_STATUS }));
+      setCurrentPage(1);
+    }
+    if (navState.tab) {
+      setActiveTab(navState.tab);
+    }
+  }, [navState.customerStatus, navState.tab]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const data = await customerMasterApi.getConvertedCustomers();
-      setCustomers((data || []).filter(c => matchesUserAssignment(c, user)));
+      setCustomers((data || []).filter(c => matchesUserConnection(c, user)));
     } catch (err) {
       console.error('Failed to load customers:', err);
     } finally {
@@ -95,33 +109,35 @@ export default function Customermaster() {
     setCurrentPage(1);
   };
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     setFilters({ ...initialFilters });
     setCurrentPage(1);
     toast.success('Filters cleared');
-  };
+  }, [initialFilters]);
 
-  const activeFilterCount = [filters.leadSource, filters.callerAssigned, filters.customerStatus].filter(Boolean).length;
+  // Listen for sidebar click to reset filters
+  useEffect(() => {
+    const handleClear = (e) => {
+      if (!e?.detail?.path || e.detail.path === '/customer-master') {
+        handleClearFilters();
+      }
+    };
+    window.addEventListener('app:clear-filters', handleClear);
+    return () => window.removeEventListener('app:clear-filters', handleClear);
+  }, [handleClearFilters]);
 
-  // Live counts per category tab
-  const categoryCounts = useMemo(() => {
-    const counts = { 'Real Estate': 0, 'Insurance': 0, 'Mutual Fund': 0 };
-    customers.forEach(c => {
-      const cat = getCategory(c);
-      if (cat) counts[cat] += 1;
-    });
-    return counts;
-  }, [customers]);
+  // The default Hot filter doesn't count as a change (no Reset button for it)
+  const activeFilterCount = [
+    filters.leadSource,
+    filters.callerAssigned,
+    filters.customerStatus !== DEFAULT_CUSTOMER_STATUS
+  ].filter(Boolean).length;
 
-  const callerOptions = useMemo(() => (
-    Array.from(new Set(customers.map(c => c.callerAssigned))).filter(Boolean).sort().map(v => ({ value: v, label: v }))
-  ), [customers]);
-
-  const filteredCustomers = customers.filter(c => {
-    if (getCategory(c) !== activeTab) return false;
+  // Every active filter except the category tab
+  const matchesFilters = useCallback((c) => {
     if (filters.leadSource && c.leadSource !== filters.leadSource) return false;
     if (filters.callerAssigned && c.callerAssigned !== filters.callerAssigned) return false;
-    if (filters.customerStatus && c.customerStatus !== filters.customerStatus) return false;
+    if (filters.customerStatus && filters.customerStatus !== 'all' && c.customerStatus !== filters.customerStatus) return false;
 
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
@@ -134,7 +150,26 @@ export default function Customermaster() {
       );
     }
     return true;
-  }).reverse();
+  }, [filters]);
+
+  // Live counts per category tab — follow the active filters, so e.g. "Hot" from the Dashboard
+  // shows how many Hot customers each lead type has (tab counts add up to the Dashboard figure)
+  const categoryCounts = useMemo(() => {
+    const counts = { 'Real Estate': 0, 'Insurance': 0, 'Mutual Fund': 0 };
+    customers.forEach(c => {
+      const cat = getCategory(c);
+      if (cat && matchesFilters(c)) counts[cat] += 1;
+    });
+    return counts;
+  }, [customers, matchesFilters]);
+
+  const callerOptions = useMemo(() => (
+    Array.from(new Set(customers.map(c => c.callerAssigned))).filter(Boolean).sort().map(v => ({ value: v, label: v }))
+  ), [customers]);
+
+  const filteredCustomers = customers
+    .filter(c => getCategory(c) === activeTab && matchesFilters(c))
+    .reverse();
 
   const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
   const paginatedCustomers = filteredCustomers.slice(
@@ -155,7 +190,8 @@ export default function Customermaster() {
 
   const statusBadgeClass = (status) => {
     switch (status) {
-      case 'Interested': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'Interested':
+      case 'Deal Lock': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'Future Plan Date': return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'Site Visit/Meeting':
       case 'Meeting': return 'bg-cyan-50 text-cyan-700 border-cyan-200';
@@ -334,10 +370,13 @@ export default function Customermaster() {
 
         <div className="w-[130px] lg:w-[150px]">
           <SearchableDropdown
-            options={CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v }))}
+            options={[
+              ...CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v })),
+              { value: 'all', label: 'Hot & Warm' }
+            ]}
             value={filters.customerStatus}
-            onChange={(val) => updateFilter('customerStatus', val)}
-            placeholder="Hot & Warm"
+            onChange={(val) => updateFilter('customerStatus', val || DEFAULT_CUSTOMER_STATUS)}
+            placeholder="Hot"
             height="h-[30px]"
           />
         </div>

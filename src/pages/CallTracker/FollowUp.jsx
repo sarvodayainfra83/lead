@@ -6,10 +6,12 @@ import { callTrackerApi } from '../../api/callTrackerApi';
 import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, matchesUserAssignment, hasFullAccess, getUserLeadTypeScope } from '../../utils/authUtils';
-import { isDirectSiteVisitLead } from './callTrackerConstants';
+import { refreshBadgeCounts } from '../../store/badgeCountStore';
+import { isUserAdmin, matchesUserConnection, hasFullAccess, getUserLeadTypeScope } from '../../utils/authUtils';
+import { isDirectSiteVisitLead, buildCalledLeadKeys, isInFollowUpQueue } from './callTrackerConstants';
 import CallTrackerCategoryView from './CallTrackerCategoryView';
 import Direct from './Direct';
+import BulkUploadLead from '../Lead/BulkUploadLead';
 
 /**
  * FollowUp (Call Tracker)
@@ -51,6 +53,7 @@ export default function FollowUp() {
   const [callersMaster, setCallersMaster] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showDirectForm, setShowDirectForm] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
 
   // Load all leads, call trackers, visitor follow-ups, assigned visitors, and caller master data
   const loadData = useCallback(async () => {
@@ -83,16 +86,22 @@ export default function FollowUp() {
   // Direct site visit leads created through Add Lead are handled exclusively in Site Visit / Meeting
   const accessibleLeads = useMemo(() => {
     const isAdmin = isUserAdmin(user);
+    const calledLeadKeys = buildCalledLeadKeys(allTrackers);
     return allLeads.filter(lead => {
       if (isDirectSiteVisitLead(lead)) {
         return false;
       }
-      if (!isAdmin && !matchesUserAssignment(lead, user)) {
+      // Unassigned leads still wait on the Lead page for a caller — keep only assigned/direct leads
+      // (and any lead that already has call history)
+      if (!isInFollowUpQueue(lead, calledLeadKeys)) {
+        return false;
+      }
+      if (!isAdmin && !matchesUserConnection(lead, user)) {
         return false;
       }
       return true;
     });
-  }, [allLeads, user]);
+  }, [allLeads, allTrackers, user]);
 
   // Categorize leads accurately using the standard leadType & leadNo prefixes
   const realEstateLeads = useMemo(() => {
@@ -150,6 +159,7 @@ export default function FollowUp() {
         tabs={tabs}
         activeTab={activeTab}
         initialStatusFilter={navState.statusFilter}
+        initialDateFilter={navState.dateFilter || (navState.statusFilter ? 'all' : 'today')}
         openRemarkLeadId={navState.openRemarkLeadId}
         openRemarkNonce={navState.openRemarkNonce}
         onTabChange={setActiveTab}
@@ -166,6 +176,10 @@ export default function FollowUp() {
           if (tab) setActiveTab(tab);
           setShowDirectForm(true);
         }}
+        onBulkUpload={(tab) => {
+          if (tab) setActiveTab(tab);
+          setShowBulkUpload(true);
+        }}
       />
 
       {/* Direct Lead Entry Modal */}
@@ -175,6 +189,20 @@ export default function FollowUp() {
         onSaved={loadData}
         defaultLeadType={activeTab}
       />
+
+      {/* Bulk Upload — imported leads are assigned to a caller so they land in this follow-up queue */}
+      {showBulkUpload && (
+        <BulkUploadLead
+          isOpen={showBulkUpload}
+          onClose={() => setShowBulkUpload(false)}
+          onImported={() => {
+            loadData();
+            refreshBadgeCounts();
+          }}
+          defaultLeadType={activeTab}
+          assignCaller
+        />
+      )}
     </div>
   );
 }

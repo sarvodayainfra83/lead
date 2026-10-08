@@ -2,6 +2,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, Plus } from 'lucide-react';
 
+// Touch screens (phones / tablets): don't put the cursor in the filter box when the list opens — that pops the
+// keyboard up over the options. The cursor (and keyboard) only appear when the user taps the filter box.
+const isTouchScreen = () => typeof window !== 'undefined' && Boolean(window.matchMedia?.('(hover: none) and (pointer: coarse)').matches);
+
 /**
  * SearchableDropdown Component
  * A custom select component with built-in search functionality.
@@ -137,7 +141,7 @@ const SearchableDropdown = ({
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-[7px] text-gray-400" size={10} />
             <input
-              autoFocus
+              autoFocus={!isTouchScreen()}
               type="text"
               placeholder="Filter..."
               value={searchTerm}

@@ -16,9 +16,10 @@ import SiteVisitFollowUpReport from '../../components/SiteVisitFollowUpReport';
 
 const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Deal Closed': 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-rose-50 text-rose-700 border-rose-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
+  'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
   Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   'Under Review': 'bg-purple-50 text-purple-700 border-purple-200',

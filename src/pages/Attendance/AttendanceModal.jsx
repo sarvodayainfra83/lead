@@ -277,7 +277,7 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         setAddress('Location unavailable');
         setGeocodingStatus('RESOLVED');
         setLocationFallback(false);
-        if (err.code === 1) {
+        if (err.code === 1) {   
           toast.error('Location permission denied (HTTPS required on mobile IP)');
         } else if (err.code === 2) {
           toast.error('Device GPS position unavailable. Please turn on Location.');

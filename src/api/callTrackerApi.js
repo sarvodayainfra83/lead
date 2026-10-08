@@ -6,7 +6,7 @@ import {
   saveCallTrackers as saveLocalCallTrackers,
   deleteCallTracker as deleteLocalCallTracker
 } from '../utils/storageManager';
-import { refreshBadgeCounts } from '../store/badgeCountStore';
+import { refreshBadgeCounts } from '../utils/badgeNotifier';
 import { normalizeCustomerStatus } from '../pages/CallTracker/callTrackerConstants';
 import { nowIST } from './leadApi';
 
