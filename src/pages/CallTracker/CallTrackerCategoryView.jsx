@@ -5,7 +5,7 @@ import {
   Search, X, RotateCcw, Phone, Eye, ChevronDown, ChevronUp,
   Calendar, FileSpreadsheet, Plus, RefreshCw, UserCheck,
   Mail, Briefcase, FileText, MapPin, Clock, IndianRupee, MessageSquare, Bell, Pencil, Reply,
-  CalendarDays, Upload, CheckCircle
+  CalendarDays, Upload
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -183,8 +183,6 @@ export default function CallTrackerCategoryView({
   // Remarks saved in this session, applied on top of the loaded leads until the next refresh
   const [remarkOverrides, setRemarkOverrides] = useState({});
   const [newRemarksOnly, setNewRemarksOnly] = useState(false);
-  // "Called today" ticks made in this session, applied on top of the loaded leads ({ leadId: markedAt | null })
-  const [callMarkOverrides, setCallMarkOverrides] = useState({});
 
   // Open the remark conversation; opening it counts as "seen" so the blink stops right away
   const openRemark = (item) => {
@@ -448,57 +446,49 @@ export default function CallTrackerCategoryView({
     return !isNaN(d.getTime()) && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
   }, [today]);
 
-  // The user ticked "Mark called" on this lead today (yesterday's ticks no longer count)
-  const isMarkedToday = useCallback((item) => {
-    const key = String(item.id);
-    const markedAt = key in callMarkOverrides ? callMarkOverrides[key] : item.callMarkedAt;
-    return isSameDayAsToday(markedAt);
-  }, [callMarkOverrides, isSameDayAsToday]);
+  // Calls logged on this lead today (from its call records)
+  const getTodayCallCount = useCallback((item) =>
+    (item.trackers || []).filter(t => isSameDayAsToday(Number(t.timestampMs || t.timestamp_ms) || null)).length,
+  [isSameDayAsToday]);
 
-  // "Punch-in" mark in Today's Followup — only set by the user ticking it (logging a call doesn't set it)
-  const isCalledToday = isMarkedToday;
+  // "Called" — any followup logged on this lead today (Call Not Received / No WhatsApp Reply too, and calls
+  // logged from Site Visit / Pending). Only a submitted followup creates a call log; the badge isn't clickable.
+  const isCalledToday = useCallback((item) => getTodayCallCount(item) > 0, [getTodayCallCount]);
 
-  const saveCallMark = (item, marked) => {
-    if (!item.id) return;
-    const key = String(item.id);
-    const previous = callMarkOverrides[key];
-    setCallMarkOverrides(prev => ({ ...prev, [key]: marked ? new Date().toISOString() : null }));
-    leadApi.setCallMark(item.id, marked, user?.name || user?.id)
-      .then(({ callMarkedAt, savedInDb }) => {
-        setCallMarkOverrides(prev => ({ ...prev, [key]: callMarkedAt }));
-        if (!savedInDb) toast('Saved on this device only — the call-mark columns are missing in the database', { id: 'call-mark-local', icon: '⚠️' });
-      })
-      .catch(err => {
-        console.error('Could not save called mark:', err);
-        setCallMarkOverrides(prev => ({ ...prev, [key]: previous }));
-        toast.error('Could not save the called mark');
-      });
-  };
+  // The called mark is shown in Today's Followup and All Dates
+  const showCallMark = dateFilter === 'today' || dateFilter === 'all';
 
-  const toggleCallMark = (item) => saveCallMark(item, !isMarkedToday(item));
-
-  // ✓ button shown in Today's Followup (desktop icon / mobile pill): tick after calling, tick again to undo
+  // Read-only badge (desktop icon / mobile pill): turns green once today's followup is submitted. In place of
+  // a ✓ it shows a call count — today's calls in Today's Followup, all calls till date in All Dates
   const renderCallMarkButton = (item, compact) => {
-    const done = isMarkedToday(item);
-    const title = done ? 'Marked as called today — click to undo' : 'Mark as called today';
+    const done = isCalledToday(item);
+    const todayCalls = getTodayCallCount(item);
+    const isAllDates = dateFilter === 'all';
+    const callCount = isAllDates ? (item.followUpCount || 0) : todayCalls;
+    const countText = isAllDates
+      ? `${callCount} call${callCount === 1 ? '' : 's'} till date`
+      : `${todayCalls} call${todayCalls === 1 ? '' : 's'} today`;
+    const title = done
+      ? `Followup submitted today — ${countText}`
+      : `Not called yet today — submit the followup to mark it${callCount > 0 ? ` (${countText})` : ''}`;
     return (
-      <button
-        type="button"
-        onClick={() => toggleCallMark(item)}
+      <span
         title={title}
         aria-label={title}
-        aria-pressed={done}
         className={compact
-          ? `w-7 h-7 inline-flex items-center justify-center rounded-md border transition active:scale-95 ${done
-            ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
-            : 'bg-white text-gray-400 border-gray-300 hover:text-emerald-600 hover:border-emerald-400'}`
-          : `inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border active:scale-95 transition cursor-pointer shrink-0 ${done
+          ? `w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-default ${done
             ? 'bg-emerald-600 text-white border-emerald-600'
-            : 'bg-white text-gray-600 border-gray-300 hover:border-emerald-400 hover:text-emerald-700'}`}
+            : `bg-white border-gray-200 ${callCount > 0 ? 'text-gray-500' : 'text-gray-300'}`}`
+          : `inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-default shrink-0 ${done
+            ? 'bg-emerald-600 text-white border-emerald-600'
+            : 'bg-white text-gray-400 border-gray-200'}`}
       >
-        <CheckCircle size={compact ? 13 : 12} />
-        {!compact && <span>{done ? 'Called' : 'Mark called'}</span>}
-      </button>
+        {/* No calls yet → the badge stays empty (no ✓) */}
+        {callCount > 0 && (
+          <span className={`font-bold leading-none ${compact ? 'text-xs' : 'text-[11px]'}`}>{callCount}</span>
+        )}
+        {!compact && <span>{done ? 'Called' : 'Not called'}</span>}
+      </span>
     );
   };
 
@@ -827,8 +817,8 @@ export default function CallTrackerCategoryView({
   // Render Table Row with standard text sizes and popup View modal
   const renderRow = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
-    // Called-today mark only in the Today's Followup view
-    const calledToday = dateFilter === 'today' && isCalledToday(item);
+    // Called-today mark in Today's Followup and All Dates views
+    const calledToday = showCallMark && isCalledToday(item);
 
     return (
       <tr
@@ -854,8 +844,8 @@ export default function CallTrackerCategoryView({
               </button>
             )}
 
-            {/* Today's Followup: tick the lead once you've called it today */}
-            {canEdit && dateFilter === 'today' && renderCallMarkButton(item, true)}
+            {/* Today's Followup & All Dates: tick the lead once you've called it today */}
+            {canEdit && showCallMark && renderCallMarkButton(item, true)}
 
             {/* View all records (call count badge) */}
             <button
@@ -865,7 +855,8 @@ export default function CallTrackerCategoryView({
               className="relative w-7 h-7 inline-flex items-center justify-center rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-600 hover:text-white transition active:scale-95"
             >
               <Eye size={13} />
-              {item.followUpCount > 0 && (
+              {/* Total-calls count is hidden where the called badge shows today's count instead */}
+              {item.followUpCount > 0 && !showCallMark && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-emerald-600 text-white text-[9px] font-bold leading-4 border border-white">
                   {item.followUpCount}
                 </span>
@@ -1143,8 +1134,8 @@ export default function CallTrackerCategoryView({
   const renderCard = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
     const isExpanded = expandedCardIds.has(leadKey);
-    // Called-today mark only in the Today's Followup view
-    const calledToday = dateFilter === 'today' && isCalledToday(item);
+    // Called-today mark in Today's Followup and All Dates views
+    const calledToday = showCallMark && isCalledToday(item);
 
     // Filter populated fields (skip empty/null/'-')
     const isValid = (val) => {
@@ -1347,7 +1338,7 @@ export default function CallTrackerCategoryView({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {canEdit && dateFilter === 'today' && renderCallMarkButton(item, false)}
+            {canEdit && showCallMark && renderCallMarkButton(item, false)}
             {canEdit && (
               <button
                 type="button"

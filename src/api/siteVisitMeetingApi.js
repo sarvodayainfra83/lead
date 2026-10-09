@@ -16,6 +16,15 @@ import { getLatestTrackerForLead, normalizeCustomerStatus } from '../pages/CallT
 
 const isUuid = (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
 
+// Visit outcomes → call_trackers statuses (its CHECK constraint doesn't allow the visit-only ones)
+const VISIT_TO_CALL_STATUS = {
+  'Deal Lock': 'Interested',
+  'Under Negotiation': 'Interested',
+  'Future Plan': 'Future Plan Date',
+  'Did Not Show': 'Site Visit/Meeting'
+};
+const toCallTrackerStatus = (status) => VISIT_TO_CALL_STATUS[status] || status;
+
 const formatDateForDb = (val) => {
   if (!val) return null;
   if (val instanceof Date && !isNaN(val.getTime())) {
@@ -446,7 +455,7 @@ export const siteVisitMeetingApi = {
         await callTrackerApi.saveCallTracker({
           leadId: normalizedEntry.leadId,
           leadNo: normalizedEntry.leadNo,
-          status: normalizedEntry.status,
+          status: toCallTrackerStatus(normalizedEntry.status),
           customerStatus: customerStatus || 'Warm',
           customerSaid: normalizedEntry.whatHappened || normalizedEntry.dealRemarks || (normalizedEntry.status === 'Call Not Received' ? 'Call Not Received' : (normalizedEntry.status === 'No WhatsApp Reply' ? 'No WhatsApp Reply' : normalizedEntry.status || '')),
           nextDate: normalizedEntry.nextVisitDate || '',
@@ -638,7 +647,7 @@ export const siteVisitMeetingApi = {
       await callTrackerApi.saveCallTracker({
         leadId: leadId || (isUuid(normalizedEntry.leadId) ? normalizedEntry.leadId : null),
         leadNo: normalizedEntry.leadNo,
-        status: normalizedEntry.status,
+        status: toCallTrackerStatus(normalizedEntry.status),
         customerStatus: customerStatus || 'Warm',
         customerSaid: normalizedEntry.whatHappened || normalizedEntry.dealRemarks || (normalizedEntry.status === 'Call Not Received' ? 'Call Not Received' : (normalizedEntry.status === 'No WhatsApp Reply' ? 'No WhatsApp Reply' : normalizedEntry.status || '')),
         nextDate: normalizedEntry.nextVisitDate || '',

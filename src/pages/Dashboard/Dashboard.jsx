@@ -195,7 +195,7 @@ const Avatar = ({ name, size = 'w-9 h-9 text-xs' }) => (
 );
 
 // Metric block: 2-per-row grid on phones/tablets, stacked list on large screens (like "Total income")
-const MetricBlock = ({ label, value, note, noteClass = 'text-gray-400', onClick }) => (
+const MetricBlock = ({ label, value, onClick }) => (
   <button
     type="button"
     onClick={onClick}
@@ -206,7 +206,6 @@ const MetricBlock = ({ label, value, note, noteClass = 'text-gray-400', onClick 
       <ArrowRight size={12} className="text-gray-300 group-hover:text-indigo-500 transition flex-shrink-0 hidden sm:block" />
     </p>
     <p className="text-lg sm:text-2xl font-bold text-gray-900 leading-tight">{value}</p>
-    {note && <p className={`text-[9px] sm:text-[11px] font-medium truncate ${noteClass}`}>{note}</p>}
   </button>
 );
 
@@ -691,42 +690,31 @@ export default function Dashboard() {
             <MetricBlock
               label="Total Leads"
               value={kpis.total}
-              note={`${kpis.notCalled} not called`}
-              noteClass="text-indigo-500"
               onClick={() => go('/lead', { dateFilter: 'all' })}
             />
             <MetricBlock
               label="Today's Leads"
               value={kpis.todayLeads}
-              note="added today"
               onClick={() => go('/lead', { dateFilter: 'today' })}
             />
             <MetricBlock
               label="Today's Calls"
               value={kpis.todayCalls}
-              note="logged today"
-              noteClass="text-sky-600"
               onClick={() => go('/call-tracker', { dateFilter: 'today' })}
             />
             <MetricBlock
               label="Future Plan"
               value={kpis.futurePlan}
-              note="awaiting next call"
-              noteClass="text-amber-600"
               onClick={() => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })}
             />
             <MetricBlock
               label="Converted"
               value={kpis.converted}
-              note={`▲ ${kpis.conversionRate}% of leads`}
-              noteClass="text-emerald-600"
               onClick={() => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })}
             />
             <MetricBlock
               label="Site Visits"
               value={kpis.siteVisit}
-              note={`${kpis.notInterested} not interested`}
-              noteClass="text-rose-500"
               onClick={() => go('/site-visit-meeting', { dateFilter: 'all' })}
             />
           </Card>

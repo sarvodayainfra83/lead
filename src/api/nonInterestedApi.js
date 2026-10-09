@@ -62,8 +62,6 @@ export const nonInterestedApi = {
       }
     });
 
-    console.log("Not interested data : ")
-
     // Group follow-ups by lead
     const followUpsByLeadId = {};
     const followUpsByLeadNo = {};

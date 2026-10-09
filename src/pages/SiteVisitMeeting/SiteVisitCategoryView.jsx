@@ -18,7 +18,6 @@ import { CUSTOMER_STATUS_STYLES } from '../CallTracker/callTrackerConstants';
 import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin } from '../../utils/authUtils';
-import { leadApi } from '../../api/leadApi';
 
 // Check if a lead has a locked (closed) deal: a visit follow-up with outcome 'Deal Lock' (or an explicit legacy
 // "Closed Won" status). The closing amount / deal_outcome aren't used: older visits saved as plain "Interested"
@@ -33,19 +32,29 @@ export const isDealClosed = (item) => {
   return Array.isArray(item.followUps) && item.followUps.some(f => isLockedStatus(f.status));
 };
 
-export const getActualVisitsCount = (item) => {
-  if (!item) return 0;
-  if (Array.isArray(item.followUps) && item.followUps.length > 0) {
-    return item.followUps.filter(f => {
-      const status = String(f.status || '').trim();
-      if (status === 'Call Not Received' || status === 'No WhatsApp Reply' || status === 'Not Interested') return false;
-      const hasVM = Boolean(f.visitMeet?.['site-visit'] || f.visitMeet?.siteVisit || f.visitMeet?.site_visit || f.visitMeet?.meeting);
-      return hasVM || ['Deal Lock', 'Interested', 'Future Plan', 'Under Negotiation', 'Did Not Show'].includes(status);
-    }).length;
-  }
-  const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply' || item.status === 'Not Interested';
-  const hasVM = Boolean(item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit || item.visitMeet?.meeting);
-  return hasVM && !isNoContact ? 1 : 0;
+const hasSiteVisitFlag = (vm) => Boolean(vm?.['site-visit'] || vm?.siteVisit || vm?.site_visit);
+const hasMeetingFlag = (vm) => Boolean(vm?.meeting);
+const NO_VISIT_STATUSES = ['Call Not Received', 'No WhatsApp Reply', 'Not Interested'];
+const VISIT_OUTCOME_STATUSES = ['Deal Lock', 'Interested', 'Future Plan', 'Under Negotiation', 'Did Not Show'];
+
+// Site visits and meetings counted separately from the follow-up logs: a log ticked "Site Visit" counts as a visit,
+// "Meeting" as a meeting (both if both are ticked). Older logs with no tick but a visit outcome count as a visit.
+export const getVisitMeetCounts = (item) => {
+  if (!item) return { visits: 0, meetings: 0 };
+  const hasLogs = Array.isArray(item.followUps) && item.followUps.length > 0;
+  const logs = hasLogs ? item.followUps : [item];
+  let visits = 0;
+  let meetings = 0;
+  logs.forEach(f => {
+    const status = String(f.status || '').trim();
+    if (NO_VISIT_STATUSES.includes(status)) return;
+    const visited = hasSiteVisitFlag(f.visitMeet);
+    const met = hasMeetingFlag(f.visitMeet);
+    if (visited) visits += 1;
+    if (met) meetings += 1;
+    if (hasLogs && !visited && !met && VISIT_OUTCOME_STATUSES.includes(status)) visits += 1;
+  });
+  return { visits, meetings };
 };
 
 const STATUS_STYLES = {
@@ -159,57 +168,76 @@ export default function SiteVisitCategoryView({
       d.getDate() === today.getDate();
   }, [today]);
 
-  // "Site visit done today" mark in Today's Followup — the user ticks a lead after visiting, ticks again to undo.
-  // Saved on the lead (leads.visit_marked_at); only counts on the day it was set. Overrides show a tick instantly.
-  const [visitMarkOverrides, setVisitMarkOverrides] = useState({});
-  const isVisitMarkedToday = useCallback((item) => {
-    const key = String(item.leadId || '');
-    const markedAt = key in visitMarkOverrides ? visitMarkOverrides[key] : item.visitMarkedAt;
-    if (!markedAt) return false;
-    const d = new Date(markedAt);
-    return !isNaN(d.getTime()) && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
-  }, [visitMarkOverrides, today]);
-
-  const toggleVisitMark = (item) => {
-    if (!item.leadId) return;
-    const key = String(item.leadId);
-    const marked = !isVisitMarkedToday(item);
-    const previous = visitMarkOverrides[key];
-    setVisitMarkOverrides(prev => ({ ...prev, [key]: marked ? new Date().toISOString() : null }));
-    leadApi.setVisitMark(item.leadId, marked, user?.name || user?.id)
-      .then(({ markedAt, savedInDb }) => {
-        setVisitMarkOverrides(prev => ({ ...prev, [key]: markedAt }));
-        if (!savedInDb) toast('Saved on this device only — the visit-mark columns are missing in the database', { id: 'visit-mark-local', icon: '⚠️' });
-      })
-      .catch(err => {
-        console.error('Could not save visit mark:', err);
-        setVisitMarkOverrides(prev => ({ ...prev, [key]: previous }));
-        toast.error('Could not save the visit mark');
-      });
+  const isSameDay = (ms, day) => {
+    if (!ms) return false;
+    const d = new Date(Number(ms));
+    return !isNaN(d.getTime()) && d.getFullYear() === day.getFullYear() && d.getMonth() === day.getMonth() && d.getDate() === day.getDate();
   };
 
-  // ✓ button shown in Today's Followup (desktop icon / mobile pill)
+  // Follow-ups logged on this lead today
+  const getTodayFollowUpCount = useCallback((item) =>
+    (item.followUps || []).filter(f => isSameDay(f.timestampMs, today)).length,
+  [today]);
+
+  // "Site visit done today" — a follow-up was submitted today (sets leads.visit_marked_at) AND one is actually
+  // logged today (ignores marks left over from the old clickable button). The badge itself isn't clickable.
+  const isVisitMarkedToday = useCallback((item) => {
+    const markedAt = item.visitMarkedAt;
+    if (!markedAt) return false;
+    const d = new Date(markedAt);
+    const markedToday = !isNaN(d.getTime()) && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+    return markedToday && getTodayFollowUpCount(item) > 0;
+  }, [today, getTodayFollowUpCount]);
+
+  // Green row highlight for visited-today leads in Today's Followup and All Dates
+  const showVisitMark = dateFilter === 'today' || dateFilter === 'all';
+
+  // Follow-ups counted in the badge for the active date filter: Today → today's, Yesterday → yesterday's,
+  // Custom → within the range, All Dates / Overdue / Upcoming → total till date
+  const getFilterFollowUpCount = (item) => {
+    const logs = item.followUps || [];
+    if (dateFilter === 'today') return getTodayFollowUpCount(item);
+    if (dateFilter === 'yesterday') {
+      const yesterday = new Date(today.getTime() - 86400000);
+      return logs.filter(f => isSameDay(f.timestampMs, yesterday)).length;
+    }
+    if (dateFilter === 'custom' && (customFrom || customTo)) {
+      const toDay = (str, endOfDay) => {
+        const [y, m, d] = str.split('-').map(Number);
+        return endOfDay ? new Date(y, m - 1, d, 23, 59, 59, 999).getTime() : new Date(y, m - 1, d).getTime();
+      };
+      const fromMs = customFrom ? toDay(customFrom, false) : -Infinity;
+      const toMs = customTo ? toDay(customTo, true) : Infinity;
+      return logs.filter(f => {
+        const ms = Number(f.timestampMs);
+        return ms && ms >= fromMs && ms <= toMs;
+      }).length;
+    }
+    return item.followUpCount || logs.length;
+  };
+
+  // Read-only badge (desktop icon / mobile pill): shows the follow-up count for the active filter (0 too),
+  // turns green once today's follow-up is submitted
   const renderVisitMarkButton = (item, compact) => {
     const done = isVisitMarkedToday(item);
-    const title = done ? 'Marked as site visit done today — click to undo' : 'Mark site visit done today';
+    const count = getFilterFollowUpCount(item);
+    const countText = `${count} follow-up${count === 1 ? '' : 's'}`;
+    const title = done ? `Site visit follow-up submitted today — ${countText}` : `Not visited yet today — ${countText}`;
     return (
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); toggleVisitMark(item); }}
+      <span
         title={title}
         aria-label={title}
-        aria-pressed={done}
         className={compact
-          ? `w-7 h-7 inline-flex items-center justify-center rounded-md border transition active:scale-95 ${done
-            ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
-            : 'bg-white text-gray-400 border-gray-300 hover:text-emerald-600 hover:border-emerald-400'}`
-          : `inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border active:scale-95 transition cursor-pointer shrink-0 ${done
+          ? `w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-default ${done
             ? 'bg-emerald-600 text-white border-emerald-600'
-            : 'bg-white text-gray-600 border-gray-300 hover:border-emerald-400 hover:text-emerald-700'}`}
+            : 'bg-white text-gray-500 border-gray-200'}`
+          : `inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-default shrink-0 ${done
+            ? 'bg-emerald-600 text-white border-emerald-600'
+            : 'bg-white text-gray-500 border-gray-200'}`}
       >
-        <CheckCircle2 size={compact ? 13 : 12} />
-        {!compact && <span>{done ? 'Visited' : 'Mark visited'}</span>}
-      </button>
+        <span className={`font-bold leading-none ${compact ? 'text-xs' : 'text-[11px]'}`}>{count}</span>
+        {!compact && <span>{done ? 'Visited' : 'Not visited'}</span>}
+      </span>
     );
   };
 
@@ -465,7 +493,7 @@ export default function SiteVisitCategoryView({
 
     const exportData = filteredLeads.map((item, idx) => {
       const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
-      const actualVisits = getActualVisitsCount(item);
+      const { visits: totalVisits, meetings: totalMeetings } = getVisitMeetCounts(item);
       return {
         'SR No': idx + 1,
         'Meeting Date': formatDate(item.meetingDate || item.visitDate),
@@ -478,7 +506,8 @@ export default function SiteVisitCategoryView({
         'Latest Feedback': item.whatHappened || item.visitorRemarks || '-',
         'Phone Number': item.customerNumber || item.number || '-',
         'Assigned Visitor': item.assignedVisitor || '-',
-        'Total Visits': actualVisits,
+        'Total Visits': totalVisits,
+        'Total Meetings': totalMeetings,
         'Location': item.location || item.customerAddress || '-',
         'Remarks': item.leadRemarks || item.remarks || '-'
       };
@@ -504,6 +533,7 @@ export default function SiteVisitCategoryView({
     "Phone Number",
     "Assigned Visitor",
     "Total Visits",
+    "Total Meetings",
     "Location",
     "Remarks"
   ];
@@ -521,9 +551,9 @@ export default function SiteVisitCategoryView({
     const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
     const hasSiteVisited = !isNoContact && Boolean(item.visitMeet?.['site-visit'] ?? item.visitMeet?.siteVisit ?? item.visitMeet?.site_visit);
     const hasMeeting = !isNoContact && Boolean(item.visitMeet?.meeting);
-    const actualVisits = getActualVisitsCount(item);
-    // Site-visit-done mark only in the Today's Followup view
-    const visitedToday = dateFilter === 'today' && isVisitMarkedToday(item);
+    const { visits: totalVisits, meetings: totalMeetings } = getVisitMeetCounts(item);
+    // Site-visit-done mark in Today's Followup and All Dates views
+    const visitedToday = showVisitMark && isVisitMarkedToday(item);
 
     return (
       <tr
@@ -549,10 +579,10 @@ export default function SiteVisitCategoryView({
               </button>
             )}
 
-            {/* Today's Followup: tick the lead once the site visit is done today */}
-            {onLogFollowUp && dateFilter === 'today' && renderVisitMarkButton(item, true)}
+            {/* Visited badge: follow-up count for the active filter, green once visited today */}
+            {onLogFollowUp && renderVisitMarkButton(item, true)}
 
-            {/* View history timeline (visit count badge) */}
+            {/* View history timeline (follow-up count is shown in the visited badge instead) */}
             <button
               onClick={() => onViewHistory(item)}
               title={`View ${item.followUpCount || 0} visit record${item.followUpCount === 1 ? '' : 's'} & details`}
@@ -560,11 +590,6 @@ export default function SiteVisitCategoryView({
               className="relative w-7 h-7 inline-flex items-center justify-center rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-600 hover:text-white transition active:scale-95"
             >
               <Eye size={13} />
-              {item.followUpCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-emerald-600 text-white text-[9px] font-bold leading-4 border border-white">
-                  {item.followUpCount}
-                </span>
-              )}
             </button>
           </div>
         </td>
@@ -729,7 +754,14 @@ export default function SiteVisitCategoryView({
         {/* 11. Total Visits */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            {actualVisits} {actualVisits === 1 ? 'Visit' : 'Visits'}
+            {totalVisits} {totalVisits === 1 ? 'Visit' : 'Visits'}
+          </span>
+        </td>
+
+        {/* 11b. Total Meetings */}
+        <td className="px-3 py-2 text-center whitespace-nowrap">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+            {totalMeetings} {totalMeetings === 1 ? 'Meeting' : 'Meetings'}
           </span>
         </td>
 
@@ -750,9 +782,9 @@ export default function SiteVisitCategoryView({
   const renderCard = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
     const isExpanded = expandedCardIds.has(leadKey);
-    const visitedToday = dateFilter === 'today' && isVisitMarkedToday(item);
+    const visitedToday = showVisitMark && isVisitMarkedToday(item);
     const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
-    const actualVisits = getActualVisitsCount(item);
+    const { visits: totalVisits, meetings: totalMeetings } = getVisitMeetCounts(item);
 
     // Filter populated fields (skip empty/null/'-')
     const isValid = (val) => {
@@ -820,7 +852,7 @@ export default function SiteVisitCategoryView({
           </button>
         </div>
 
-        {/* Primary Row: Phone, Total Visits, Meeting Date, Next Meeting Date */}
+        {/* Primary Row: Phone, Total Visits, Total Meetings, Meeting Date, Next Meeting Date */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Phone</span>
@@ -846,7 +878,14 @@ export default function SiteVisitCategoryView({
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits</span>
             <span className="font-bold text-gray-700 mt-0.5 inline-block">
-              {actualVisits} {actualVisits === 1 ? 'Visit' : 'Visits'}
+              {totalVisits} {totalVisits === 1 ? 'Visit' : 'Visits'}
+            </span>
+          </div>
+
+          <div>
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Meetings</span>
+            <span className="font-bold text-gray-700 mt-0.5 inline-block">
+              {totalMeetings} {totalMeetings === 1 ? 'Meeting' : 'Meetings'}
             </span>
           </div>
 
@@ -954,7 +993,7 @@ export default function SiteVisitCategoryView({
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            {onLogFollowUp && dateFilter === 'today' && renderVisitMarkButton(item, false)}
+            {onLogFollowUp && renderVisitMarkButton(item, false)}
             {onLogFollowUp && (
               <button
                 type="button"

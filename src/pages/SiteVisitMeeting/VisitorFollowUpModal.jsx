@@ -7,6 +7,7 @@ import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { authApi } from '../../api/authApi';
 import { masterApi } from '../../api/masterApi';
 import { leadApi } from '../../api/leadApi';
+import { useAuthStore } from '../../store/authStore';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import {
   formatInputDate,
@@ -114,6 +115,7 @@ const getLeadFieldVal = (lead, key) => {
 
 export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved }) {
   const navigate = useNavigate();
+  const user = useAuthStore(state => state.user);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
   const [budgets, setBudgets] = useState([]);
@@ -571,6 +573,15 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
 
       await siteVisitMeetingApi.saveVisitorFollowUp(entry);
       toast.success(`Follow-up #${followUpCount} saved for ${lead.leadNo || 'lead'}`);
+
+      // Submitting the follow-up is what marks the lead as visited today (the badge itself isn't clickable)
+      if (entry.leadId) {
+        try {
+          await leadApi.setVisitMark(entry.leadId, true, user?.name || user?.id);
+        } catch (markErr) {
+          console.warn('Could not set the visited mark:', markErr);
+        }
+      }
 
       if (onSaved) onSaved();
       onClose();

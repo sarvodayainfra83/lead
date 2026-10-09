@@ -278,6 +278,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       if (v === 'Site Visit/Meeting' && isNonRealEstate) {
         return { value: 'Meeting', label: 'Meeting' };
       }
+      // Label only — the saved status stays 'Interested'
+      if (v === 'Interested') {
+        return { value: v, label: 'Interested (Cold Call)' };
+      }
       return { value: v, label: v };
     });
   }, [isInsurance, isMutualFund]);
