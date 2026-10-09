@@ -127,7 +127,12 @@ export default function PendingLead({ setHeaderAction }) {
     setLeads(isUserAdmin(user) ? unassigned : unassigned.filter(l => matchesUserReceiver(l, user)));
     setCallersMaster(callers);
   };
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => {
+    load().catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
+    });
+  }, [user]);
 
   const handleClearFilters = () => {
     setFilters({ ...initialFilters });
@@ -318,9 +323,14 @@ export default function PendingLead({ setHeaderAction }) {
 
   const handleDelete = async (item) => {
     if (!window.confirm(`Delete lead ${item.leadNo} "${item.personName}"? This cannot be undone.`)) return;
-    await leadApi.deleteLead(item.id);
-    await load();
-    toast.success(`Lead ${item.leadNo} deleted`);
+    try {
+      await leadApi.deleteLead(item.id);
+      await load();
+      toast.success(`Lead ${item.leadNo} deleted`);
+    } catch (err) {
+      console.error('Failed to delete lead:', err);
+      toast.error(`Could not delete lead ${item.leadNo}`);
+    }
   };
 
   // Format YYYY-MM-DD → DD/MM/YYYY for display

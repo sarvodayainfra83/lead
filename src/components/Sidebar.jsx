@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
-import { canViewPage } from '../utils/authUtils';
+import { canViewPage, getUserLeadTypeScope } from '../utils/authUtils';
 import companyLogo from '../Assets/Logo.jpeg';
 
 const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
@@ -51,11 +51,15 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     navigate('/login', { replace: true });
   };
 
+  // Insurance / Mutual Fund users have meetings only (no site visits), so the page is just 'Meeting'
+  const leadCategories = getUserLeadTypeScope(user)?.categories || [];
+  const isMeetingOnlyUser = leadCategories.length > 0 && !leadCategories.includes('Real Estate');
+
   const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', pageKey: 'dashboard' },
     { path: '/lead', icon: UserPlus, label: 'Lead', pageKey: 'lead', badgeCount: pendingLeadCount },
     { path: '/call-tracker', icon: PhoneCall, label: 'Lead & Followup', pageKey: 'callTracker', badgeCount: callTrackerCount },
-    { path: '/site-visit-meeting', icon: MapPin, label: 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: siteVisitMeetingCount },
+    { path: '/site-visit-meeting', icon: MapPin, label: isMeetingOnlyUser ? 'Meeting' : 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: siteVisitMeetingCount },
     { path: '/customer-master', icon: Users, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount },
     { path: '/non-interested', icon: UserX, label: 'Non-interested', pageKey: 'nonInterested', badgeCount: nonInterestedCount },
     // { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },

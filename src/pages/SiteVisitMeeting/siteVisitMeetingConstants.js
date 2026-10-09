@@ -38,6 +38,7 @@ export const STATUS_FILTER_OPTIONS = [
   { value: 'Pending Assignment', label: 'Pending Assignment' },
   { value: 'Assigned', label: 'Visitor Assigned' },
   { value: 'Future Plan', label: 'Future Plan' },
+  { value: 'Revisit', label: 'Revisit' },
   { value: 'Deal Lock', label: 'Deal Lock' },
   { value: 'Interested', label: 'Interested' },
   { value: 'Not Interested', label: 'Not Interested' },
@@ -72,9 +73,14 @@ export const STATUS_STYLES = {
     dot: 'bg-purple-500',
     label: 'Future Plan'
   },
+  'Revisit': {
+    badge: 'bg-teal-50 text-teal-700 border-teal-300',
+    dot: 'bg-teal-500',
+    label: 'Revisit'
+  },
   'Deal Lock': {
-    badge: 'bg-emerald-100 text-emerald-800 border-emerald-400',
-    dot: 'bg-emerald-600',
+    badge: 'bg-violet-100 text-violet-800 border-violet-400',
+    dot: 'bg-violet-600',
     label: 'Deal Lock'
   },
   'Interested': {

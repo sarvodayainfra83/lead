@@ -106,7 +106,7 @@ export default function CallerReport() {
           return { value: key, label: `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y}` };
         })
       ]);
-    });
+    }).catch(err => console.error('Failed to load caller report filters from the database:', err));
   }, [user, isAdmin]);
 
   useEffect(() => {

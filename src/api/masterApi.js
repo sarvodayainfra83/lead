@@ -49,8 +49,10 @@ import { addPosition, removePosition } from '../utils/authUtils';
 
 // Add or remove one position on a user, keeping their others (e.g. a "Manager, Caller" stays a Manager)
 const updateUserPosition = async (userId, change, extra = {}) => {
-  const { data } = await supabase.from('users').select('position').eq('id', userId).maybeSingle();
-  await supabase.from('users').update({ position: change(data?.position), ...extra }).eq('id', userId);
+  const { data, error: readError } = await supabase.from('users').select('position').eq('id', userId).maybeSingle();
+  if (readError) { console.error('Error reading user position:', readError); throw readError; }
+  const { error } = await supabase.from('users').update({ position: change(data?.position), ...extra }).eq('id', userId);
+  if (error) { console.error('Error updating user position:', error); throw error; }
 };
 
 // Rupee value of an amount like "20k", "5 Lakh", "10L", "1.5 Lakh", "2Cr" (null if none found)
@@ -88,7 +90,7 @@ export const masterApi = {
   async getLeadTypes() {
     if (!isSupabaseConfigured) return getLocalTypes();
     const { data, error } = await supabase.from('master_lead_types').select('*').order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching lead types:', error); return getLocalTypes(); }
+    if (error) { console.error('Error fetching lead types:', error); throw error; }
     return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, leadType: d.lead_type }));
   },
 
@@ -109,11 +111,9 @@ export const masterApi = {
         .single();
       if (error) {
         console.error('Error updating lead type:', error);
-        updateLocalType(leadTypeObj.id, leadTypeObj);
         throw error;
       }
       const result = { id: data.id, leadType: data.lead_type };
-      updateLocalType(leadTypeObj.id, result);
       return result;
     } else {
       const { data, error } = await supabase
@@ -123,11 +123,9 @@ export const masterApi = {
         .single();
       if (error) {
         console.error('Error saving lead type:', error);
-        saveLocalType(leadTypeObj);
         throw error;
       }
       const result = { id: data.id, leadType: data.lead_type };
-      saveLocalType(result);
       return result;
     }
   },
@@ -138,14 +136,13 @@ export const masterApi = {
     const query = supabase.from('master_lead_types').delete();
     const { error } = isUuid ? await query.eq('id', idOrName) : await query.eq('lead_type', idOrName);
     if (error) throw error;
-    deleteLocalType(idOrName);
   },
 
   // --- LEAD SOURCES ---
   async getLeadSources() {
     if (!isSupabaseConfigured) return getLocalSources();
     const { data, error } = await supabase.from('master_lead_sources').select('*').order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching lead sources:', error); return getLocalSources(); }
+    if (error) { console.error('Error fetching lead sources:', error); throw error; }
     return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, leadSource: d.lead_source }));
   },
 
@@ -166,11 +163,9 @@ export const masterApi = {
         .single();
       if (error) {
         console.error('Error updating lead source:', error);
-        updateLocalSource(leadSourceObj.id, leadSourceObj);
         throw error;
       }
       const result = { id: data.id, leadSource: data.lead_source };
-      updateLocalSource(leadSourceObj.id, result);
       return result;
     } else {
       const { data, error } = await supabase
@@ -180,11 +175,9 @@ export const masterApi = {
         .single();
       if (error) {
         console.error('Error saving lead source:', error);
-        saveLocalSource(leadSourceObj);
         throw error;
       }
       const result = { id: data.id, leadSource: data.lead_source };
-      saveLocalSource(result);
       return result;
     }
   },
@@ -195,7 +188,6 @@ export const masterApi = {
     const query = supabase.from('master_lead_sources').delete();
     const { error } = isUuid ? await query.eq('id', idOrName) : await query.eq('lead_source', idOrName);
     if (error) throw error;
-    deleteLocalSource(idOrName);
   },
 
   // --- LEAD RECEIVERS / TEAM MEMBERS (Queried from users table) ---
@@ -208,7 +200,8 @@ export const masterApi = {
 
     if (error) {
       console.warn('Error fetching team members with relation, trying fallback:', error.message);
-      const { data: fallbackData } = await supabase.from('users').select('*').order('name', { ascending: true });
+      const { data: fallbackData, error: fallbackError } = await supabase.from('users').select('*').order('name', { ascending: true });
+      if (fallbackError) { console.error('Error fetching team members:', fallbackError); throw fallbackError; }
       if (fallbackData) {
         let typeMap = {};
         try {
@@ -226,7 +219,7 @@ export const masterApi = {
           position: d.position
         }));
       }
-      return getLocalReceivers();
+      return [];
     }
     return data.map((d, idx) => ({
       id: d.id,
@@ -261,7 +254,6 @@ export const masterApi = {
   async deleteLeadReceiver(id) {
     if (!isSupabaseConfigured) return deleteLocalReceiver(id);
     await updateUserPosition(id, pos => removePosition(pos, 'Lead Receiver'));
-    deleteLocalReceiver(id);
   },
 
   // --- CALLER NAMES (Queried from users table with position = 'Caller') ---
@@ -275,11 +267,12 @@ export const masterApi = {
 
     if (error) {
       console.warn('Error fetching caller names with relation, trying fallback:', error.message);
-      const { data: fallbackUsers } = await supabase
+      const { data: fallbackUsers, error: fallbackError } = await supabase
         .from('users')
         .select('*')
         .ilike('position', '%Caller%')
         .order('name', { ascending: true });
+      if (fallbackError) { console.error('Error fetching caller names:', fallbackError); throw fallbackError; }
 
       if (fallbackUsers && fallbackUsers.length > 0) {
         let typeMap = {};
@@ -297,7 +290,7 @@ export const masterApi = {
           personName: d.name
         }));
       }
-      return getLocalCallers();
+      return [];
     }
     return data.map((d, idx) => ({
       id: d.id,
@@ -330,7 +323,6 @@ export const masterApi = {
   async deleteCallerName(id) {
     if (!isSupabaseConfigured) return deleteLocalCaller(id);
     await updateUserPosition(id, pos => removePosition(pos, 'Caller'));
-    deleteLocalCaller(id);
   },
 
   // --- VISITOR NAMES (Queried from users table with position = 'Visitor' with multi-tier fallback) ---
@@ -343,6 +335,8 @@ export const masterApi = {
       if (ltData) ltData.forEach(t => { leadTypeMap[t.id] = t.lead_type; });
     } catch (e) {}
 
+    let lastError = null;
+
     // 1. Try querying users table where position ILIKE '%Visitor%'
     try {
       const { data, error } = await supabase
@@ -350,6 +344,7 @@ export const masterApi = {
         .select('*')
         .ilike('position', '%Visitor%')
         .order('name', { ascending: true });
+      if (error) lastError = error;
 
       if (!error && data && data.length > 0) {
         return data.map((d, idx) => ({
@@ -364,6 +359,7 @@ export const masterApi = {
       }
     } catch (err) {
       console.warn('Error querying users with position=Visitor:', err);
+      lastError = err;
     }
 
     // 2. Fallback: Query all users from users table
@@ -372,6 +368,7 @@ export const masterApi = {
         .from('users')
         .select('*')
         .order('name', { ascending: true });
+      lastError = usersErr || null;
 
       if (!usersErr && allUsers && allUsers.length > 0) {
         return allUsers.map((d, idx) => ({
@@ -386,6 +383,7 @@ export const masterApi = {
       }
     } catch (err) {
       console.warn('Error querying all users as visitor fallback:', err);
+      lastError = err;
     }
 
     // 3. Fallback: Query distinct assigned visitors from assigned_visitors table
@@ -414,8 +412,9 @@ export const masterApi = {
       }
     } catch (err) {}
 
-    // 4. Final fallback to local storage
-    return getLocalVisitors();
+    // 4. Nothing in the database — surface the users-table error if there was one
+    if (lastError) { console.error('Error fetching visitors:', lastError); throw lastError; }
+    return [];
   },
 
   async saveVisitor(visitorObj) {
@@ -438,22 +437,24 @@ export const masterApi = {
       try {
         await updateUserPosition(visitorObj.id, pos => addPosition(pos, 'Visitor'), { lead_type_id: leadTypeId });
       } catch (err) {
-        console.warn('Could not update user by id:', err);
+        console.error('Could not update user by id:', err);
+        throw err;
       }
     } else {
       // New visitor: check if user exists with matching name
       try {
-        const { data: existingUser } = await supabase
+        const { data: existingUser, error: lookupError } = await supabase
           .from('users')
           .select('id')
           .ilike('name', cleanName)
           .maybeSingle();
+        if (lookupError) throw lookupError;
 
         if (existingUser?.id) {
           await updateUserPosition(existingUser.id, pos => addPosition(pos, 'Visitor'), { lead_type_id: leadTypeId });
         } else {
           const username = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + Math.floor(1000 + Math.random() * 9000);
-          await supabase
+          const { error: insertError } = await supabase
             .from('users')
             .insert({
               username,
@@ -463,13 +464,14 @@ export const masterApi = {
               position: 'Visitor',
               lead_type_id: leadTypeId
             });
+          if (insertError) throw insertError;
         }
       } catch (err) {
-        console.warn('Could not create/update user for visitor:', err);
+        console.error('Could not create/update user for visitor:', err);
+        throw err;
       }
     }
 
-    saveLocalVisitor(visitorObj);
     return { ...visitorObj, leadTypeId };
   },
 
@@ -477,15 +479,17 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalVisitor(id);
     try {
       await updateUserPosition(id, pos => removePosition(pos, 'Visitor'));
-    } catch (e) {}
-    deleteLocalVisitor(id);
+    } catch (e) {
+      console.error('Error removing visitor position:', e);
+      throw e;
+    }
   },
 
   // --- MUTUAL FUND PRODUCT TYPES ---
   async getMutualFundProducts() {
     if (!isSupabaseConfigured) return getLocalMutualFundProducts();
     const { data, error } = await supabase.from('master_mutual_fund_products').select('*').order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching mutual fund products:', error); return getLocalMutualFundProducts(); }
+    if (error) { console.error('Error fetching mutual fund products:', error); throw error; }
     return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, productType: d.product_type }));
   },
 
@@ -494,15 +498,13 @@ export const masterApi = {
 
     if (obj.id) {
       const { data, error } = await supabase.from('master_mutual_fund_products').update({ product_type: obj.productType }).eq('id', obj.id).select().single();
-      if (error) { console.error('Error updating mutual fund product:', error); updateLocalMutualFundProduct(obj); throw error; }
+      if (error) { console.error('Error updating mutual fund product:', error); throw error; }
       const result = { id: data.id, productType: data.product_type };
-      updateLocalMutualFundProduct(result);
       return result;
     } else {
       const { data, error } = await supabase.from('master_mutual_fund_products').insert({ product_type: obj.productType }).select().single();
-      if (error) { console.error('Error saving mutual fund product:', error); saveLocalMutualFundProduct(obj); throw error; }
+      if (error) { console.error('Error saving mutual fund product:', error); throw error; }
       const result = { id: data.id, productType: data.product_type };
-      saveLocalMutualFundProduct(result);
       return result;
     }
   },
@@ -511,14 +513,13 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalMutualFundProduct(id);
     const { error } = await supabase.from('master_mutual_fund_products').delete().eq('id', id);
     if (error) throw error;
-    deleteLocalMutualFundProduct(id);
   },
 
   // --- REAL ESTATE PRODUCT TYPES ---
   async getRealEstateProducts() {
     if (!isSupabaseConfigured) return getLocalRealEstateProducts();
     const { data, error } = await supabase.from('master_real_estate_products').select('*').order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching real estate products:', error); return getLocalRealEstateProducts(); }
+    if (error) { console.error('Error fetching real estate products:', error); throw error; }
     return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, productType: d.product_type }));
   },
 
@@ -527,15 +528,13 @@ export const masterApi = {
 
     if (obj.id) {
       const { data, error } = await supabase.from('master_real_estate_products').update({ product_type: obj.productType }).eq('id', obj.id).select().single();
-      if (error) { console.error('Error updating real estate product:', error); updateLocalRealEstateProduct(obj); throw error; }
+      if (error) { console.error('Error updating real estate product:', error); throw error; }
       const result = { id: data.id, productType: data.product_type };
-      updateLocalRealEstateProduct(result);
       return result;
     } else {
       const { data, error } = await supabase.from('master_real_estate_products').insert({ product_type: obj.productType }).select().single();
-      if (error) { console.error('Error saving real estate product:', error); saveLocalRealEstateProduct(obj); throw error; }
+      if (error) { console.error('Error saving real estate product:', error); throw error; }
       const result = { id: data.id, productType: data.product_type };
-      saveLocalRealEstateProduct(result);
       return result;
     }
   },
@@ -544,14 +543,13 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalRealEstateProduct(id);
     const { error } = await supabase.from('master_real_estate_products').delete().eq('id', id);
     if (error) throw error;
-    deleteLocalRealEstateProduct(id);
   },
 
   // --- REAL ESTATE REQUIREMENTS ---
   async getRealEstateRequirements() {
     if (!isSupabaseConfigured) return getLocalRealEstateRequirements();
     const { data, error } = await supabase.from('master_real_estate_requirements').select('*').order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching real estate requirements:', error); return getLocalRealEstateRequirements(); }
+    if (error) { console.error('Error fetching real estate requirements:', error); throw error; }
     return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, requirement: d.requirement }));
   },
 
@@ -560,15 +558,13 @@ export const masterApi = {
 
     if (obj.id) {
       const { data, error } = await supabase.from('master_real_estate_requirements').update({ requirement: obj.requirement }).eq('id', obj.id).select().single();
-      if (error) { console.error('Error updating real estate requirement:', error); updateLocalRealEstateRequirement(obj); throw error; }
+      if (error) { console.error('Error updating real estate requirement:', error); throw error; }
       const result = { id: data.id, requirement: data.requirement };
-      updateLocalRealEstateRequirement(result);
       return result;
     } else {
       const { data, error } = await supabase.from('master_real_estate_requirements').insert({ requirement: obj.requirement }).select().single();
-      if (error) { console.error('Error saving real estate requirement:', error); saveLocalRealEstateRequirement(obj); throw error; }
+      if (error) { console.error('Error saving real estate requirement:', error); throw error; }
       const result = { id: data.id, requirement: data.requirement };
-      saveLocalRealEstateRequirement(result);
       return result;
     }
   },
@@ -577,14 +573,13 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalRealEstateRequirement(id);
     const { error } = await supabase.from('master_real_estate_requirements').delete().eq('id', id);
     if (error) throw error;
-    deleteLocalRealEstateRequirement(id);
   },
 
   // --- INSURANCE PRODUCT TYPES ---
   async getInsuranceProducts() {
     if (!isSupabaseConfigured) return getLocalInsuranceProducts();
     const { data, error } = await supabase.from('master_insurance_products').select('*').order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching insurance products:', error); return getLocalInsuranceProducts(); }
+    if (error) { console.error('Error fetching insurance products:', error); throw error; }
     return data.map((d, idx) => ({ id: d.id, serialNo: idx + 1, productType: d.product_type }));
   },
 
@@ -593,15 +588,13 @@ export const masterApi = {
 
     if (obj.id) {
       const { data, error } = await supabase.from('master_insurance_products').update({ product_type: obj.productType }).eq('id', obj.id).select().single();
-      if (error) { console.error('Error updating insurance product:', error); updateLocalInsuranceProduct(obj); throw error; }
+      if (error) { console.error('Error updating insurance product:', error); throw error; }
       const result = { id: data.id, productType: data.product_type };
-      updateLocalInsuranceProduct(result);
       return result;
     } else {
       const { data, error } = await supabase.from('master_insurance_products').insert({ product_type: obj.productType }).select().single();
-      if (error) { console.error('Error saving insurance product:', error); saveLocalInsuranceProduct(obj); throw error; }
+      if (error) { console.error('Error saving insurance product:', error); throw error; }
       const result = { id: data.id, productType: data.product_type };
-      saveLocalInsuranceProduct(result);
       return result;
     }
   },
@@ -610,7 +603,6 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalInsuranceProduct(id);
     const { error } = await supabase.from('master_insurance_products').delete().eq('id', id);
     if (error) throw error;
-    deleteLocalInsuranceProduct(id);
   },
 
   // --- INSURANCE SUB PRODUCT TYPES (each tied to a parent Insurance Product Type) ---
@@ -620,7 +612,7 @@ export const masterApi = {
       .from('master_insurance_sub_products')
       .select('*, master_insurance_products!product_type_id(id, product_type)')
       .order('created_at', { ascending: true });
-    if (error) { console.error('Error fetching insurance sub products:', error); return getLocalInsuranceSubProducts(); }
+    if (error) { console.error('Error fetching insurance sub products:', error); throw error; }
     return data.map((d, idx) => ({
       id: d.id,
       serialNo: idx + 1,
@@ -646,14 +638,13 @@ export const masterApi = {
         .eq('id', obj.id)
         .select('*, master_insurance_products!product_type_id(id, product_type)')
         .single();
-      if (error) { console.error('Error updating insurance sub product:', error); updateLocalInsuranceSubProduct(obj); throw error; }
+      if (error) { console.error('Error updating insurance sub product:', error); throw error; }
       const result = {
         id: data.id,
         productTypeId: data.product_type_id,
         productType: data.master_insurance_products?.product_type || obj.productType,
         subProductType: data.sub_product_type
       };
-      updateLocalInsuranceSubProduct(result);
       return result;
     } else {
       const { data, error } = await supabase
@@ -661,14 +652,13 @@ export const masterApi = {
         .insert({ product_type_id: productTypeId, sub_product_type: obj.subProductType })
         .select('*, master_insurance_products!product_type_id(id, product_type)')
         .single();
-      if (error) { console.error('Error saving insurance sub product:', error); saveLocalInsuranceSubProduct(obj); throw error; }
+      if (error) { console.error('Error saving insurance sub product:', error); throw error; }
       const result = {
         id: data.id,
         productTypeId: data.product_type_id,
         productType: data.master_insurance_products?.product_type || obj.productType,
         subProductType: data.sub_product_type
       };
-      saveLocalInsuranceSubProduct(result);
       return result;
     }
   },
@@ -677,7 +667,6 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalInsuranceSubProduct(id);
     const { error } = await supabase.from('master_insurance_sub_products').delete().eq('id', id);
     if (error) throw error;
-    deleteLocalInsuranceSubProduct(id);
   },
 
   // --- INVESTMENT BUDGETS (each tagged with one or more Lead Types; none = shared across all) ---
@@ -688,7 +677,7 @@ export const masterApi = {
       supabase.from('master_investment_budgets').select('*').order('created_at', { ascending: true }),
       supabase.from('master_lead_types').select('id, lead_type')
     ]);
-    if (error) { console.error('Error fetching investment budgets:', error); return sortInvestmentBudgets(getLocalInvestmentBudgets()); }
+    if (error) { console.error('Error fetching investment budgets:', error); throw error; }
     const typeMap = Object.fromEntries((typeRows || []).map(t => [t.id, t.lead_type]));
     return sortInvestmentBudgets(data.map(d => {
       const leadTypeIds = d.lead_type_ids || [];
@@ -721,15 +710,13 @@ export const masterApi = {
 
     if (obj.id) {
       const { data, error } = await supabase.from('master_investment_budgets').update(payload).eq('id', obj.id).select().single();
-      if (error) { console.error('Error updating investment budget:', error); updateLocalInvestmentBudget(obj); throw explain(error); }
+      if (error) { console.error('Error updating investment budget:', error); throw explain(error); }
       const result = toResult(data);
-      updateLocalInvestmentBudget(result);
       return result;
     } else {
       const { data, error } = await supabase.from('master_investment_budgets').insert(payload).select().single();
-      if (error) { console.error('Error saving investment budget:', error); saveLocalInvestmentBudget(obj); throw explain(error); }
+      if (error) { console.error('Error saving investment budget:', error); throw explain(error); }
       const result = toResult(data);
-      saveLocalInvestmentBudget(result);
       return result;
     }
   },
@@ -738,6 +725,5 @@ export const masterApi = {
     if (!isSupabaseConfigured) return deleteLocalInvestmentBudget(id);
     const { error } = await supabase.from('master_investment_budgets').delete().eq('id', id);
     if (error) throw error;
-    deleteLocalInvestmentBudget(id);
   }
 };

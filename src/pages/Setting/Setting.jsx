@@ -86,6 +86,9 @@ export default function Setting({ setHeaderAction }) {
       ]);
       setRows(users || []);
       setLeadTypesMaster(types || []);
+    } catch (err) {
+      console.error('Failed to load users from the database:', err);
+      toast.error('Could not load users from the database');
     } finally {
       setListLoading(false);
     }

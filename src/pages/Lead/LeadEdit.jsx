@@ -81,6 +81,9 @@ export default function LeadEdit({ isOpen, onClose, lead, onUpdated }) {
         setInsuranceProductsMaster(insProducts);
         setInsuranceSubProductsMaster(insSubProducts);
         setInvestmentBudgetsMaster(budgets);
+      }).catch(err => {
+        console.error('Failed to load master data from the database:', err);
+        toast.error('Could not load dropdown options from the database');
       });
     }
   }, [isOpen]);

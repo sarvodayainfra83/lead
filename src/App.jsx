@@ -20,6 +20,7 @@ import NonInterested from './pages/NonInterested/NonInterested';
 import ProtectedRoute from './components/ProtectedRoute';
 import AccessGuard from './components/AccessGuard';
 import { initializeStorage } from './utils/storageManager';
+import { isSupabaseConfigured } from './api/supabaseClient';
 
 // On mobile, filling in the Login form scrolls the page up so the field stays visible above the
 // on-screen keyboard. That scroll position is a browser-window property, not part of the Login
@@ -37,7 +38,8 @@ function ScrollToTop() {
 
 function App() {
   useEffect(() => {
-    initializeStorage();
+    // Demo data in the browser is only for running without a database — with Supabase everything lives in the DB
+    if (!isSupabaseConfigured) initializeStorage();
   }, []);
 
   return (

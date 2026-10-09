@@ -52,7 +52,8 @@ const initialFormState = {
   meeting: false,
   dealStatus: 'Pending',
   exactBudget: '',
-  assignedVisitor: ''
+  assignedVisitor: '',
+  meetingMode: ''
 };
 
 export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
@@ -173,7 +174,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         meeting: false,
         dealStatus: 'Pending',
         exactBudget: '',
-        assignedVisitor: lead.assignedVisitor || user?.name || ''
+        assignedVisitor: lead.assignedVisitor || user?.name || '',
+        meetingMode: ''
       });
     }
   }, [isOpen, lead, requirementsList, realEstateProductsList, mutualFundProductsList, insuranceProductsList, insuranceSubProductsList, user]);
@@ -194,6 +196,8 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       } else if (field === 'status' && value === 'Meeting' && prev.status !== value) {
         updated.siteVisited = false;
         updated.meeting = true;
+        // Insurance: the next meeting is tomorrow by default (the user can pick another date)
+        if (isInsurance && !prev.nextDate) updated.nextDate = tomorrowInputDate();
       }
       if (field === 'productType' && !isOtherValue(value)) {
         updated.customProductType = '';
@@ -379,6 +383,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     // Call Not Received / No WhatsApp Reply only record the attempt — the other details are optional
     if (!isNoContact && !formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!isNoContact && !formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
+    if ((isInsurance || isMutualFund) && formData.status === 'Meeting' && !formData.meetingMode) { toast.error('Please choose Online Meeting or Offline Meeting'); return; }
 
     let finalProductType = formData.productType;
     if ((isRealEstate || isMutualFund) && isOtherValue(formData.productType)) {
@@ -560,7 +565,9 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         try {
           const visitMeet = {
             'site-visit': isRealEstate ? Boolean(formData.siteVisited) : false,
-            'meeting': Boolean(formData.meeting)
+            'meeting': Boolean(formData.meeting),
+            // Insurance / Mutual Fund: Online / Offline meeting
+            ...((isInsurance || isMutualFund) && formData.meetingMode ? { meetingMode: formData.meetingMode } : {})
           };
           const existingFollowUps = await siteVisitMeetingApi.getVisitorFollowUpsByLeadId(lead.id, lead.leadNo);
           const previousFollowUp = existingFollowUps && existingFollowUps.length > 0 ? existingFollowUps[existingFollowUps.length - 1] : null;
@@ -589,7 +596,9 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
             salesExecutive: chosenVisitorName || lead.callerAssigned || lead.leadReceiver || user?.name || '',
             visitorName: chosenVisitorName,
             visitorId: matchedVisitorId,
-            followUpNo: followUpNo
+            followUpNo: followUpNo,
+            // This call was already saved above — don't log it a second time
+            skipCallTracker: true
           });
         } catch (visitErr) {
           console.error('Could not auto-save visitor follow-up from FormTracker:', visitErr);
@@ -899,6 +908,22 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                             <span>Meeting</span>
                           </label>
                         </>
+                      ) : (isInsurance || isMutualFund) ? (
+                        <>
+                          {/* Insurance / Mutual Fund: Online or Offline meeting */}
+                          {['Online', 'Offline'].map(mode => (
+                            <label key={mode} className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
+                              <input
+                                type="radio"
+                                name="meetingMode"
+                                checked={formData.meetingMode === mode}
+                                onChange={() => setFormData(prev => ({ ...prev, meeting: true, meetingMode: mode }))}
+                                className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                              />
+                              <span>{mode} Meeting</span>
+                            </label>
+                          ))}
+                        </>
                       ) : (
                         <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
                           <input
@@ -929,16 +954,16 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                     </div>
                   )}
 
-                  {/* Assigned Visitor Dropdown */}
+                  {/* Assigned Visitor Dropdown (Insurance / Mutual Fund: who takes the meeting) */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                      Assigned Visitor *
+                      {isInsurance || isMutualFund ? 'Meeting Assigned To' : 'Assigned Visitor'} *
                     </label>
                     <SearchableDropdown
                       options={visitorOptions}
                       value={formData.assignedVisitor || ''}
                       onChange={(val) => handleChange('assignedVisitor', val)}
-                      placeholder="Select assigned visitor"
+                      placeholder={isInsurance || isMutualFund ? 'Select meeting person' : 'Select assigned visitor'}
                       height="h-[30px] md:h-[34px]"
                     />
                   </div>

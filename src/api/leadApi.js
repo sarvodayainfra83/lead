@@ -32,55 +32,16 @@ const notifyRemarksChanged = () => {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(REMARKS_CHANGED_EVENT));
 };
 
-// Browser copy of "seen" markers so the blink stops instantly, even before the DB round-trip
-const SEEN_KEY = 'remarkSeen';
-const readLocalSeen = (leadId) => {
-  try {
-    return (JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'))[String(leadId)] || {};
-  } catch {
-    return {};
-  }
-};
-const writeLocalSeen = (leadId, field, value) => {
-  try {
-    const all = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}');
-    all[String(leadId)] = { ...(all[String(leadId)] || {}), [field]: value };
-    localStorage.setItem(SEEN_KEY, JSON.stringify(all));
-  } catch { /* storage unavailable */ }
-};
-const latestOf = (a, b) => {
-  const ta = a ? new Date(a).getTime() : 0;
-  const tb = b ? new Date(b).getTime() : 0;
-  if (!ta && !tb) return null;
-  return ta >= tb ? a : b;
-};
-
-// Tracks whether Supabase leads table has admin_remark_seen_at / user_remark_seen_at columns
-let seenColumnsAvailable = true;
-
 // Day marks the user ticks in a Today's Followup list; each only counts on the day it was set:
 //  - call:  leads.call_marked_at / call_marked_by   — "called today" (Lead & Followup)
 //  - visit: leads.visit_marked_at / visit_marked_by — "site visit done today" (Site Visit / Meeting)
-// Kept in this browser until the columns exist in Supabase.
 const DAY_MARKS = {
-  call: { atColumn: 'call_marked_at', byColumn: 'call_marked_by', atField: 'callMarkedAt', byField: 'callMarkedBy', storageKey: 'callMarks', available: true },
-  visit: { atColumn: 'visit_marked_at', byColumn: 'visit_marked_by', atField: 'visitMarkedAt', byField: 'visitMarkedBy', storageKey: 'visitMarks', available: true }
+  call: { atColumn: 'call_marked_at', byColumn: 'call_marked_by', atField: 'callMarkedAt', byField: 'callMarkedBy' },
+  visit: { atColumn: 'visit_marked_at', byColumn: 'visit_marked_by', atField: 'visitMarkedAt', byField: 'visitMarkedBy' }
 };
-const readLocalDayMarks = (cfg) => {
-  try {
-    return JSON.parse(localStorage.getItem(cfg.storageKey) || '{}');
-  } catch {
-    return {};
-  }
-};
-const writeLocalDayMark = (cfg, leadId, mark) => {
-  try {
-    const all = readLocalDayMarks(cfg);
-    if (mark) all[String(leadId)] = mark;
-    else delete all[String(leadId)];
-    localStorage.setItem(cfg.storageKey, JSON.stringify(all));
-  } catch { /* storage unavailable */ }
-};
+
+// Latest admin / user remark + seen markers kept on the leads row
+const REMARK_COLUMNS = 'admin_remark, admin_remark_date, user_remark, user_remark_date, admin_remark_seen_at, user_remark_seen_at';
 
 export const leadApi = {
   // Helper to map DB row -> Frontend Lead model
@@ -388,59 +349,27 @@ export const leadApi = {
     const fetched = await this.fetchLeadRows();
     if (!isSupabaseConfigured || fetched.length === 0) return fetched;
 
-    // Day marks — one query per kind (started now, alongside the remarks one) so a missing column breaks nothing else
-    const dayMarkQueries = Object.values(DAY_MARKS).map(cfg => (cfg.available
-      ? Promise.resolve(supabase.from('leads').select(`id, ${cfg.atColumn}, ${cfg.byColumn}`))
-      : Promise.resolve({ data: null })));
-
-    // Admin / user remark thread lives on the leads table (same id as call_trackers.lead_id)
-    let remarkRows = null;
-    let error = null;
-
-    if (seenColumnsAvailable) {
-      ({ data: remarkRows, error } = await supabase
-        .from('leads')
-        .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date, admin_remark_seen_at, user_remark_seen_at'));
-      if (error) {
-        // Seen-marker columns not added in Supabase yet — disable querying them for this session
-        seenColumnsAvailable = false;
-      }
+    // Admin / user remark thread and day marks live on the leads table (same id as call_trackers.lead_id)
+    const dayMarkColumns = Object.values(DAY_MARKS).map(cfg => `${cfg.atColumn}, ${cfg.byColumn}`).join(', ');
+    const { data: extraRows, error } = await supabase
+      .from('leads')
+      .select(`id, ${REMARK_COLUMNS}, ${dayMarkColumns}`);
+    if (error) {
+      console.error('Error loading lead remarks / day marks:', error);
+      throw error;
     }
 
-    if (!remarkRows) {
-      ({ data: remarkRows, error } = await supabase
-        .from('leads')
-        .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date'));
-    }
-
-    const dayMarkResults = await Promise.all(dayMarkQueries);
-    const marksByKind = Object.values(DAY_MARKS).map((cfg, idx) => {
-      const { data: rows, error: markError } = dayMarkResults[idx];
-      if (markError) cfg.available = false; // columns not added in Supabase yet — use this browser's marks
-      const byId = cfg.available
-        ? Object.fromEntries((rows || []).map(r => [String(r.id), { at: r[cfg.atColumn], by: r[cfg.byColumn] }]))
-        : readLocalDayMarks(cfg);
-      return { cfg, byId };
-    });
-    const leads = fetched.map(l => {
-      let lead = l;
-      marksByKind.forEach(({ cfg, byId }) => {
-        const mark = byId[String(l.id)];
+    const extrasById = Object.fromEntries((extraRows || []).map(r => [String(r.id), r]));
+    return fetched.map(l => {
+      const r = extrasById[String(l.id)];
+      if (!r) return l;
+      let lead = { ...l, ...this.mapRemarksFromDb(r) };
+      Object.values(DAY_MARKS).forEach(cfg => {
         // A real tick always records who made it; a time without a name (e.g. a column default filling it on
         // insert) isn't a tick, so new leads don't show up as already called / visited
-        if (mark?.at && mark.by) lead = { ...lead, [cfg.atField]: mark.at, [cfg.byField]: mark.by };
+        if (r[cfg.atColumn] && r[cfg.byColumn]) lead = { ...lead, [cfg.atField]: r[cfg.atColumn], [cfg.byField]: r[cfg.byColumn] };
       });
       return lead;
-    });
-
-    if (error || !remarkRows) {
-      if (error) console.warn('Could not load lead remarks:', error);
-      return leads;
-    }
-    const remarksById = Object.fromEntries(remarkRows.map(r => [String(r.id), r]));
-    return leads.map(l => {
-      const r = remarksById[String(l.id)];
-      return r ? { ...l, ...this.mapRemarksFromDb(r) } : l;
     });
   },
 
@@ -448,26 +377,20 @@ export const leadApi = {
   async setDayMark(kind, leadId, marked, userName) {
     const cfg = DAY_MARKS[kind];
     const mark = marked ? { at: nowIST(), by: userName || 'User' } : null;
-    let savedInDb = !isSupabaseConfigured;
-    if (isSupabaseConfigured && cfg.available) {
+    if (!isSupabaseConfigured) {
+      const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
+      if (existing) updateLocalLead({ ...existing, [cfg.atField]: mark?.at || null, [cfg.byField]: mark?.by || '' });
+    } else {
       const { error } = await supabase
         .from('leads')
         .update({ [cfg.atColumn]: mark?.at || null, [cfg.byColumn]: mark?.by || null })
         .eq('id', leadId);
       if (error) {
-        cfg.available = false;
-        console.warn(`Could not save ${kind} mark (run the leads ${cfg.atColumn} SQL):`, error.message);
-        writeLocalDayMark(cfg, leadId, mark);
-      } else {
-        savedInDb = true;
+        console.error(`Error saving ${kind} mark:`, error);
+        throw error;
       }
-    } else if (isSupabaseConfigured) {
-      writeLocalDayMark(cfg, leadId, mark);
-    } else {
-      const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
-      if (existing) updateLocalLead({ ...existing, [cfg.atField]: mark?.at || null, [cfg.byField]: mark?.by || '' });
     }
-    return { markedAt: mark?.at || null, markedBy: mark?.by || '', savedInDb };
+    return { markedAt: mark?.at || null, markedBy: mark?.by || '', savedInDb: true };
   },
 
   // "Called today" (Lead & Followup)
@@ -482,15 +405,14 @@ export const leadApi = {
   },
 
   mapRemarksFromDb(row) {
-    const seen = readLocalSeen(row.id);
     return {
       adminRemark: row.admin_remark || '',
       adminRemarkDate: row.admin_remark_date || null,
       userRemark: row.user_remark || '',
       userRemarkDate: row.user_remark_date || null,
       // When the user last opened the admin's remark / the admin last opened the user's reply
-      adminRemarkSeenAt: latestOf(row.admin_remark_seen_at, seen.adminRemarkSeenAt),
-      userRemarkSeenAt: latestOf(row.user_remark_seen_at, seen.userRemarkSeenAt)
+      adminRemarkSeenAt: row.admin_remark_seen_at || null,
+      userRemarkSeenAt: row.user_remark_seen_at || null
     };
   },
 
@@ -500,16 +422,15 @@ export const leadApi = {
     const field = viewerIsAdmin ? 'userRemarkSeenAt' : 'adminRemarkSeenAt';
     const column = viewerIsAdmin ? 'user_remark_seen_at' : 'admin_remark_seen_at';
     const seenAt = nowIST();
-    writeLocalSeen(leadId, field, seenAt); // instant + fallback when the column isn't created yet
-    if (isSupabaseConfigured && seenColumnsAvailable) {
-      const { error } = await supabase.from('leads').update({ [column]: seenAt }).eq('id', leadId);
-      if (error) {
-        seenColumnsAvailable = false;
-        console.warn('Could not save remark seen time (run the leads seen-columns SQL):', error.message);
-      }
-    } else if (!isSupabaseConfigured) {
+    if (!isSupabaseConfigured) {
       const existing = getLocalLeads().find(l => String(l.id) === String(leadId));
       if (existing) updateLocalLead({ ...existing, [field]: seenAt });
+    } else {
+      const { error } = await supabase.from('leads').update({ [column]: seenAt }).eq('id', leadId);
+      if (error) {
+        console.error('Error saving remark seen time:', error);
+        throw error;
+      }
     }
     notifyRemarksChanged();
     return { [field]: seenAt };
@@ -574,7 +495,7 @@ export const leadApi = {
       .from('leads')
       .update({ ...payload, updated_at: nowIST() })
       .eq('id', leadId)
-      .select('id, admin_remark, admin_remark_date, user_remark, user_remark_date')
+      .select(`id, ${REMARK_COLUMNS}`)
       .single();
     if (error) {
       console.error('Error saving lead remark:', error);
@@ -652,7 +573,7 @@ export const leadApi = {
     };
   },
 
-  // Raw lead rows from the unified view (falls back to the leads table join, then local storage)
+  // Raw lead rows from the unified view (falls back to the leads table join)
   async fetchLeadRows() {
     if (!isSupabaseConfigured) {
       return getLocalLeads();
@@ -669,47 +590,44 @@ export const leadApi = {
     }
 
     // Fallback: Fetch directly from central leads table and join
-    try {
-      const { data: leadsData, error: leadsError } = await supabase
-        .from('leads')
-        .select(`
-          id,
-          lead_no,
-          lead_type_id,
-          created_at,
-          updated_at,
-          real_estate_id,
-          insurance_id,
-          mutual_fund_id,
-          master_lead_types!lead_type_id (id, lead_type),
-          real_state!real_estate_id (*),
-          insurance!insurance_id (*),
-          mutual_fund!mutual_fund_id (*)
-        `)
-        .order('created_at', { ascending: false });
+    const { data: leadsData, error: leadsError } = await supabase
+      .from('leads')
+      .select(`
+        id,
+        lead_no,
+        lead_type_id,
+        created_at,
+        updated_at,
+        real_estate_id,
+        insurance_id,
+        mutual_fund_id,
+        master_lead_types!lead_type_id (id, lead_type),
+        real_state!real_estate_id (*),
+        insurance!insurance_id (*),
+        mutual_fund!mutual_fund_id (*)
+      `)
+      .order('created_at', { ascending: false });
 
-      if (!leadsError && leadsData) {
-        return leadsData.map(l => {
-          const detail = l.real_state || l.insurance || l.mutual_fund || {};
-          return this.mapFromDb({
-            ...detail,
-            id: l.id,
-            detail_id: detail.id,
-            lead_no: l.lead_no,
-            lead_type_id: l.lead_type_id,
-            lead_type: l.master_lead_types?.lead_type,
-            lead_receiver: detail.lead_receiver,
-            lead_source: detail.lead_source,
-            caller_assigned: detail.caller_assigned,
-            product_type: detail.product_type
-          });
-        });
-      }
-    } catch (err) {
-      console.warn('Fallback leads fetch error:', err);
+    if (leadsError) {
+      console.error('Error loading leads:', viewError, leadsError);
+      throw leadsError;
     }
 
-    return getLocalLeads();
+    return (leadsData || []).map(l => {
+      const detail = l.real_state || l.insurance || l.mutual_fund || {};
+      return this.mapFromDb({
+        ...detail,
+        id: l.id,
+        detail_id: detail.id,
+        lead_no: l.lead_no,
+        lead_type_id: l.lead_type_id,
+        lead_type: l.master_lead_types?.lead_type,
+        lead_receiver: detail.lead_receiver,
+        lead_source: detail.lead_source,
+        caller_assigned: detail.caller_assigned,
+        product_type: detail.product_type
+      });
+    });
   },
 
   // Save single new lead: writes record to type table first, then registers in leads table via FK
@@ -767,8 +685,6 @@ export const leadApi = {
 
     if (detailError) {
       console.error(`Error inserting into ${tableName}:`, detailError);
-      saveLocalLead(leadData);
-      refreshBadgeCounts();
       throw detailError;
     }
 
@@ -791,8 +707,6 @@ export const leadApi = {
       console.error('Error inserting into central leads table:', parentError);
       // Clean up child record
       await supabase.from(tableName).delete().eq('id', detailData.id);
-      saveLocalLead(leadData);
-      refreshBadgeCounts();
       throw parentError;
     }
 
@@ -808,7 +722,6 @@ export const leadApi = {
       caller_assigned: leadData.callerAssigned
     });
 
-    saveLocalLead(createdLead);
     refreshBadgeCounts();
     return createdLead;
   },
@@ -824,9 +737,13 @@ export const leadApi = {
     const isUuid = idOrLeadNo.includes('-');
     // Find parent lead first to know which FK is populated
     const parentQuery = supabase.from('leads').select('id, lead_no, lead_type_id, real_estate_id, insurance_id, mutual_fund_id, master_lead_types(lead_type)');
-    const { data: parentData } = isUuid
+    const { data: parentData, error: parentError } = isUuid
       ? await parentQuery.eq('id', idOrLeadNo).limit(1)
       : await parentQuery.eq('lead_no', idOrLeadNo).limit(1);
+    if (parentError) {
+      console.error('Error loading lead for update:', parentError);
+      throw parentError;
+    }
 
     const parentLead = parentData && parentData[0] ? parentData[0] : null;
     const leadId = parentLead ? parentLead.id : (isUuid ? idOrLeadNo : null);
@@ -909,13 +826,10 @@ export const leadApi = {
 
       if (error) {
         console.error(`Error updating lead in ${tableName}:`, error);
-        updateLocalLead(idOrLeadNo, updatedFields);
-        refreshBadgeCounts();
         throw error;
       }
     }
 
-    updateLocalLead(idOrLeadNo, updatedFields);
     refreshBadgeCounts();
     return { id: leadId, ...updatedFields };
   },
@@ -930,26 +844,32 @@ export const leadApi = {
 
     const isUuid = idOrLeadNo.includes('-');
     const parentQuery = supabase.from('leads').select('id, lead_no, real_estate_id, insurance_id, mutual_fund_id');
-    const { data: parentData } = isUuid
+    const { data: parentData, error: parentError } = isUuid
       ? await parentQuery.eq('id', idOrLeadNo).limit(1)
       : await parentQuery.eq('lead_no', idOrLeadNo).limit(1);
+    if (parentError) {
+      console.error('Error loading lead for delete:', parentError);
+      throw parentError;
+    }
 
     const parentLead = parentData && parentData[0] ? parentData[0] : null;
 
     if (parentLead) {
-      if (parentLead.real_estate_id) {
-        await supabase.from('real_state').delete().eq('id', parentLead.real_estate_id);
+      const deletes = [
+        ['real_state', parentLead.real_estate_id],
+        ['insurance', parentLead.insurance_id],
+        ['mutual_fund', parentLead.mutual_fund_id],
+        ['leads', parentLead.id]
+      ].filter(([, id]) => id);
+      for (const [table, id] of deletes) {
+        const { error } = await supabase.from(table).delete().eq('id', id);
+        if (error) {
+          console.error(`Error deleting lead from ${table}:`, error);
+          throw error;
+        }
       }
-      if (parentLead.insurance_id) {
-        await supabase.from('insurance').delete().eq('id', parentLead.insurance_id);
-      }
-      if (parentLead.mutual_fund_id) {
-        await supabase.from('mutual_fund').delete().eq('id', parentLead.mutual_fund_id);
-      }
-      await supabase.from('leads').delete().eq('id', parentLead.id);
     }
 
-    deleteLocalLead(idOrLeadNo);
     refreshBadgeCounts();
   },
 

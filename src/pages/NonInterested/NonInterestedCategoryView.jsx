@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
-  Search, RotateCcw, RefreshCw, UserCheck, MessageSquare,
+  Search, RotateCcw, UserCheck, MessageSquare,
   Phone, MapPin, Calendar, Eye, X, ChevronDown, ChevronUp,
   FileSpreadsheet, Mail, Briefcase, FileText, Clock, IndianRupee, Check, UserX,
   CalendarDays
@@ -28,7 +28,7 @@ const getTodayStr = () => {
 
 const STATUS_STYLES = {
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  'Deal Lock': 'bg-emerald-100 text-emerald-800 border-emerald-400',
+  'Deal Lock': 'bg-violet-100 text-violet-800 border-violet-400',
   'Not Interested': 'bg-rose-50 text-rose-700 border-rose-200 font-bold',
   'Future Plan': 'bg-amber-50 text-amber-700 border-amber-200',
   'Future Plan Date': 'bg-amber-50 text-amber-700 border-amber-200',
@@ -40,6 +40,7 @@ const STATUS_STYLES = {
   'Pending Assignment': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Did Not Show': 'bg-slate-100 text-slate-700 border-slate-300',
   'Under Negotiation': 'bg-orange-50 text-orange-700 border-orange-200',
+  'Revisit': 'bg-teal-50 text-teal-700 border-teal-200',
   'Closed Won': 'bg-emerald-100 text-emerald-800 border-emerald-300',
   'Closed Lost': 'bg-rose-50 text-rose-700 border-rose-200',
   Pending: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -694,7 +695,7 @@ export default function NonInterestedCategoryView({
         )}
 
         {/* Action Buttons: Followup on left, Hide/Details on right */}
-        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
           {onLogFollowUp ? (
             <button
               onClick={() => onLogFollowUp(item)}
@@ -792,7 +793,7 @@ export default function NonInterestedCategoryView({
         </div>
 
         {/* Row 2: Search + Export + Refresh + Reset */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full justify-between sm:justify-end pb-0.5">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap sm:overflow-x-auto scrollbar-hide w-full justify-between sm:justify-end pb-0.5">
           {/* Search Input */}
           <div className="relative min-w-[140px] sm:min-w-[180px] max-w-full sm:max-w-[240px] flex-1 sm:flex-initial">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
@@ -825,16 +826,6 @@ export default function NonInterestedCategoryView({
               <span className="hidden sm:inline">Excel</span>
             </button>
           )}
-
-          {/* Refresh */}
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            title="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95 cursor-pointer"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin text-rose-600' : ''} />
-          </button>
 
           {/* Clear Filters */}
           {(activeFiltersCount > 0 || searchQuery) && (

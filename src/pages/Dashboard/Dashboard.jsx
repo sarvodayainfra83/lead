@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   Users, UserPlus, PhoneCall, Clock, CheckCircle2, Handshake, XCircle, PhoneOff, Flame, Thermometer,
-  Building2, ShieldCheck, TrendingUp, RefreshCw, ArrowRight, UserCheck, CalendarClock,
+  Building2, ShieldCheck, TrendingUp, ArrowRight, UserCheck, CalendarClock,
   LayoutGrid, Layers, Phone, CalendarDays, ChevronDown, UserCircle2, Package, FileBarChart, Target, Sparkles
 } from 'lucide-react';
 import { dashboardApi } from '../../api/dashboardApi';
@@ -42,8 +42,18 @@ const STATUS_STYLES = {
   'Call Not Received': 'bg-orange-50 text-orange-700 border-orange-200',
   'No WhatsApp Reply': 'bg-slate-100 text-slate-700 border-slate-300',
   'Site Visit/Meeting': 'bg-cyan-50 text-cyan-700 border-cyan-200',
-  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200'
+  Meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200',
+  // Site Visit follow-up outcomes (a lead's current status can come from its latest visit follow-up)
+  'Future Plan': 'bg-amber-50 text-amber-700 border-amber-200',
+  'Revisit': 'bg-teal-50 text-teal-700 border-teal-200',
+  'Under Negotiation': 'bg-orange-50 text-orange-700 border-orange-200',
+  'Did Not Show': 'bg-slate-100 text-slate-700 border-slate-300',
+  'Rejected (Lost)': 'bg-red-50 text-red-700 border-red-200',
+  'Deal Lock': 'bg-violet-600 text-white border-violet-700'
 };
+
+// Dashboard wording for a status ('Deal Lock' is the Site Visit page's term for a closed deal)
+const STATUS_LABELS = { 'Deal Lock': 'Deal Closed' };
 
 const CHART_COLORS = { assigned: '#c7d2fe', calls: '#4f46e5', converted: '#10b981', newLeads: '#a5b4fc' };
 
@@ -77,6 +87,11 @@ const formatDay = (ms) => {
   if (!ms) return '-';
   const d = new Date(ms);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const formatAmount = (val) => {
+  const n = Number(String(val ?? '').replace(/[^0-9.]/g, ''));
+  return n > 0 ? `₹${n.toLocaleString('en-IN')}` : '';
 };
 
 const formatIsoDate = (val) => (val ? String(val).split('T')[0].split('-').reverse().join('/') : '');
@@ -113,10 +128,12 @@ const Empty = ({ text }) => (
   <p className="text-xs text-gray-400 italic py-8 text-center px-3">{text}</p>
 );
 
-const StatusPill = ({ status }) => (
+const MEETING_ONLY_CATEGORIES = ['Insurance', 'Mutual Fund'];
+
+const StatusPill = ({ status, meetingOnly = false }) => (
   status ? (
     <span className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border whitespace-nowrap ${STATUS_STYLES[status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-      {status}
+      {meetingOnly && status === 'Site Visit/Meeting' ? 'Meeting' : (STATUS_LABELS[status] || status)}
     </span>
   ) : <span className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-semibold border border-gray-200 bg-gray-50 text-gray-500 whitespace-nowrap">Not Called</span>
 );
@@ -210,8 +227,13 @@ const MetricBlock = ({ label, value, onClick }) => (
 );
 
 // Clean list row with an avatar (Today's calling / leads / Hot & Warm)
-const PersonRow = ({ name, sub, right, onClick }) => (
-  <button type="button" onClick={onClick} className="w-full text-left flex items-center gap-3 px-4 py-2 hover:bg-gray-50/80 transition">
+// highlight: closed deals get their own colour so they stand out in every list
+const PersonRow = ({ name, sub, right, onClick, highlight = false }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`w-full text-left flex items-center gap-3 px-4 py-2 transition ${highlight ? 'bg-violet-50 hover:bg-violet-100/70 border-l-4 border-violet-500 pl-3' : 'hover:bg-gray-50/80'}`}
+  >
     <Avatar name={name} />
     <div className="min-w-0 flex-1">
       <p className="text-[13px] font-semibold text-gray-900 truncate">{name || 'Customer'}</p>
@@ -300,7 +322,7 @@ export default function Dashboard() {
   const [loadedOnce, setLoadedOnce] = useState(false);
   // "Show more" paging for the long record lists
   const LIST_PAGE = 15;
-  const [listLimit, setListLimit] = useState({ calls: LIST_PAGE, leads: LIST_PAGE, hot: LIST_PAGE });
+  const [listLimit, setListLimit] = useState({ calls: LIST_PAGE, leads: LIST_PAGE, hot: LIST_PAGE, deals: LIST_PAGE });
   const showMore = (key) => setListLimit(prev => ({ ...prev, [key]: prev[key] + LIST_PAGE }));
   const [detailsLead, setDetailsLead] = useState(null);
   // Employee dropdown (normalized name) — options follow the active tab
@@ -314,6 +336,8 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState(scope?.categories?.[0] || scope?.category || 'All');
   const tab = visibleTabs.find(t => t.key === activeTab)?.key || visibleTabs[0].key;
   const isAll = tab === 'All';
+  // Insurance / Mutual Fund have meetings only — no site visits — so labels say 'Meeting'
+  const isMeetingOnly = MEETING_ONLY_CATEGORIES.includes(tab);
   const inTab = useCallback((category) => isAll || category === tab, [isAll, tab]);
 
   const loadData = useCallback(async () => {
@@ -357,7 +381,7 @@ export default function Dashboard() {
 
   // Start the record lists from the top again when the tab or employee changes
   useEffect(() => {
-    setListLimit({ calls: LIST_PAGE, leads: LIST_PAGE, hot: LIST_PAGE });
+    setListLimit({ calls: LIST_PAGE, leads: LIST_PAGE, hot: LIST_PAGE, deals: LIST_PAGE });
   }, [tab, employeeKey]);
 
   // Drop the employee filter when they aren't part of the newly selected tab
@@ -414,6 +438,10 @@ export default function Dashboard() {
     const hotWarm = leads
       .filter(l => (l.customerStatus === 'Hot' || l.customerStatus === 'Warm') && !l.isLost)
       .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
+    // Closed deals (Real Estate only — deals are locked from Site Visit follow-ups), latest first
+    const dealsClosed = leads
+      .filter(l => l.category === 'Real Estate' && l.isDealClosed)
+      .sort((a, b) => b.dealClosedMs - a.dealClosedMs);
 
     // ---- Per-employee MIS for the selected period ----
     const tabEmployees = data.employees
@@ -514,15 +542,17 @@ export default function Dashboard() {
     const myToday = isAdmin ? null : data.attendance.find(a => normName(a.userName) === myName && a.date === todayStr) || null;
     const myWorkingDays = isAdmin ? 0 : countWorkingDays(range.fromMs, range.toMs);
 
-    return { kpis, byType, todayLeads, todayCalls, hotWarm, mis, totals, present, teamSize, daily, myAttendance, myToday, myWorkingDays };
+    return { kpis, byType, todayLeads, todayCalls, hotWarm, dealsClosed, mis, totals, present, teamSize, daily, myAttendance, myToday, myWorkingDays };
   }, [data, tab, isAll, inTab, range, employeeKey, isAdmin, user]);
 
-  const { kpis, byType, todayLeads, todayCalls, hotWarm, mis, totals, present, teamSize, daily, myAttendance, myToday, myWorkingDays } = view;
+  const { kpis, byType, todayLeads, todayCalls, hotWarm, dealsClosed, mis, totals, present, teamSize, daily, myAttendance, myToday, myWorkingDays } = view;
   const leadById = useMemo(() => Object.fromEntries(data.leads.map(l => [String(l.id), l])), [data.leads]);
   const periodLabel = period === 'custom'
     ? `${formatFullDate(range.fromMs)} – ${formatFullDate(range.toMs - 1)}`
     : PERIOD_OPTIONS.find(p => p.value === period)?.label || 'Period';
   const tabLabel = isAll ? 'All Leads' : tab;
+  // Deal Closed card: Real Estate only, so it shows on the Real Estate and All Leads tabs
+  const showDeals = tab === 'Real Estate' || (isAll && visibleTabs.some(t => t.key === 'Real Estate'));
 
   // Chart only lists employees with activity in this tab
   const chartData = mis
@@ -595,14 +625,6 @@ export default function Dashboard() {
                 height="h-[34px]"
               />
             </div>}
-            <button
-              onClick={loadData}
-              disabled={loading}
-              title="Refresh"
-              className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
           </div>
         </div>
 
@@ -713,7 +735,7 @@ export default function Dashboard() {
               onClick={() => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })}
             />
             <MetricBlock
-              label="Site Visits"
+              label={isMeetingOnly ? 'Meetings' : 'Site Visits'}
               value={kpis.siteVisit}
               onClick={() => go('/site-visit-meeting', { dateFilter: 'all' })}
             />
@@ -752,7 +774,7 @@ export default function Dashboard() {
               {[
                 { label: 'Leads', icon: UserPlus, path: '/lead', onClick: () => go('/lead', { dateFilter: 'all' }) },
                 { label: 'Calls', icon: PhoneCall, path: '/call-tracker', onClick: () => go('/call-tracker') },
-                { label: 'Visits', icon: Handshake, path: '/site-visit-meeting', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
+                { label: isMeetingOnly ? 'Meetings' : 'Visits', icon: Handshake, path: '/site-visit-meeting', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
                 { label: 'Products', icon: Package, path: '/products', onClick: () => openPage('/products') },
                 { label: 'MIS', icon: FileBarChart, path: '/mis-report', onClick: () => openPage('/mis-report') }
               ].filter(a => canOpen(a.path)).map(({ label, icon: Icon, onClick }) => (
@@ -811,7 +833,7 @@ export default function Dashboard() {
               const segments = [
                 { label: 'Converted', value: kpis.converted, color: 'bg-emerald-500', status: 'Interested' },
                 { label: 'Future Plan', value: kpis.futurePlan, color: 'bg-amber-400', status: 'Future Plan Date' },
-                { label: 'Site Visit', value: kpis.siteVisit, color: 'bg-cyan-500', path: '/site-visit-meeting' },
+                { label: isMeetingOnly ? 'Meeting' : 'Site Visit', value: kpis.siteVisit, color: 'bg-cyan-500', path: '/site-visit-meeting' },
                 { label: 'Not Interested', value: kpis.notInterested, color: 'bg-rose-400', status: 'Not Interested' },
                 { label: 'Not Called', value: kpis.notCalled, color: 'bg-gray-300', status: 'Pending' }
               ];
@@ -860,7 +882,7 @@ export default function Dashboard() {
               {[
                 { label: 'Hot', value: kpis.hot, cls: 'text-rose-600', onClick: () => go('/customer-master', { customerStatus: 'Hot' }) },
                 { label: 'Warm', value: kpis.warm, cls: 'text-amber-600', onClick: () => go('/customer-master', { customerStatus: 'Warm' }) },
-                { label: 'Visits', value: kpis.siteVisit, cls: 'text-cyan-600', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) }
+                { label: isMeetingOnly ? 'Meetings' : 'Visits', value: kpis.siteVisit, cls: 'text-cyan-600', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) }
               ].map(x => (
                 <button
                   key={x.label}
@@ -890,7 +912,7 @@ export default function Dashboard() {
                 }))
                 : [
                   { key: 'fp', label: 'Future Plan', icon: Clock, done: kpis.futurePlan, total: kpis.total, hint: 'Awaiting next call', onClick: () => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' }) },
-                  { key: 'sv', label: 'Site Visit / Meeting', icon: Handshake, done: kpis.siteVisit, total: kpis.total, hint: 'Visits scheduled', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
+                  { key: 'sv', label: isMeetingOnly ? 'Meeting' : 'Site Visit / Meeting', icon: Handshake, done: kpis.siteVisit, total: kpis.total, hint: isMeetingOnly ? 'Meetings scheduled' : 'Visits scheduled', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
                   { key: 'nc', label: 'Not Called', icon: PhoneOff, done: kpis.notCalled, total: kpis.total, hint: 'Still to be called', onClick: () => go('/call-tracker', { statusFilter: 'Pending', dateFilter: 'all' }) }
                 ]
               ).map(item => {
@@ -923,8 +945,8 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* ================= Row 3: today's calling · today's leads · hot & warm ================= */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {/* ================= Row 3: today's calling · today's leads · hot & warm · deal closed ================= */}
+        <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${showDeals ? '2xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
           <Card className="flex flex-col">
             <CardHeader
               title="Today's Calling"
@@ -934,21 +956,26 @@ export default function Dashboard() {
             />
             {todayCalls.length > 0 ? (
               <div className="max-h-[380px] overflow-y-auto pb-1">
-                {todayCalls.slice(0, listLimit.calls).map((c, idx) => (
-                  <PersonRow
-                    key={c.id || idx}
-                    onClick={() => leadById[String(c.leadId)] && setDetailsLead(leadById[String(c.leadId)])}
-                    name={c.personName}
-                    sub={`${formatTime(c.timestampMs)} · ${c.callerAssigned || 'Unassigned'}${c.number ? ` · ${c.number}` : ''}`}
-                    right={<>
-                      <StatusPill status={c.status} />
-                      <span className="flex items-center gap-1">
-                        {isAll && <TypePill type={leadById[String(c.leadId)]?.leadType} />}
-                        <TempPill value={c.customerStatus} />
-                      </span>
-                    </>}
-                  />
-                ))}
+                {todayCalls.slice(0, listLimit.calls).map((c, idx) => {
+                  // Show the lead's current (latest) status, not the status logged on this particular call
+                  const lead = leadById[String(c.leadId)];
+                  return (
+                    <PersonRow
+                      key={c.id || idx}
+                      onClick={() => lead && setDetailsLead(lead)}
+                      highlight={Boolean(lead?.isDealClosed)}
+                      name={c.personName}
+                      sub={`${formatTime(c.timestampMs)} · ${c.callerAssigned || 'Unassigned'}${c.number ? ` · ${c.number}` : ''}`}
+                      right={<>
+                        <StatusPill status={lead?.isDealClosed ? 'Deal Lock' : (lead?.status || c.status)} meetingOnly={MEETING_ONLY_CATEGORIES.includes(lead?.category || tab)} />
+                        <span className="flex items-center gap-1">
+                          {isAll && <TypePill type={lead?.leadType} />}
+                          <TempPill value={lead ? lead.customerStatus : c.customerStatus} />
+                        </span>
+                      </>}
+                    />
+                  );
+                })}
                 {todayCalls.length > listLimit.calls && <MoreButton remaining={todayCalls.length - listLimit.calls} onClick={() => showMore('calls')} />}
               </div>
             ) : (
@@ -969,10 +996,11 @@ export default function Dashboard() {
                   <PersonRow
                     key={l.id || idx}
                     onClick={() => setDetailsLead(l)}
+                    highlight={l.isDealClosed}
                     name={l.personName}
-                    sub={`${l.leadNo || ''}${l.leadSource ? ` · ${l.leadSource}` : ''} · ${l.callerAssigned || 'Unassigned'}`}
+                    sub={`${l.leadNo || ''}${l.leadSource ? ` · ${l.leadSource}` : ''} · ${l.callerAssigned || l.assignedVisitor || 'Unassigned'}`}
                     right={<>
-                      <StatusPill status={l.status} />
+                      <StatusPill status={l.isDealClosed ? 'Deal Lock' : l.status} meetingOnly={MEETING_ONLY_CATEGORIES.includes(l.category || tab)} />
                       {isAll && <TypePill type={l.leadType} />}
                     </>}
                   />
@@ -984,7 +1012,7 @@ export default function Dashboard() {
             )}
           </Card>
 
-          <Card className="flex flex-col md:col-span-2 xl:col-span-1">
+          <Card className={`flex flex-col ${showDeals ? '' : 'md:col-span-2 xl:col-span-1'}`}>
             <CardHeader
               title="Recent Hot & Warm"
               subtitle="Latest interested clients"
@@ -1011,6 +1039,39 @@ export default function Dashboard() {
               <Empty text={loadingOr('No Hot or Warm clients yet.')} />
             )}
           </Card>
+
+          {showDeals && (
+            <Card className="flex flex-col">
+              <CardHeader
+                title="Deal Closed"
+                subtitle={`${dealsClosed.length} Real Estate deal${dealsClosed.length === 1 ? '' : 's'} closed`}
+                icon={CheckCircle2}
+                action={canDrillInto('/site-visit-meeting') && <ViewAll onClick={() => go('/site-visit-meeting', { dateFilter: 'all', closedDealsOnly: true }, 'Real Estate')} />}
+              />
+              {dealsClosed.length > 0 ? (
+                <div className="max-h-[380px] overflow-y-auto pb-1">
+                  {dealsClosed.slice(0, listLimit.deals).map((l, idx) => {
+                    const deal = l.dealFollowUp || {};
+                    const closedBy = deal.salesExecutive || deal.visitorName || l.assignedVisitor || l.callerAssigned || 'Unassigned';
+                    const amount = formatAmount(deal.closingAmount);
+                    return (
+                      <PersonRow
+                        key={l.id || idx}
+                        onClick={() => setDetailsLead(l)}
+                        highlight
+                        name={l.personName}
+                        sub={`${l.dealClosedMs ? `Closed ${formatDay(l.dealClosedMs)} · ` : ''}${closedBy}${amount ? ` · ${amount}` : ''}`}
+                        right={<StatusPill status="Deal Lock" />}
+                      />
+                    );
+                  })}
+                  {dealsClosed.length > listLimit.deals && <MoreButton remaining={dealsClosed.length - listLimit.deals} onClick={() => showMore('deals')} />}
+                </div>
+              ) : (
+                <Empty text={loadingOr('No deals closed yet.')} />
+              )}
+            </Card>
+          )}
         </div>
         </>)}
       </div>

@@ -41,6 +41,9 @@ export default function HistoryTracker({ tabBar }) {
       const userTrackers = trackers.filter(t => matchesUserAssignment(t, user));
       const rows = annotateFollowUpNumbers(userTrackers);
       setHistoryRows(rows);
+    }).catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
     });
   }, [user]);
 

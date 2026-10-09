@@ -38,7 +38,12 @@ export default function InsuranceSubProduct({ setHeaderAction, searchQuery = '' 
     setRows(subProducts);
     setProductTypes(products);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load().catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
+    });
+  }, []);
 
   const openAdd = useCallback(() => { setEditRow(null); setProductType(''); setSubProductType(''); setShowForm(true); }, []);
   const openEdit = (row) => { setEditRow(row); setProductType(row.productType); setSubProductType(row.subProductType); setShowForm(true); };

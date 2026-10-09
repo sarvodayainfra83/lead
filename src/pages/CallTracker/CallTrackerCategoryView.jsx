@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
   Search, X, RotateCcw, Phone, Eye, ChevronDown, ChevronUp,
-  Calendar, FileSpreadsheet, Plus, RefreshCw, UserCheck,
+  Calendar, FileSpreadsheet, Plus, UserCheck,
   Mail, Briefcase, FileText, MapPin, Clock, IndianRupee, MessageSquare, Bell, Pencil, Reply,
   CalendarDays, Upload
 } from 'lucide-react';
@@ -18,6 +18,7 @@ import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin, matchesUserConnection } from '../../utils/authUtils';
 import { TERMINAL_STATUSES, getTrackersForLead, CUSTOMER_STATUS_STYLES, formatDateTime } from './callTrackerConstants';
 import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
+import { getVisitMeetCounts } from '../SiteVisitMeeting/SiteVisitCategoryView';
 
 const getTodayStr = () => {
   const d = new Date();
@@ -58,6 +59,12 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'Call Not Received', label: 'Call Not Received' },
   { value: 'No WhatsApp Reply', label: 'No WhatsApp Reply' }
 ];
+
+// Which stage a lead is at — shown in the Stage column beside Customer Name
+const STAGE_STYLES = {
+  'Site Visit': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Leads / Calling': 'bg-blue-50 text-blue-700 border-blue-200'
+};
 
 const matchesStatusFilter = (item, statusFilter) => {
   if (statusFilter === 'all') return true;
@@ -140,6 +147,12 @@ export default function CallTrackerCategoryView({
 }) {
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
+  // Insurance / Mutual Fund have meetings only — 'Site Visit/Meeting' reads 'Meeting' and the 'Site Visit' stage reads 'Meeting'
+  const isMeetingOnly = category === 'Insurance' || category === 'Mutual Fund';
+  const statusText = (status) => (isMeetingOnly && status === 'Site Visit/Meeting' ? 'Meeting' : status);
+  const stageText = (stage) => (isMeetingOnly && stage === 'Site Visit' ? 'Meeting' : stage);
+  // Who takes the site visit (Real Estate) / meeting (Insurance, Mutual Fund)
+  const assignedToLabel = isMeetingOnly ? 'Meeting Assigned To' : 'Site Visit Assigned To';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
@@ -148,6 +161,8 @@ export default function CallTrackerCategoryView({
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [callerFilter, setCallerFilter] = useState('all');
+  // Stage buttons (All Dates only): 'all' | 'Leads / Calling' | 'Site Visit'
+  const [stageFilter, setStageFilter] = useState('all');
 
   // Helper to format short date DD/MM
   const formatShortDate = (str) => {
@@ -209,12 +224,14 @@ export default function CallTrackerCategoryView({
   // Count active dropdown filters
   const activeFilterCount = (statusFilter !== 'all' ? 1 : 0) +
     (dateFilter !== 'today' ? 1 : 0) +
-    (callerFilter !== 'all' ? 1 : 0);
+    (callerFilter !== 'all' ? 1 : 0) +
+    (dateFilter === 'all' && stageFilter !== 'all' ? 1 : 0);
 
   // Reset all filters & search
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setStatusFilter('all');
+    setStageFilter('all');
     setDateFilter('today');
     setCustomFrom('');
     setCustomTo('');
@@ -309,7 +326,9 @@ export default function CallTrackerCategoryView({
       }
 
       // Status
-      const status = latestTracker?.status || (lead.callerAssigned ? 'Pending' : 'Unassigned');
+      // (a Site Visit lead never called — e.g. a walk-in — shows as Site Visit/Meeting)
+      const status = latestTracker?.status ||
+        (!lead.inCallList && lead.inSiteVisitList ? 'Site Visit/Meeting' : (lead.callerAssigned ? 'Pending' : 'Unassigned'));
 
       // Sorting timestamp: latest tracker activity or lead creation/update time
       let trackerTime = latestTracker?.timestampMs || 0;
@@ -338,6 +357,8 @@ export default function CallTrackerCategoryView({
         leadType: lead.leadType || category,
         status,
         latestStatus: status,
+        // Site Visit once the lead is on the Site Visit / Meeting list, otherwise still being called
+        stage: lead.inSiteVisitList ? 'Site Visit' : 'Leads / Calling',
         customerStatus,
         assignedVisitor,
         // Lead-level remark thread (falls back to the latest per-call admin remark for older data)
@@ -371,6 +392,8 @@ export default function CallTrackerCategoryView({
         trackers: leadTrackers,
         visitorFollowUps: leadFollowUps,
         visitorFollowUpCount: leadFollowUps.length,
+        // Site visits counted the same way as the Site Visit / Meeting page's Total Visits
+        totalVisits: getVisitMeetCounts({ followUps: leadFollowUps }).visits,
         latestVisitorFollowUp,
         siteVisitStatus,
         siteVisitDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || lead.visitDate || '',
@@ -500,11 +523,25 @@ export default function CallTrackerCategoryView({
     });
   }, [enrichedLeads, isAdmin, user]);
 
+  // The Lead & Followup (call) list — what every date filter except All Dates works on
+  const callListLeads = useMemo(
+    () => accessibleEnrichedLeads.filter(item => item.inCallList),
+    [accessibleEnrichedLeads]
+  );
+
+  // Lead counts for the Leads / Calling and Site Visit stage buttons (all dates)
+  const stageCounts = useMemo(() => {
+    const counts = { 'Leads / Calling': 0, 'Site Visit': 0 };
+    accessibleEnrichedLeads.forEach(item => { counts[item.stage] += 1; });
+    return counts;
+  }, [accessibleEnrichedLeads]);
+
   // Live counts for each date filter
   const dateCounts = useMemo(() => {
     const todayTime = today.getTime();
     const yesterdayTime = yesterday.getTime();
 
+    // All Dates = every lead till date (calls + site visits), same total as the Dashboard
     let allCount = accessibleEnrichedLeads.length;
     let todayCount = 0;
     let todayCalledCount = 0;
@@ -524,7 +561,7 @@ export default function CallTrackerCategoryView({
       }
     }
 
-    accessibleEnrichedLeads.forEach(item => {
+    callListLeads.forEach(item => {
       const nextCallObj = parseTrackerDateStr(item.nextCallDate);
       const meetObj = parseTrackerDateStr(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate);
       const nextMeetObj = parseTrackerDateStr(item.nextMeetingDate || item.nextVisitDate);
@@ -571,7 +608,7 @@ export default function CallTrackerCategoryView({
       upcoming: upcomingCount,
       custom: customCount
     };
-  }, [accessibleEnrichedLeads, today, yesterday, customFrom, customTo, isAdmin, isCalledToday]);
+  }, [accessibleEnrichedLeads, callListLeads, today, yesterday, customFrom, customTo, isAdmin, isCalledToday]);
 
   const customDropdownLabel = useMemo(() => {
     if (customFrom && customTo) {
@@ -605,7 +642,11 @@ export default function CallTrackerCategoryView({
 
   // Filter leads by everything except status (the status dropdown counts come from this list)
   const leadsBeforeStatus = useMemo(() => {
-    return accessibleEnrichedLeads.filter(item => {
+    // All Dates → every lead (calling + site visit stage, or one stage via its button); other dates → the call list
+    const baseLeads = dateFilter === 'all'
+      ? accessibleEnrichedLeads.filter(item => stageFilter === 'all' || category !== 'Real Estate' || item.stage === stageFilter)
+      : callListLeads;
+    return baseLeads.filter(item => {
 
       // "New remarks" chip: unread admin remarks for users, new user replies for admins
       if (newRemarksOnly && !(isAdmin ? item.hasNewUserReply : item.hasNewAdminRemark)) return false;
@@ -672,6 +713,7 @@ export default function CallTrackerCategoryView({
           (item.requirement || '').toLowerCase().includes(q) ||
           (item.callerAssigned || '').toLowerCase().includes(q) ||
           (item.status || '').toLowerCase().includes(q) ||
+          (item.stage || '').toLowerCase().includes(q) ||
           (item.customerStatus || '').toLowerCase().includes(q) ||
           (item.adminRemark || '').toLowerCase().includes(q) ||
           (item.userRemark || '').toLowerCase().includes(q) ||
@@ -682,7 +724,7 @@ export default function CallTrackerCategoryView({
 
       return true;
     });
-  }, [accessibleEnrichedLeads, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin]);
+  }, [accessibleEnrichedLeads, callListLeads, stageFilter, category, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin]);
 
   const filteredLeads = useMemo(
     () => leadsBeforeStatus.filter(item => matchesStatusFilter(item, statusFilter)),
@@ -692,8 +734,8 @@ export default function CallTrackerCategoryView({
   // Status dropdown with live counts for the leads the other filters leave in view
   const statusFilterOptions = useMemo(() => STATUS_FILTER_OPTIONS.map(opt => ({
     ...opt,
-    label: `${opt.label} (${leadsBeforeStatus.filter(item => matchesStatusFilter(item, opt.value)).length})`
-  })), [leadsBeforeStatus]);
+    label: `${statusText(opt.label)} (${leadsBeforeStatus.filter(item => matchesStatusFilter(item, opt.value)).length})`
+  })), [leadsBeforeStatus, isMeetingOnly]);
 
   // Guaranteed newest / latest updated or added record at top (from top to bottom showing latest call dates first)
   const sortedLeads = useMemo(() => {
@@ -738,7 +780,7 @@ export default function CallTrackerCategoryView({
     });
   }, [filteredLeads, isAdmin]);
 
-  const newRemarkCount = enrichedLeads.filter(l => (isAdmin ? l.hasNewUserReply : l.hasNewAdminRemark)).length;
+  const newRemarkCount = enrichedLeads.filter(l => l.inCallList && (isAdmin ? l.hasNewUserReply : l.hasNewAdminRemark)).length;
 
   // Pagination
   const totalPages = Math.ceil(sortedLeads.length / itemsPerPage) || 1;
@@ -754,13 +796,15 @@ export default function CallTrackerCategoryView({
   };
 
   // Export to Excel
+  const isRealEstate = category === 'Real Estate';
   const handleExportExcel = () => {
     const exportData = sortedLeads.map((item, idx) => ({
       'SR No': idx + 1,
       'Last Date of Call': item.dateOfCall || '-',
       'Next Date of Call': formatDate(item.nextCallDate),
       'Customer Name': item.personName || '-',
-      'Status': item.status || '-',
+      'Stage': stageText(item.stage),
+      'Status': statusText(item.status) || '-',
       'Customer Status': item.customerStatus || '-',
       'Site Visit Status': item.siteVisitStatus || '-',
       'Site Visit Follow-ups': item.visitorFollowUpCount || 0,
@@ -771,6 +815,7 @@ export default function CallTrackerCategoryView({
       'User Remark Date (IST)': item.userRemarkDate ? formatIST(item.userRemarkDate) : '-',
       'Phone Number': item.number || '-',
       'Total Calls': item.followUpCount || 0,
+      ...(isRealEstate ? { 'Total Visits': item.totalVisits || 0 } : {}),
       'Email': item.email || '-',
       'DOB': formatDate(item.dob),
       'Occupation': item.occupation || '-',
@@ -778,7 +823,7 @@ export default function CallTrackerCategoryView({
       'Investment Budget': item.investmentBudget || '-',
       'Customer Address': item.location || '-',
       'When to Buy Plan': item.whenToBuyPlan || '-',
-      'Visitor Assigned': item.assignedVisitor || '-',
+      [assignedToLabel]: item.assignedVisitor || '-',
       ...(isAdmin ? { 'Caller Assigned': item.callerAssigned || '-' } : {}),
       'Remarks': item.remarks || '-'
     }));
@@ -795,6 +840,7 @@ export default function CallTrackerCategoryView({
     "Last Date of Call",
     "Next Date of Call",
     "Customer Name",
+    "Stage",
     "Status",
     "Customer Status",
     "What did Customer Said",
@@ -802,6 +848,7 @@ export default function CallTrackerCategoryView({
     "User Remark",
     "Phone Number",
     "Total Calls",
+    ...(isRealEstate ? ["Total Visits"] : []),
     "Email",
     "DOB",
     "Occupation",
@@ -809,7 +856,7 @@ export default function CallTrackerCategoryView({
     "Investment Budget",
     "Customer Address",
     "When to Buy Plan",
-    "Visitor Assigned",
+    assignedToLabel,
     ...(isAdmin ? ["Caller Assigned"] : []),
     "Remarks"
   ];
@@ -966,11 +1013,18 @@ export default function CallTrackerCategoryView({
           </div>
         </td>
 
+        {/* Stage: Leads / Calling or Site Visit */}
+        <td className="px-3 py-2 text-center whitespace-nowrap">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${STAGE_STYLES[item.stage]}`}>
+            {stageText(item.stage)}
+          </span>
+        </td>
+
         {/* 4. Status */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
           {item.status ? (
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase border tracking-wide ${STATUS_STYLES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-              {item.status}
+              {statusText(item.status)}
             </span>
           ) : (
             <span className="text-gray-300">-</span>
@@ -1071,6 +1125,15 @@ export default function CallTrackerCategoryView({
           </span>
         </td>
 
+        {/* 7b. Total Visits (Real Estate only) */}
+        {isRealEstate && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${item.totalVisits > 0 ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+              {item.totalVisits} {item.totalVisits === 1 ? 'Visit' : 'Visits'}
+            </span>
+          </td>
+        )}
+
         {/* 8. Email */}
         <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
 
@@ -1096,7 +1159,7 @@ export default function CallTrackerCategoryView({
         {/* 14. When to Buy Plan */}
         <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
 
-        {/* 15. Visitor Assigned */}
+        {/* 15. Site Visit / Meeting Assigned To */}
         <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
           {item.assignedVisitor ? (
             <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded text-xs font-semibold">
@@ -1152,7 +1215,7 @@ export default function CallTrackerCategoryView({
     if (isValid(item.investmentBudget)) details.push({ label: 'Budget', value: item.investmentBudget, icon: IndianRupee });
     if (isValid(item.location)) details.push({ label: 'Address', value: item.location, icon: MapPin, isLong: true });
     if (isValid(item.whenToBuyPlan)) details.push({ label: 'When to Buy', value: item.whenToBuyPlan, icon: Clock });
-    if (isValid(item.assignedVisitor)) details.push({ label: 'Visitor Assigned', value: item.assignedVisitor, icon: UserCheck });
+    if (isValid(item.assignedVisitor)) details.push({ label: assignedToLabel, value: item.assignedVisitor, icon: UserCheck });
     if (isAdmin && isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
     if (isValid(item.remarks)) details.push({ label: 'Remarks', value: item.remarks, icon: MessageSquare, isLong: true });
 
@@ -1175,6 +1238,9 @@ export default function CallTrackerCategoryView({
                 #{item.leadNo}
               </span>
             )}
+            <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${STAGE_STYLES[item.stage]}`}>
+              {stageText(item.stage)}
+            </span>
             {calledToday && (
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-600 text-white shrink-0">Called today</span>
             )}
@@ -1221,6 +1287,15 @@ export default function CallTrackerCategoryView({
               {item.followUpCount} {item.followUpCount === 1 ? 'Call' : 'Calls'}
             </span>
           </div>
+
+          {isRealEstate && (
+            <div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits</span>
+              <span className="font-bold text-cyan-700 mt-0.5 inline-block">
+                {item.totalVisits} {item.totalVisits === 1 ? 'Visit' : 'Visits'}
+              </span>
+            </div>
+          )}
 
           {item.dateOfCall && (
             <div>
@@ -1314,11 +1389,11 @@ export default function CallTrackerCategoryView({
         )}
 
         {/* Action & Status Row: Status/badges on bottom-left, Followup & Remark on bottom-right */}
-        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
-          <div className="flex items-center gap-1 shrink-0 flex-wrap">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
+          <div className="flex items-center gap-1 min-w-0 flex-wrap">
             {item.status && (
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                {item.status}
+                {statusText(item.status)}
               </span>
             )}
             {item.visitorFollowUpCount > 0 && (
@@ -1337,7 +1412,7 @@ export default function CallTrackerCategoryView({
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center ml-auto gap-1.5 shrink-0">
             {canEdit && showCallMark && renderCallMarkButton(item, false)}
             {canEdit && (
               <button
@@ -1510,16 +1585,17 @@ export default function CallTrackerCategoryView({
         {/* Row 2 on Mobile / Main Controls Bar: Dates & Actions on Left, Search & Filters on Right */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
           {/* Dates & Add Lead Controls */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+          <div className="flex flex-wrap xl:flex-nowrap items-center gap-1.5 shrink-0 w-full xl:w-auto pb-0.5">
             {/* Dedicated Tab / Button for Today's Followup */}
             <button
               type="button"
               onClick={() => {
                 setDateFilter('today');
+                setStageFilter('all');
                 setCurrentPage(1);
               }}
               title={`Show Today's Followups — ${dateCounts.todayCalled} of ${dateCounts.today} called today`}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
@@ -1535,18 +1611,20 @@ export default function CallTrackerCategoryView({
             </button>
 
             {/* Dropdown for All Dates & other date options */}
-            <div className="w-[145px] sm:w-[170px] shrink-0">
+            <div className="flex-1 min-w-[140px] sm:flex-none sm:w-[170px] shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
                 value={dateFilter === 'today' ? 'all' : dateFilter}
                 onMainClick={() => {
                   setDateFilter('all');
+                  setStageFilter('all');
                   setCustomFrom('');
                   setCustomTo('');
                   setCurrentPage(1);
                 }}
                 onChange={(val) => {
                   setDateFilter(val);
+                  setStageFilter('all');
                   if (val === 'custom' && !customFrom && !customTo) {
                     const t = getTodayStr();
                     setCustomFrom(t);
@@ -1557,7 +1635,7 @@ export default function CallTrackerCategoryView({
                 placeholder="All Dates"
                 height="h-[34px]"
                 triggerClassName={
-                  dateFilter !== 'today'
+                  dateFilter !== 'today' && !(dateFilter === 'all' && stageFilter !== 'all')
                     ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
                     : ""
                 }
@@ -1600,7 +1678,7 @@ export default function CallTrackerCategoryView({
             {canEdit && onOpenDirect && (
               <button
                 onClick={() => onOpenDirect(activeTab || category)}
-                className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
               >
                 <Plus size={14} className="shrink-0" />
                 <span>Add Lead</span>
@@ -1610,7 +1688,7 @@ export default function CallTrackerCategoryView({
             {canEdit && onBulkUpload && (
               <button
                 onClick={() => onBulkUpload(activeTab || category)}
-                className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
               >
                 <Upload size={14} className="shrink-0" />
                 <span>Bulk Upload</span>
@@ -1619,7 +1697,7 @@ export default function CallTrackerCategoryView({
           </div>
 
           {/* Search + Status Dropdown (USER) / Filter Button (ADMIN) + Export + Refresh + Reset */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap sm:overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
           {/* Individual Page Search Input */}
           <div className="relative min-w-[120px] max-w-full sm:max-w-[200px] flex-1 shrink">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -1646,6 +1724,41 @@ export default function CallTrackerCategoryView({
               </button>
             )}
           </div>
+
+          {/* Stage buttons (All Dates only): one stage at a time — All Dates shows both stages again */}
+          {/* Hidden for admin and for Insurance / Mutual Fund */}
+          {dateFilter === 'all' && !isAdmin && category === 'Real Estate' && [
+            { key: 'Leads / Calling', icon: Phone },
+            { key: 'Site Visit', icon: MapPin }
+          ].map(({ key, icon: Icon }) => {
+            const active = stageFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  setStageFilter(key);
+                  setCurrentPage(1);
+                }}
+                title={`All ${key} stage leads till date`}
+                className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                  active
+                    ? (key === 'Site Visit'
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-300/60 font-bold'
+                      : 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-300/60 font-bold')
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 shadow-xs'
+                }`}
+              >
+                <Icon size={13} className={active ? 'text-white' : 'text-gray-400'} />
+                <span>{key}</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                  active ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+                }`}>
+                  {stageCounts[key]}
+                </span>
+              </button>
+            );
+          })}
 
           {/* New remarks chip: unread admin remarks (users) / new user replies (admin) */}
           {(newRemarkCount > 0 || newRemarksOnly) && (
@@ -1688,16 +1801,6 @@ export default function CallTrackerCategoryView({
               <span className="hidden sm:inline">Export</span>
             </button>
           )}
-
-          {/* Refresh */}
-          <button
-            onClick={onRefresh}
-            disabled={loading}
-            title="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
 
           {/* Clear Filters (visible when any filter or search query is active) */}
           {(activeFilterCount > 0 || searchQuery) && (
@@ -1742,6 +1845,7 @@ export default function CallTrackerCategoryView({
               value={dateFilter}
               onChange={(val) => {
                 setDateFilter(val);
+                setStageFilter('all');
                 if (val === 'custom' && !customFrom && !customTo) {
                   const t = getTodayStr();
                   setCustomFrom(t);

@@ -82,48 +82,48 @@ export default function FollowUp() {
     loadData();
   }, [loadData, user]);
 
-  // Filter leads matching current user assignment permissions
-  // Direct site visit leads created through Add Lead are handled exclusively in Site Visit / Meeting
-  const accessibleLeads = useMemo(() => {
+  // Every lead, tagged with the list(s) it belongs to:
+  //  - inCallList: the Lead & Followup queue — assigned/direct leads (or any with call history), never
+  //    Direct Site Visit leads (those are handled exclusively in Site Visit / Meeting)
+  //  - inSiteVisitList: leads the Site Visit / Meeting page lists
+  // All Dates shows every lead (same total as the Dashboard); the other date filters show the call list only.
+  const taggedLeads = useMemo(() => {
     const isAdmin = isUserAdmin(user);
     const calledLeadKeys = buildCalledLeadKeys(allTrackers);
-    return allLeads.filter(lead => {
-      if (isDirectSiteVisitLead(lead)) {
-        return false;
-      }
-      // Unassigned leads still wait on the Lead page for a caller — keep only assigned/direct leads
-      // (and any lead that already has call history)
-      if (!isInFollowUpQueue(lead, calledLeadKeys)) {
-        return false;
-      }
-      if (!isAdmin && !matchesUserConnection(lead, user)) {
-        return false;
-      }
-      return true;
-    });
-  }, [allLeads, allTrackers, user]);
+    const siteVisitIds = new Set(
+      siteVisitMeetingApi.buildSiteVisitMeetingLeads(allLeads, allTrackers, allAssignedVisitors, allVisitorFollowUps)
+        .map(l => String(l.leadId ?? l.id))
+    );
+    return allLeads.map(lead => ({
+      ...lead,
+      inCallList: !isDirectSiteVisitLead(lead) &&
+        isInFollowUpQueue(lead, calledLeadKeys) &&
+        (isAdmin || matchesUserConnection(lead, user)),
+      inSiteVisitList: isDirectSiteVisitLead(lead) || siteVisitIds.has(String(lead.id))
+    }));
+  }, [allLeads, allTrackers, allAssignedVisitors, allVisitorFollowUps, user]);
 
   // Categorize leads accurately using the standard leadType & leadNo prefixes
   const realEstateLeads = useMemo(() => {
-    return accessibleLeads.filter(l => {
+    return taggedLeads.filter(l => {
       const type = (l.leadType || '').toLowerCase();
       return type.includes('real') || type.includes('estate') || (l.leadNo && String(l.leadNo).startsWith('LR'));
     });
-  }, [accessibleLeads]);
+  }, [taggedLeads]);
 
   const insuranceLeads = useMemo(() => {
-    return accessibleLeads.filter(l => {
+    return taggedLeads.filter(l => {
       const type = (l.leadType || '').toLowerCase();
       return type.includes('insurance') || (l.leadNo && String(l.leadNo).startsWith('LI'));
     });
-  }, [accessibleLeads]);
+  }, [taggedLeads]);
 
   const mutualFundLeads = useMemo(() => {
-    return accessibleLeads.filter(l => {
+    return taggedLeads.filter(l => {
       const type = (l.leadType || '').toLowerCase();
       return type.includes('mutual') || type.includes('fund') || (l.leadNo && String(l.leadNo).startsWith('LM'));
     });
-  }, [accessibleLeads]);
+  }, [taggedLeads]);
 
   // Tab configurations
   const allTabs = [
@@ -137,12 +137,15 @@ export default function FollowUp() {
     ? allTabs.filter(t => scope.categories.includes(t.key))
     : (scope?.category ? allTabs.filter(t => t.key === scope.category) : allTabs);
 
-  // Live accurate counts matching the exact number of leads in each tab
-  const categoryCounts = useMemo(() => ({
-    'Real Estate': realEstateLeads.length,
-    'Insurance': insuranceLeads.length,
-    'Mutual Fund': mutualFundLeads.length
-  }), [realEstateLeads.length, insuranceLeads.length, mutualFundLeads.length]);
+  // Live accurate counts matching the exact number of follow-up queue leads in each tab
+  const categoryCounts = useMemo(() => {
+    const callCount = (list) => list.filter(l => l.inCallList).length;
+    return {
+      'Real Estate': callCount(realEstateLeads),
+      'Insurance': callCount(insuranceLeads),
+      'Mutual Fund': callCount(mutualFundLeads)
+    };
+  }, [realEstateLeads, insuranceLeads, mutualFundLeads]);
 
   // Leads for the active category tab
   const currentCategoryLeads = useMemo(() => {

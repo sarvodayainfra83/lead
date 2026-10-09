@@ -563,7 +563,7 @@ CREATE TABLE IF NOT EXISTS visitor_follow_ups (
     visitor_name TEXT NOT NULL,
     visitor_id UUID REFERENCES users(id) ON DELETE SET NULL,
     visit_date DATE,
-    status TEXT NOT NULL CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply')),
+    status TEXT NOT NULL CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Revisit', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply')),
     interest_level TEXT CHECK (interest_level IN ('High', 'Medium', 'Low')),
     what_happened TEXT,
     next_visit_date DATE,
@@ -587,7 +587,7 @@ ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS customer_status TEXT;
 -- Existing databases: allow the 'Under Negotiation' visit outcome
 ALTER TABLE visitor_follow_ups DROP CONSTRAINT IF EXISTS visitor_follow_ups_status_check;
 ALTER TABLE visitor_follow_ups ADD CONSTRAINT visitor_follow_ups_status_check
-    CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'));
+    CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Revisit', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'));
 ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS deal_outcome TEXT;
 ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS closing_amount TEXT;
 ALTER TABLE visitor_follow_ups ADD COLUMN IF NOT EXISTS sales_executive TEXT;
@@ -1294,7 +1294,7 @@ ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS visit_marked_by TEXT;        -
 -- ============================================================================
 ALTER TABLE visitor_follow_ups DROP CONSTRAINT IF EXISTS visitor_follow_ups_status_check;
 ALTER TABLE visitor_follow_ups ADD CONSTRAINT visitor_follow_ups_status_check
-    CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'));
+    CHECK (status IN ('Deal Lock', 'Interested', 'Not Interested', 'Future Plan', 'Revisit', 'Did Not Show', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'));
 -- Review old "Interested" visits and set the truly locked deals to 'Deal Lock' yourself, e.g.:
 --   SELECT id, lead_no, visit_date, closing_amount, reference_no, sales_executive, what_happened
 --     FROM visitor_follow_ups WHERE status = 'Interested' ORDER BY created_at DESC;

@@ -6,7 +6,7 @@ import {
   TrendingUp,
   Plus,
   Search,
-  RotateCcw,
+  
   Eye,
   Pencil,
   Trash2,
@@ -850,13 +850,6 @@ export default function Products() {
             <option value="featured">Featured Only</option>
           </select>
 
-          <button
-            onClick={loadAllProducts}
-            title="Refresh"
-            className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600 transition"
-          >
-            <RotateCcw size={15} />
-          </button>
         </div>
       </div>
 

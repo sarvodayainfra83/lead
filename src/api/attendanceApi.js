@@ -3,11 +3,7 @@ import {
   getAttendanceLogs as getLocalAttendanceLogs,
   saveAttendanceLogs as saveLocalAttendanceLogs,
   saveAttendanceLog as saveLocalAttendanceLog,
-  deleteAttendanceLog as deleteLocalAttendanceLog,
-  getLocalLocationCache,
-  addLocalLocationCacheEntry,
-  getLastResolvedAddress,
-  saveLastResolvedAddress
+  deleteAttendanceLog as deleteLocalAttendanceLog
 } from '../utils/storageManager';
 
 // Haversine distance calculator between two coordinates in meters
@@ -280,9 +276,7 @@ export const attendanceApi = {
           .order('created_at', { ascending: true });
 
         if (fallbackError) {
-          console.warn('Fallback error fetching attendance logs from Supabase:', fallbackError);
-          const localLogs = getLocalAttendanceLogs().map(this.mapFromDb);
-          return this.consolidateSingleDayRows(localLogs);
+          throw fallbackError;
         }
         const mapped = (fallbackData || []).map(this.mapFromDb);
         return this.consolidateSingleDayRows(mapped);
@@ -291,9 +285,8 @@ export const attendanceApi = {
       const mapped = (data || []).map(this.mapFromDb);
       return this.consolidateSingleDayRows(mapped);
     } catch (err) {
-      console.warn('Supabase attendance logs fetch error:', err);
-      const localLogs = getLocalAttendanceLogs().map(this.mapFromDb);
-      return this.consolidateSingleDayRows(localLogs);
+      console.error('Supabase attendance logs fetch error:', err);
+      throw err;
     }
   },
 
@@ -423,18 +416,13 @@ export const attendanceApi = {
             .single();
 
           if (retry.error) {
-            console.warn('Error updating existing attendance log on Supabase, falling back to local:', retry.error);
-            const savedLocal = saveLocalAttendanceLog(payloadWithPhoto);
-            return this.mapFromDb(savedLocal);
+            console.error('Error updating existing attendance log on Supabase:', retry.error);
+            throw retry.error;
           }
-          const updated = this.mapFromDb(retry.data);
-          saveLocalAttendanceLog({ ...updated, ...payloadWithPhoto });
-          return updated;
+          return this.mapFromDb(retry.data);
         }
 
-        const updated = this.mapFromDb(data);
-        saveLocalAttendanceLog(updated);
-        return updated;
+        return this.mapFromDb(data);
       } else {
         // INSERT NEW ROW (for IN punch)
         const payload = this.mapToDb(payloadWithPhoto);
@@ -459,23 +447,17 @@ export const attendanceApi = {
             .single();
 
           if (retry.error) {
-            console.warn('Error inserting attendance log to Supabase, saving locally:', retry.error);
-            const createdLocal = saveLocalAttendanceLog(payloadWithPhoto);
-            return this.mapFromDb(createdLocal);
+            console.error('Error inserting attendance log to Supabase:', retry.error);
+            throw retry.error;
           }
-          const created = this.mapFromDb(retry.data);
-          saveLocalAttendanceLog({ ...created, ...payloadWithPhoto });
-          return created;
+          return this.mapFromDb(retry.data);
         }
 
-        const created = this.mapFromDb(data);
-        saveLocalAttendanceLog(created);
-        return created;
+        return this.mapFromDb(data);
       }
     } catch (err) {
-      console.warn('Attendance save failed on Supabase:', err);
-      const createdLocal = saveLocalAttendanceLog(payloadWithPhoto);
-      return this.mapFromDb(createdLocal);
+      console.error('Attendance save failed on Supabase:', err);
+      throw err;
     }
   },
 
@@ -537,12 +519,7 @@ async updateAttendanceLog(id, updatedFields) {
       throw error;
     }
 
-    const updated = this.mapFromDb(data);
-
-    // Keep local cache in sync
-    saveLocalAttendanceLog(updated);
-
-    return updated;
+    return this.mapFromDb(data);
 
   } catch (err) {
     console.error('Attendance update failed:', err);
@@ -556,20 +533,16 @@ async updateAttendanceLog(id, updatedFields) {
       return deleteLocalAttendanceLog(id);
     }
 
-    try {
-      const { error } = await supabase
-        .from('attendance_logs')
-        .delete()
-        .eq('id', id);
+    const { error } = await supabase
+      .from('attendance_logs')
+      .delete()
+      .eq('id', id);
 
-      if (error) {
-        console.warn('Error deleting attendance log from Supabase:', error);
-      }
-    } catch (err) {
-      console.warn('Supabase attendance delete error:', err);
+    if (error) {
+      console.error('Error deleting attendance log from Supabase:', error);
+      throw error;
     }
 
-    deleteLocalAttendanceLog(id);
     return true;
   },
 
@@ -894,8 +867,8 @@ async updateAttendanceLog(id, updatedFields) {
         }
       }
 
-      // Also process pending records in local storage
-      const localLogs = getLocalAttendanceLogs();
+      // Local-only mode: process pending records in local storage
+      const localLogs = isSupabaseConfigured ? [] : getLocalAttendanceLogs();
       let localModified = false;
       for (const log of localLogs) {
         if (log.geocoding_status === 'PENDING' && log.latitude != null && log.longitude != null) {

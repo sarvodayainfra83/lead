@@ -24,7 +24,12 @@ export default function Leadsource({ setHeaderAction }) {
     const data = await masterApi.getLeadSources();
     setRows(data);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load().catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
+    });
+  }, []);
 
   const openAdd = useCallback(() => { setEditRow(null); setLeadSource(''); setShowForm(true); }, []);
   const openEdit = (row) => { setEditRow(row); setLeadSource(row.leadSource); setShowForm(true); };

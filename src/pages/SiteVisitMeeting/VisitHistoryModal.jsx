@@ -6,11 +6,24 @@ import {
 } from 'lucide-react';
 import { formatDisplayDate, STATUS_STYLES, CUSTOMER_STATUS_STYLES } from './siteVisitMeetingConstants';
 import { getLeadTypeBadgeClass, NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
+import { getVisitMeetCounts } from './SiteVisitCategoryView';
 
 export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisitor, onLogFollowUp }) {
   if (!isOpen || !lead) return null;
 
   const followUps = lead.followUps || [];
+  // Insurance calls a Revisit 'Remeeting' (stored as 'Revisit')
+  const isInsuranceLead = String(lead.leadType || '').toLowerCase().includes('insurance') || String(lead.leadNo || '').toUpperCase().startsWith('LI');
+  const statusText = (status) => (isInsuranceLead && status === 'Revisit' ? 'Remeeting' : status);
+  // Call follow-ups are a Real Estate feature
+  const isRealEstateLead = !lead.leadType || lead.leadType.toLowerCase().includes('real') || String(lead.leadNo || '').toUpperCase().startsWith('LR');
+  // Insurance / Mutual Fund have meetings only — wording says Meeting instead of Visit
+  const isMeetingOnly = !isRealEstateLead;
+  const visitWord = isMeetingOnly ? 'Meeting' : 'Visit';
+  const { visits: totalVisits, meetings: totalMeetings, calls: totalCalls } = getVisitMeetCounts(lead);
+  // Latest Online / Offline meeting type (Insurance)
+  const latestMeetingMode = [...followUps].reverse().find(f => f.visitMeet?.meetingMode)?.visitMeet?.meetingMode || '';
+  const nextDate = lead.nextMeetingDate || lead.nextVisitDate || '';
   const cleanPhone = String(lead.customerNumber || lead.number || '').replace(/[^0-9+]/g, '');
 
   const handleWhatsApp = () => {
@@ -23,6 +36,75 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
     );
     window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, '_blank');
   };
+
+  // Schedule summary: who takes it, when, type and totals
+  const scheduleCard = (
+    <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+          {visitWord} Schedule
+        </span>
+        <button
+          onClick={() => { onClose(); onAssignVisitor(lead); }}
+          className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+        >
+          {lead.assignedVisitor ? 'Reassign' : '+ Assign'}
+        </button>
+      </div>
+      <div className={`grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs ${isMeetingOnly ? 'sm:grid-cols-4' : ''}`}>
+        <div>
+          <span className="text-[10px] text-gray-400 block">Assigned To</span>
+          <span className="font-semibold text-gray-800">{lead.assignedVisitor || <span className="text-amber-600 font-medium">Unassigned</span>}</span>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-400 block">{visitWord} Date</span>
+          <span className="font-semibold text-gray-800">{formatDisplayDate(lead.meetingDate || lead.visitDate)}</span>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-400 block">Next {visitWord}</span>
+          <span className={`font-semibold ${nextDate ? NEXT_DATE_CLASS : 'text-gray-400'}`}>{nextDate ? formatDisplayDate(nextDate) : '-'}</span>
+        </div>
+        {isInsuranceLead ? (
+          <div>
+            <span className="text-[10px] text-gray-400 block">Meeting Type</span>
+            <span className="font-semibold text-gray-800">{latestMeetingMode ? `${latestMeetingMode} Meeting` : '-'}</span>
+          </div>
+        ) : <div />}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+        {!isMeetingOnly && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+            {totalVisits} {totalVisits === 1 ? 'Visit' : 'Visits'}
+          </span>
+        )}
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+          {totalMeetings} {totalMeetings === 1 ? 'Meeting' : 'Meetings'}
+        </span>
+        {(isRealEstateLead || isInsuranceLead) && (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+            {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  const remarkCard = (
+    <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 space-y-1">
+      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
+        Remark
+      </span>
+      {lead.visitorRemarks || lead.remarks || lead.callTrackerRemarks ? (
+        <p className="text-xs text-gray-800 italic leading-relaxed">
+          "{lead.visitorRemarks || lead.remarks || lead.callTrackerRemarks}"
+        </p>
+      ) : (
+        <p className="text-xs text-gray-400 italic">
+          No remarks provided.
+        </p>
+      )}
+    </div>
+  );
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
@@ -80,12 +162,12 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
               <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">Current Status</span>
               <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[11px] font-bold border ${STATUS_STYLES[lead.status]?.badge || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${STATUS_STYLES[lead.status]?.dot || 'bg-gray-400'}`} />
-                {lead.status}
+                {statusText(lead.status)}
               </span>
             </div>
 
             <div>
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">Assigned Visitor</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">{isMeetingOnly ? 'Meeting Assigned To' : 'Assigned Visitor'}</span>
               <span className="font-bold text-gray-800 mt-1 flex items-center gap-1">
                 <UserCheck size={12} className="text-indigo-500 shrink-0" />
                 <span className="truncate">{lead.assignedVisitor || <span className="text-amber-600 font-medium">Unassigned</span>}</span>
@@ -93,7 +175,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
             </div>
 
             <div>
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">Visit Date</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">{visitWord} Date</span>
               <span className="font-bold text-gray-800 mt-1 flex items-center gap-1 font-mono">
                 <Calendar size={12} className="text-gray-400 shrink-0" />
                 {formatDisplayDate(lead.visitDate)}
@@ -111,6 +193,17 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
 
         {/* Content Body: Timeline Cards */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3.5 text-xs">
+          {/* Insurance / Mutual Fund: meeting schedule details first */}
+          {isMeetingOnly && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
+                <Calendar size={13} className="text-indigo-600" />
+                {visitWord} Scheduling Details
+              </h4>
+              {scheduleCard}
+            </div>
+          )}
+
           {/* Section: Visit Follow-Ups */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
@@ -159,7 +252,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                           )}
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusCfg.badge}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dot}`} />
-                            {fu.status}
+                            {statusText(fu.status)}
                           </span>
                           {(fu.customerStatus || fu.customer_status || fu.interestLevel) && (
                             <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${CUSTOMER_STATUS_STYLES[fu.customerStatus || fu.customer_status || fu.interestLevel] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
@@ -175,7 +268,12 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                           )}
                           {fu.visitMeet?.meeting && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
-                              <CheckCircle size={10} /> Meeting
+                              <CheckCircle size={10} /> {fu.visitMeet?.meetingMode ? `${fu.visitMeet.meetingMode} Meeting` : 'Meeting'}
+                            </span>
+                          )}
+                          {fu.visitMeet?.call && (isRealEstateLead || isInsuranceLead) && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                              <Phone size={10} /> Call
                             </span>
                           )}
                         </div>
@@ -250,52 +348,18 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
             )}
           </div>
 
-          {/* Section: Initial Request & Visitor Assignment */}
+          {/* Section: Scheduling Details & Remark. Insurance / Mutual Fund show the schedule at the top,
+              so only the remark stays here, in the left column */}
           <div className="space-y-2 pt-2 border-t border-gray-100">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
-              <Calendar size={13} className="text-indigo-600" />
-              Visit Scheduling Details
-            </h4>
-
+            {!isMeetingOnly && (
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-1.5">
+                <Calendar size={13} className="text-indigo-600" />
+                {visitWord} Scheduling Details
+              </h4>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {/* Call Followup Scheduling */}
-              <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
-                    Followup
-                  </span>
-                  <button
-                    onClick={() => { onClose(); onAssignVisitor(lead); }}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
-                  >
-                    {lead.assignedVisitor ? 'Reassign' : '+ Assign'}
-                  </button>
-                </div>
-                <p className="text-gray-800 text-xs">
-                  {lead.callTrackerRemarks ? `"${lead.callTrackerRemarks}"` : 'Site Visit / Meeting requested.'}
-                </p>
-                {lead.relationshipManager && (
-                  <p className="text-[11px] text-gray-500 pt-0.5">
-                    Visited By: <span className="font-semibold text-gray-700">{lead.relationshipManager}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Remark */}
-              <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 space-y-1">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block">
-                  Remark
-                </span>
-                {lead.visitorRemarks || lead.remarks ? (
-                  <p className="text-xs text-gray-800 italic leading-relaxed">
-                    "{lead.visitorRemarks || lead.remarks}"
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-400 italic">
-                    No remarks provided.
-                  </p>
-                )}
-              </div>
+              {!isMeetingOnly && scheduleCard}
+              {remarkCard}
             </div>
           </div>
         </div>
@@ -308,7 +372,9 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
               className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg shadow-2xs transition flex items-center gap-1"
             >
               <UserCheck size={13} className="text-indigo-600" />
-              {lead.assignedVisitor ? 'Reassign Visitor' : 'Assign Visitor'}
+              {isMeetingOnly
+                ? (lead.assignedVisitor ? 'Reassign Meeting' : 'Assign Meeting')
+                : (lead.assignedVisitor ? 'Reassign Visitor' : 'Assign Visitor')}
             </button>
             <button
               onClick={() => { onClose(); onLogFollowUp(lead); }}

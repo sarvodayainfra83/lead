@@ -132,7 +132,7 @@ export const authApi = {
 
       if (fallbackError) {
         console.error('Error fetching users from Supabase:', fallbackError);
-        return getLocalUsers();
+        throw fallbackError;
       }
 
       let typeMap = {};
@@ -387,7 +387,6 @@ export const authApi = {
       accessPages: updatedRow.access_pages || {}
     };
 
-    saveLocalUser(formattedUser);
     return formattedUser;
   },
 
@@ -457,11 +456,9 @@ export const authApi = {
 
     if (error) {
       console.error('Error saving user to Supabase:', error);
-      saveLocalUser(userData);
       throw error;
     }
 
-    saveLocalUser(userData); // Keep synced locally
     return data[0];
   },
 
@@ -506,7 +503,5 @@ export const authApi = {
       console.error('Error deleting user from Supabase:', error);
       throw error;
     }
-
-    deleteLocalUser(userIdCode);
   }
 };

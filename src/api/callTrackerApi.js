@@ -74,7 +74,6 @@ export const callTrackerApi = {
       throw error;
     }
 
-    updateLocal();
     return this.mapFromDb(data);
   },
 
@@ -95,26 +94,19 @@ export const callTrackerApi = {
       return { id, customerStatus: status, updatedAt };
     }
 
-    try {
-      const { data, error } = await supabase
-        .from('call_trackers')
-        .update({ customer_status: status || null, updated_at: updatedAt })
-        .eq('id', id)
-        .select()
-        .single();
+    const { data, error } = await supabase
+      .from('call_trackers')
+      .update({ customer_status: status || null, updated_at: updatedAt })
+      .eq('id', id)
+      .select()
+      .single();
 
-      if (error) {
-        console.warn('Error updating customer status in Supabase:', error);
-      } else if (data) {
-        updateLocal();
-        return this.mapFromDb(data);
-      }
-    } catch (e) {
-      console.warn('Exception updating customer status in Supabase:', e);
+    if (error) {
+      console.error('Error updating customer status in Supabase:', error);
+      throw error;
     }
 
-    updateLocal();
-    return { id, customerStatus: status, updatedAt };
+    return this.mapFromDb(data);
   },
 
   // Get all call tracker history entries
@@ -130,7 +122,7 @@ export const callTrackerApi = {
 
     if (error) {
       console.error('Error fetching call trackers from Supabase:', error);
-      return getLocalCallTrackers();
+      throw error;
     }
 
     return data.map(this.mapFromDb);
@@ -155,7 +147,7 @@ export const callTrackerApi = {
 
     if (error) {
       console.error('Error fetching call trackers for lead from Supabase:', error);
-      return localForLead();
+      throw error;
     }
 
     return data.map(this.mapFromDb);
@@ -211,13 +203,10 @@ export const callTrackerApi = {
 
     if (error) {
       console.error('Error saving call tracker to Supabase:', error);
-      saveLocalCallTracker(entry);
-      refreshBadgeCounts();
       throw error;
     }
 
     const created = this.mapFromDb(data);
-    saveLocalCallTracker(created);
     refreshBadgeCounts();
     return created;
   },
@@ -240,7 +229,6 @@ export const callTrackerApi = {
       throw error;
     }
 
-    deleteLocalCallTracker(id);
     refreshBadgeCounts();
   }
 };

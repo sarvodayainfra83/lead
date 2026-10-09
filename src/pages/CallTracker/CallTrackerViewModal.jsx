@@ -187,7 +187,8 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
       icon: Clock
     },
     {
-      label: 'Visitor Assigned',
+      // Who takes the site visit (Real Estate) / meeting (Insurance, Mutual Fund)
+      label: isRealEstate ? 'Site Visit Assigned To' : 'Meeting Assigned To',
       value: formatVal(lead.assignedVisitor),
       icon: UserCheck
     },
@@ -571,6 +572,7 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
           <SiteVisitFollowUpReport
             leadId={lead.id || lead.leadId}
             leadNo={lead.leadNo}
+            leadType={lead.leadType}
             initialFollowUps={lead.visitorFollowUps}
           />
         </div>

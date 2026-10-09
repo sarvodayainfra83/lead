@@ -548,7 +548,8 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
       const leadNo = generateLeadNo(formData.leadType, existingLeads);
       const timestamp = new Date().toISOString();
 
-      const isDirectSiteVisit = Boolean(showSiteVisitOption && formData.isSiteVisit);
+      // Real Estate + Walk-in is always a direct site visit
+      const isDirectSiteVisit = showSiteVisitOption;
       const assignedVisitorName = isDirectSiteVisit ? (formData.assignedVisitor || user?.name || '').trim() : '';
 
       const newLead = {
@@ -716,78 +717,46 @@ export default function LeadForm({ isOpen, onClose, onSaved, defaultLeadType }) 
                     </span>
                   </div>
                   <p className="text-[10.5px] text-gray-500">
-                    Conduct or schedule a site visit / meeting for this walk-in lead?
+                    Walk-in leads go straight to Site Visit / Meeting — no status to select.
                   </p>
                 </div>
               </div>
 
-              {/* Radio / Checkbox toggle buttons */}
-              <div className="flex items-center gap-3 bg-white px-2.5 py-1 rounded-lg border border-gray-200 shadow-2xs">
-                <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-700 hover:text-indigo-600 transition">
-                  <input
-                    type="radio"
-                    name="isSiteVisitOption"
-                    checked={formData.isSiteVisit === true}
-                    onChange={() => {
-                      setFormData(prev => ({
-                        ...prev,
-                        isSiteVisit: true,
-                        assignedVisitor: prev.assignedVisitor || user?.name || ''
-                      }));
-                    }}
-                    className="text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
-                  />
-                  <span>Yes (Site Visit)</span>
-                </label>
-                <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-700 hover:text-indigo-600 transition">
-                  <input
-                    type="radio"
-                    name="isSiteVisitOption"
-                    checked={formData.isSiteVisit === false}
-                    onChange={() => {
-                      setFormData(prev => ({
-                        ...prev,
-                        isSiteVisit: false
-                      }));
-                    }}
-                    className="text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
-                  />
-                  <span>No</span>
-                </label>
-              </div>
+              {/* Real Estate walk-ins are always a site visit — no need to choose */}
+              <span className="inline-flex items-center gap-1.5 bg-cyan-50 px-2.5 py-1 rounded-lg border border-cyan-200 text-xs font-semibold text-cyan-700 shadow-2xs">
+                <MapPin size={12} /> Status: Site Visit/Meeting
+              </span>
             </div>
 
-            {formData.isSiteVisit && (
-              <div className="pt-2 border-t border-amber-200/70 grid grid-cols-1 sm:grid-cols-2 gap-2.5 animate-in fade-in duration-150">
-                <div className="space-y-1 col-span-2 sm:col-span-1">
-                  <label className="block text-[10.5px] sm:text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
-                    Assign Visitor *
-                  </label>
-                  <SearchableDropdown
-                    options={visitorOptions}
-                    value={formData.assignedVisitor || user?.name || ''}
-                    onChange={(val) => handleChange('assignedVisitor', val)}
-                    placeholder="Select assigned visitor"
-                  />
-                  <p className="text-[9.5px] text-gray-500">
-                    Defaulted to logged-in user (<span className="font-semibold text-gray-700">{user?.name || 'Current User'}</span>). You can select any other team member.
-                  </p>
-                </div>
-
-                <div className="space-y-1 col-span-2 sm:col-span-1">
-                  <label className="block text-[10.5px] sm:text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
-                    Site Visit Date
-                  </label>
-                  <div className="flex items-center h-[30px] md:h-[34px] px-2.5 bg-white border border-gray-300 rounded text-[11px] md:text-[13px] text-gray-700 font-medium">
-                    <Calendar size={13} className="mr-2 text-indigo-500" />
-                    <span>{new Date().toLocaleDateString('en-GB')} (Today - Current Date)</span>
-                  </div>
-                  <p className="text-[9.5px] text-gray-500">
-                    Directly updates the Site Visit / Meeting section with today's date.
-                  </p>
-                </div>
+            <div className="pt-2 border-t border-amber-200/70 grid grid-cols-1 sm:grid-cols-2 gap-2.5 animate-in fade-in duration-150">
+              <div className="space-y-1 col-span-2 sm:col-span-1">
+                <label className="block text-[10.5px] sm:text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
+                  Assign Visitor *
+                </label>
+                <SearchableDropdown
+                  options={visitorOptions}
+                  value={formData.assignedVisitor || user?.name || ''}
+                  onChange={(val) => handleChange('assignedVisitor', val)}
+                  placeholder="Select assigned visitor"
+                />
+                <p className="text-[9.5px] text-gray-500">
+                  Defaulted to logged-in user (<span className="font-semibold text-gray-700">{user?.name || 'Current User'}</span>). You can select any other team member.
+                </p>
               </div>
-            )}
+
+              <div className="space-y-1 col-span-2 sm:col-span-1">
+                <label className="block text-[10.5px] sm:text-[11px] md:text-[12px] font-semibold text-gray-700 uppercase tracking-tight">
+                  Site Visit Date
+                </label>
+                <div className="flex items-center h-[30px] md:h-[34px] px-2.5 bg-white border border-gray-300 rounded text-[11px] md:text-[13px] text-gray-700 font-medium">
+                  <Calendar size={13} className="mr-2 text-indigo-500" />
+                  <span>{new Date().toLocaleDateString('en-GB')} (Today - Current Date)</span>
+                </div>
+                <p className="text-[9.5px] text-gray-500">
+                  Directly updates the Site Visit / Meeting section with today's date.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

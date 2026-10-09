@@ -28,6 +28,9 @@ export default function HistoryLead() {
   useEffect(() => {
     leadApi.getLeads().then(allLeads => {
       setLeads(allLeads.filter(l => (!!l.callerAssigned || l.processType === 'Direct') && matchesUserAssignment(l, user)));
+    }).catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
     });
   }, [user]);
 

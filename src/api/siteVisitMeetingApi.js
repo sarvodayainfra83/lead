@@ -21,6 +21,7 @@ const VISIT_TO_CALL_STATUS = {
   'Deal Lock': 'Interested',
   'Under Negotiation': 'Interested',
   'Future Plan': 'Future Plan Date',
+  'Revisit': 'Site Visit/Meeting',
   'Did Not Show': 'Site Visit/Meeting'
 };
 const toCallTrackerStatus = (status) => VISIT_TO_CALL_STATUS[status] || status;
@@ -111,7 +112,7 @@ export const siteVisitMeetingApi = {
 
     if (error) {
       console.error('Error fetching assigned visitors from Supabase:', error);
-      return getLocalAssignedVisitors();
+      throw error;
     }
     return data.map(this.mapAssignedVisitorFromDb);
   },
@@ -150,17 +151,10 @@ export const siteVisitMeetingApi = {
 
     if (error) {
       console.error('Error saving assigned visitor to Supabase:', error);
-      const fallback = saveLocalAssignedVisitor({
-        ...entry,
-        id: entry.id || `AV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        created_at: new Date().toISOString()
-      });
-      refreshBadgeCounts();
       throw error;
     }
 
     const created = this.mapAssignedVisitorFromDb(data);
-    saveLocalAssignedVisitor(created);
     refreshBadgeCounts();
     return created;
   },
@@ -190,13 +184,10 @@ export const siteVisitMeetingApi = {
 
     if (error) {
       console.error('Error updating assigned visitor in Supabase:', error);
-      updateLocalAssignedVisitor(id, updatedFields);
-      refreshBadgeCounts();
       throw error;
     }
 
     const updated = this.mapAssignedVisitorFromDb(data);
-    updateLocalAssignedVisitor(id, updated);
     refreshBadgeCounts();
     return updated;
   },
@@ -208,8 +199,10 @@ export const siteVisitMeetingApi = {
       return;
     }
     const { error } = await supabase.from('assigned_visitors').delete().eq('id', id);
-    if (error) console.error('Error deleting assigned visitor from Supabase:', error);
-    deleteLocalAssignedVisitor(id);
+    if (error) {
+      console.error('Error deleting assigned visitor from Supabase:', error);
+      throw error;
+    }
     refreshBadgeCounts();
   },
 
@@ -226,19 +219,23 @@ export const siteVisitMeetingApi = {
       else if (s === 'low' || s === 'cold') customerStatus = 'Cold';
     }
 
-    let visitMeet = { 'site-visit': false, meeting: false };
+    let visitMeet = { 'site-visit': false, meeting: false, call: false };
     if (row.visit_meet) {
       if (typeof row.visit_meet === 'object' && row.visit_meet !== null) {
         visitMeet = {
           'site-visit': Boolean(row.visit_meet['site-visit'] ?? row.visit_meet.siteVisit ?? row.visit_meet.site_visit),
-          meeting: Boolean(row.visit_meet.meeting)
+          meeting: Boolean(row.visit_meet.meeting),
+          call: Boolean(row.visit_meet.call),
+          ...(row.visit_meet.meetingMode ? { meetingMode: row.visit_meet.meetingMode } : {})
         };
       } else if (typeof row.visit_meet === 'string') {
         try {
           const parsed = JSON.parse(row.visit_meet);
           visitMeet = {
             'site-visit': Boolean(parsed['site-visit'] ?? parsed.siteVisit ?? parsed.site_visit),
-            meeting: Boolean(parsed.meeting)
+            meeting: Boolean(parsed.meeting),
+            call: Boolean(parsed.call),
+            ...(parsed.meetingMode ? { meetingMode: parsed.meetingMode } : {})
           };
         } catch {}
       }
@@ -346,31 +343,10 @@ export const siteVisitMeetingApi = {
 
     if (error) {
       console.error('Error fetching visitor follow ups from Supabase:', error);
-      return getLocalVisitorFollowUps();
+      throw error;
     }
 
-    const localFollowUps = getLocalVisitorFollowUps() || [];
-    const localById = Object.fromEntries(localFollowUps.map(f => [String(f.id), f]));
-    const localByLead = {};
-    localFollowUps.forEach(f => {
-      const key = String(f.leadId || f.leadNo);
-      if (!localByLead[key] || (f.visitMeet?.['site-visit'] || f.visitMeet?.meeting)) {
-        localByLead[key] = f;
-      }
-    });
-
-    return data.map(row => {
-      const mapped = this.mapFollowUpFromDb(row);
-      // Fallback to local storage if DB column visit_meet is not yet migrated
-      if (!mapped.visitMeet?.['site-visit'] && !mapped.visitMeet?.meeting) {
-        const local = localById[String(mapped.id)] || localByLead[String(mapped.leadId)] || localByLead[String(mapped.leadNo)];
-        if (local?.visitMeet?.['site-visit'] || local?.visitMeet?.meeting) {
-          mapped.visitMeet = local.visitMeet;
-          mapped.visit_meet = local.visitMeet;
-        }
-      }
-      return mapped;
-    });
+    return data.map(row => this.mapFollowUpFromDb(row));
   },
 
   async getVisitorFollowUpsByLeadId(leadId, leadNo = null) {
@@ -394,37 +370,16 @@ export const siteVisitMeetingApi = {
 
     const { data, error } = await query.order('created_at', { ascending: true });
     if (error) {
-      console.warn('Error fetching visitor follow ups by leadId from Supabase:', error.message);
-      const all = getLocalVisitorFollowUps();
-      return all
-        .filter(f => (leadId && String(f.leadId) === String(leadId)) || (leadNo && String(f.leadNo) === String(leadNo)))
-        .sort((a, b) => (Number(a.timestampMs) || 0) - (Number(b.timestampMs) || 0));
+      console.error('Error fetching visitor follow ups by leadId from Supabase:', error);
+      throw error;
     }
 
-    const localFollowUps = getLocalVisitorFollowUps() || [];
-    const localById = Object.fromEntries(localFollowUps.map(f => [String(f.id), f]));
-    const localByLead = {};
-    localFollowUps.forEach(f => {
-      const key = String(f.leadId || f.leadNo);
-      if (!localByLead[key] || (f.visitMeet?.['site-visit'] || f.visitMeet?.meeting)) {
-        localByLead[key] = f;
-      }
-    });
-
-    return data.map(row => {
-      const mapped = this.mapFollowUpFromDb(row);
-      if (!mapped.visitMeet?.['site-visit'] && !mapped.visitMeet?.meeting) {
-        const local = localById[String(mapped.id)] || localByLead[String(mapped.leadId)] || localByLead[String(mapped.leadNo)];
-        if (local?.visitMeet?.['site-visit'] || local?.visitMeet?.meeting) {
-          mapped.visitMeet = local.visitMeet;
-          mapped.visit_meet = local.visitMeet;
-        }
-      }
-      return mapped;
-    });
+    return data.map(row => this.mapFollowUpFromDb(row));
   },
 
-  async saveVisitorFollowUp(entry) {
+  // skipCallTracker: the caller (Add Direct Lead / Followup form) already saved this call in call_trackers,
+  // so don't add a second call record for the same action
+  async saveVisitorFollowUp({ skipCallTracker = false, ...entry }) {
     const rawCustStatus = entry.customerStatus || entry.customer_status || '';
     let customerStatus = normalizeCustomerStatus(rawCustStatus);
     if (!customerStatus && rawCustStatus) {
@@ -449,7 +404,7 @@ export const siteVisitMeetingApi = {
       });
 
       // Record follow-up in callTracker so it counts and appears inside Leads & Followups
-      try {
+      if (!skipCallTracker) try {
         const now = new Date();
         const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
         await callTrackerApi.saveCallTracker({
@@ -628,20 +583,13 @@ export const siteVisitMeetingApi = {
 
     if (error) {
       console.error('Error saving visitor follow up to Supabase:', error);
-      const fallback = saveLocalVisitorFollowUp({
-        ...normalizedEntry,
-        id: normalizedEntry.id || `VFU-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        created_at: new Date().toISOString()
-      });
-      refreshBadgeCounts();
       throw error;
     }
 
     const created = this.mapFollowUpFromDb(data);
-    saveLocalVisitorFollowUp(created);
 
     // Record follow-up in callTracker so it counts and appears inside Leads & Followups
-    try {
+    if (!skipCallTracker) try {
       const now = new Date();
       const timestamp = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
       await callTrackerApi.saveCallTracker({
@@ -734,13 +682,10 @@ export const siteVisitMeetingApi = {
 
     if (error) {
       console.error('Error updating visitor follow up in Supabase:', error);
-      updateLocalVisitorFollowUp(id, updatedFields);
-      refreshBadgeCounts();
       throw error;
     }
 
     const updated = this.mapFollowUpFromDb(data);
-    updateLocalVisitorFollowUp(id, updated);
 
     // Sync customer_status to latest call tracker if updated
     if (updated.customerStatus && (updated.leadId || updated.leadNo)) {
@@ -769,8 +714,10 @@ export const siteVisitMeetingApi = {
       return;
     }
     const { error } = await supabase.from('visitor_follow_ups').delete().eq('id', id);
-    if (error) console.error('Error deleting visitor follow up from Supabase:', error);
-    deleteLocalVisitorFollowUp(id);
+    if (error) {
+      console.error('Error deleting visitor follow up from Supabase:', error);
+      throw error;
+    }
     refreshBadgeCounts();
   },
 
@@ -924,6 +871,15 @@ export const siteVisitMeetingApi = {
       leadFollowUps.sort((a, b) => (Number(a.timestampMs) || new Date(a.createdAt || 0).getTime()) - (Number(b.timestampMs) || new Date(b.createdAt || 0).getTime()));
       const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
 
+      // Site Visited / Meeting shown for the lead come from the latest visit or meeting log, so call
+      // follow-ups logged after a visit don't hide it
+      const latestVisitLog = [...leadFollowUps].reverse().find(f => {
+        const vm = f.visitMeet || f.visit_meet;
+        return vm && (vm['site-visit'] || vm.meeting);
+      });
+      const leadVisitMeet = latestVisitLog?.visitMeet || latestVisitLog?.visit_meet
+        || latestFollowUp?.visitMeet || latestFollowUp?.visit_meet || lead.visitMeet || lead.visit_meet || null;
+
       // Determine computed overall status
       let computedStatus = 'Pending Assignment';
       if (latestFollowUp) {
@@ -987,8 +943,8 @@ export const siteVisitMeetingApi = {
         followUpCount: leadFollowUps.length,
         followUpNo: leadFollowUps.length,
         latestFollowUp,
-        visitMeet: latestFollowUp?.visitMeet || latestFollowUp?.visit_meet || (leadFollowUps.find(f => f.visitMeet || f.visit_meet)?.visitMeet) || lead.visitMeet || lead.visit_meet || null,
-        visit_meet: latestFollowUp?.visitMeet || latestFollowUp?.visit_meet || (leadFollowUps.find(f => f.visitMeet || f.visit_meet)?.visitMeet) || lead.visitMeet || lead.visit_meet || null,
+        visitMeet: leadVisitMeet,
+        visit_meet: leadVisitMeet,
         parentId: latestFollowUp?.parentId || latestFollowUp?.parent_id || null,
         parent_id: latestFollowUp?.parentId || latestFollowUp?.parent_id || null,
         // Computed lifecycle status
@@ -1025,7 +981,7 @@ export const siteVisitMeetingApi = {
 
   async getPendingFollowUpsWithLeads() {
     const all = await this.getAllSiteVisitMeetingLeads();
-    return all.filter(item => ['Assigned', 'Future Plan', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'].includes(item.status));
+    return all.filter(item => ['Assigned', 'Future Plan', 'Revisit', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'].includes(item.status));
   },
 
   async getHistoryFollowUpsWithLeads() {

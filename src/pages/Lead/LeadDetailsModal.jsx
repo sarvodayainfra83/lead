@@ -407,6 +407,7 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
           <SiteVisitFollowUpReport
             leadId={lead.id}
             leadNo={lead.leadNo}
+            leadType={lead.leadType}
             initialFollowUps={lead.visitorFollowUps}
           />
         </div>

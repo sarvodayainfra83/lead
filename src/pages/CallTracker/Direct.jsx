@@ -11,7 +11,13 @@ import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo, getInvestmentBudgetsForLeadType } from '../Lead/leadConstants';
-import { ENQUIRY_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES } from './callTrackerConstants';
+import { ENQUIRY_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES, tomorrowInputDate } from './callTrackerConstants';
+
+// Mutual Fund meeting: the deal is still pending or the customer isn't interested
+const MF_DEAL_STATUS_OPTIONS = [
+  { value: 'Pending', label: 'Pending' },
+  { value: 'Not Interested', label: 'Not Interested' }
+];
 import { useAuthStore } from '../../store/authStore';
 import { isUserAdmin } from '../../utils/authUtils';
 
@@ -51,7 +57,8 @@ const initialFormData = {
   meeting: true,
   dealStatus: 'Pending',
   exactBudget: '',
-  assignedVisitor: ''
+  assignedVisitor: '',
+  meetingMode: ''
 };
 
 export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
@@ -336,6 +343,21 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       .map(t => ({ value: t.investmentBudget, label: t.investmentBudget }));
   }, [investmentBudgetsMaster, formData.leadType]);
 
+  const isWalkInValue = (val) => {
+    const clean = String(val || '').toLowerCase().trim();
+    return clean.includes('walk-in') || clean.includes('walk in') || clean.includes('walkin');
+  };
+
+  // Real Estate walk-in: the customer is at the site, so it starts as a Site Visit dated today
+  const applyWalkInSiteVisit = (updated) => {
+    const now = new Date();
+    updated.status = 'Site Visit/Meeting';
+    updated.siteVisited = true;
+    updated.meeting = false;
+    updated.nextCallDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (!updated.assignedVisitor) updated.assignedVisitor = user?.name || '';
+  };
+
   const handleChange = (field, value) => {
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
@@ -365,6 +387,9 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
             updated.siteVisited = false;
             updated.meeting = true;
           }
+          if (isWalkInValue(updated.leadSource) || isWalkInValue(updated.customLeadSource)) {
+            applyWalkInSiteVisit(updated);
+          }
         }
       }
       if (field === 'productType' && !isOtherValue(value)) {
@@ -387,6 +412,12 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         if (!isOtherValue(value)) {
           updated.customLeadSource = '';
         }
+        if (isWalkInValue(value) && updated.leadType === 'Real Estate') {
+          applyWalkInSiteVisit(updated);
+        }
+      }
+      if (field === 'customLeadSource' && isWalkInValue(value) && updated.leadType === 'Real Estate') {
+        applyWalkInSiteVisit(updated);
       }
       if (field === 'investmentBudget' && !isOtherValue(value)) {
         updated.customInvestmentBudget = '';
@@ -404,6 +435,9 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         } else if (value === 'Meeting') {
           updated.meeting = true;
           updated.siteVisited = false;
+          // Insurance: the next meeting is tomorrow by default (the user can pick another date)
+          const insuranceLead = (updated.leadType || '').toLowerCase().includes('insurance');
+          if (insuranceLead && prev.status !== value && !updated.nextCallDate) updated.nextCallDate = tomorrowInputDate();
         }
       }
       return updated;
@@ -509,6 +543,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
     if (!formData.status) { toast.error('Status is required'); return; }
     if (!formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!formData.customerSaid.trim()) { toast.error('What did Customer Said is required'); return; }
+    if ((isInsurance || isMutualFund) && formData.status === 'Meeting' && !formData.meetingMode) { toast.error('Please choose Online Meeting or Offline Meeting'); return; }
 
     setLoading(true);
 
@@ -644,16 +679,21 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
       remarks: ''
     });
 
-    await callTrackerApi.saveCallTracker({
-      leadId: createdLead.id,
-      leadNo: createdLead.leadNo,
-      status: formData.status,
-      customerStatus: formData.customerStatus,
-      customerSaid: formData.customerSaid,
-      nextDate: (DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') ? formData.nextCallDate : '',
-      timestamp,
-      timestampMs: now.getTime()
-    });
+    try {
+      await callTrackerApi.saveCallTracker({
+        leadId: createdLead.id,
+        leadNo: createdLead.leadNo,
+        status: formData.status,
+        customerStatus: formData.customerStatus,
+        customerSaid: formData.customerSaid,
+        nextDate: (DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') ? formData.nextCallDate : '',
+        timestamp,
+        timestampMs: now.getTime()
+      });
+    } catch (err) {
+      console.error('Could not save the call entry for the new lead:', err);
+      toast.error(`Lead ${createdLead?.leadNo || ''} was added, but its call entry could not be saved`);
+    }
 
     // The customer was just called while adding the lead — mark it "called today" in Today's Followup.
     // The mark only counts for today, so on the next call date it shows unmarked again.
@@ -699,7 +739,9 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         const isMeet = isRealEstate ? (!isSiteVisit || Boolean(formData.meeting)) : true;
         const visitMeet = {
           'site-visit': isSiteVisit,
-          'meeting': isMeet
+          'meeting': isMeet,
+          // Insurance / Mutual Fund: Online / Offline meeting
+          ...((isInsurance || isMutualFund) && formData.meetingMode ? { meetingMode: formData.meetingMode } : {})
         };
         await siteVisitMeetingApi.saveVisitorFollowUp({
           leadId: createdLead.id,
@@ -707,9 +749,10 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
           assignedVisitorId: savedAssignment?.id || null,
           parentId: null,
           parent_id: null,
-          status: 'Interested',
-          dealOutcome: 'Pending',
-          deal_outcome: 'Pending',
+          // Mutual Fund: the chosen deal status (Pending / Not Interested); others start as Pending
+          status: isMutualFund && formData.dealStatus === 'Not Interested' ? 'Not Interested' : 'Interested',
+          dealOutcome: isMutualFund ? (formData.dealStatus || 'Pending') : 'Pending',
+          deal_outcome: isMutualFund ? (formData.dealStatus || 'Pending') : 'Pending',
           closingAmount: '',
           closing_amount: '',
           visitMeet,
@@ -720,7 +763,9 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
           salesExecutive: chosenVisitorName || formData.callerAssigned || user?.name || '',
           visitorName: chosenVisitorName,
           visitorId: matchedVisitorId,
-          followUpNo: 1
+          followUpNo: 1,
+          // This call was already saved above — don't log it a second time
+          skipCallTracker: true
         });
       } catch (visitErr) {
         console.error('Could not auto-save visitor follow-up for direct lead:', visitErr);
@@ -1159,7 +1204,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
             {/* When status is Site Visit/Meeting or Meeting: Radio buttons (Site Visit, Meeting) and Assigned Visitor */}
             {(formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') && (
               <div className="space-y-3 col-span-2 p-2.5 sm:p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl animate-in fade-in duration-200">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 items-center">
+                <div className={`grid grid-cols-1 ${isMutualFund ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2.5 sm:gap-3 items-center`}>
                   {/* Radio buttons: Site Visit & Meeting */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
@@ -1189,6 +1234,22 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                             <span>Meeting</span>
                           </label>
                         </>
+                      ) : (isInsurance || isMutualFund) ? (
+                        <>
+                          {/* Insurance / Mutual Fund: Online or Offline meeting */}
+                          {['Online', 'Offline'].map(mode => (
+                            <label key={mode} className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
+                              <input
+                                type="radio"
+                                name="directMeetingMode"
+                                checked={formData.meetingMode === mode}
+                                onChange={() => setFormData(prev => ({ ...prev, siteVisited: false, meeting: true, meetingMode: mode }))}
+                                className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                              />
+                              <span>{mode} Meeting</span>
+                            </label>
+                          ))}
+                        </>
                       ) : (
                         <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-800">
                           <input
@@ -1204,16 +1265,32 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                     </div>
                   </div>
 
-                  {/* Assigned Visitor Dropdown (defaults to loggedIn user) */}
+                  {/* Deal Status (Mutual Fund) */}
+                  {isMutualFund && (
+                    <div className="space-y-1">
+                      <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
+                        Deal Status
+                      </label>
+                      <SearchableDropdown
+                        options={MF_DEAL_STATUS_OPTIONS}
+                        value={formData.dealStatus || 'Pending'}
+                        onChange={(val) => handleChange('dealStatus', val)}
+                        placeholder="Select deal status"
+                        height="h-[30px] md:h-[34px]"
+                      />
+                    </div>
+                  )}
+
+                  {/* Assigned Visitor Dropdown (defaults to loggedIn user; Insurance / Mutual Fund: who takes the meeting) */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                      Assigned Visitor *
+                      {isInsurance || isMutualFund ? 'Meeting Assigned To' : 'Assigned Visitor'} *
                     </label>
                     <SearchableDropdown
                       options={visitorOptions}
                       value={formData.assignedVisitor || user?.name || ''}
                       onChange={(val) => handleChange('assignedVisitor', val)}
-                      placeholder="Select assigned visitor"
+                      placeholder={isInsurance || isMutualFund ? 'Select meeting person' : 'Select assigned visitor'}
                       height="h-[30px] md:h-[34px]"
                     />
                   </div>

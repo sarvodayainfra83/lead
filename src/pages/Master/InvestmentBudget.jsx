@@ -35,7 +35,12 @@ export default function InvestmentBudget({ setHeaderAction, searchQuery = '' }) 
     setRows(budgetsData || []);
     setLeadTypes(typesData || []);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load().catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
+    });
+  }, []);
 
   const openAdd = useCallback(() => { setEditRow(null); setSelectedLeadTypeIds([]); setInvestmentBudget(''); setShowForm(true); }, []);
   const openEdit = (row) => { setEditRow(row); setSelectedLeadTypeIds(row.leadTypeIds || []); setInvestmentBudget(row.investmentBudget || ''); setShowForm(true); };

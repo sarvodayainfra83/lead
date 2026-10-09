@@ -8,8 +8,8 @@ import { CUSTOMER_STATUS_STYLES } from '../pages/CallTracker/callTrackerConstant
 
 const STATUS_STYLES = {
   'Deal Lock': {
-    badge: 'bg-emerald-100 text-emerald-800 border-emerald-400',
-    dot: 'bg-emerald-600',
+    badge: 'bg-violet-100 text-violet-800 border-violet-400',
+    dot: 'bg-violet-600',
     label: 'Deal Lock'
   },
   Interested: {
@@ -36,6 +36,11 @@ const STATUS_STYLES = {
     badge: 'bg-orange-50 text-orange-700 border-orange-300',
     dot: 'bg-orange-500',
     label: 'Under Negotiation'
+  },
+  Revisit: {
+    badge: 'bg-teal-50 text-teal-700 border-teal-300',
+    dot: 'bg-teal-500',
+    label: 'Revisit'
   },
   Assigned: {
     badge: 'bg-sky-50 text-sky-700 border-sky-300',
@@ -73,7 +78,9 @@ const formatDate = (val) => {
  * Reusable component to render all site visit / meeting follow-up records
  * fetched from the visitor_follow_ups table by lead_id (fk) or lead_no.
  */
-export default function SiteVisitFollowUpReport({ leadId, leadNo, initialFollowUps = null, className = '' }) {
+export default function SiteVisitFollowUpReport({ leadId, leadNo, leadType = '', initialFollowUps = null, className = '' }) {
+  // Insurance has meetings only, so the section is just 'Meeting Follow-Ups'
+  const isInsurance = String(leadType || '').toLowerCase().includes('insurance') || String(leadNo || '').trim().toUpperCase().startsWith('LI');
   const [followUps, setFollowUps] = useState(initialFollowUps || []);
   const [loading, setLoading] = useState(!initialFollowUps);
 
@@ -112,7 +119,7 @@ export default function SiteVisitFollowUpReport({ leadId, leadNo, initialFollowU
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 text-emerald-700">
           <MapPin size={14} className="text-emerald-600" />
-          Site Visit / Meeting Follow-Ups
+          {isInsurance ? 'Meeting Follow-Ups' : 'Site Visit / Meeting Follow-Ups'}
           <span className="bg-emerald-50 text-emerald-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold border border-emerald-200">
             {followUps.length}
           </span>

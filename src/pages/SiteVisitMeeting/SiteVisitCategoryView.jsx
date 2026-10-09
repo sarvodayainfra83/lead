@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
-  Search, RotateCcw, RefreshCw, UserCheck, MessageSquare,
+  Search, RotateCcw, UserCheck, MessageSquare,
   Phone, MapPin, Calendar, Eye, X, ChevronDown, ChevronUp,
   FileSpreadsheet, Mail, Briefcase, FileText, Clock, IndianRupee, Check, CheckCircle2,
   CalendarDays
@@ -35,18 +35,33 @@ export const isDealClosed = (item) => {
 const hasSiteVisitFlag = (vm) => Boolean(vm?.['site-visit'] || vm?.siteVisit || vm?.site_visit);
 const hasMeetingFlag = (vm) => Boolean(vm?.meeting);
 const NO_VISIT_STATUSES = ['Call Not Received', 'No WhatsApp Reply', 'Not Interested'];
-const VISIT_OUTCOME_STATUSES = ['Deal Lock', 'Interested', 'Future Plan', 'Under Negotiation', 'Did Not Show'];
+const VISIT_OUTCOME_STATUSES = ['Deal Lock', 'Interested', 'Future Plan', 'Revisit', 'Under Negotiation', 'Did Not Show'];
 
-// Site visits and meetings counted separately from the follow-up logs: a log ticked "Site Visit" counts as a visit,
-// "Meeting" as a meeting (both if both are ticked). Older logs with no tick but a visit outcome count as a visit.
+const hasCallFlag = (vm) => Boolean(vm?.call);
+
+// Site visits, meetings and calls counted separately from the follow-up logs: a log ticked "Site Visit" counts as a
+// visit, "Meeting" as a meeting, "Call" as a call (Site Visit Followup form only). Older logs with no tick but a visit
+// outcome count as a visit.
 export const getVisitMeetCounts = (item) => {
-  if (!item) return { visits: 0, meetings: 0 };
+  if (!item) return { visits: 0, meetings: 0, calls: 0 };
   const hasLogs = Array.isArray(item.followUps) && item.followUps.length > 0;
   const logs = hasLogs ? item.followUps : [item];
   let visits = 0;
   let meetings = 0;
+  let calls = 0;
   logs.forEach(f => {
     const status = String(f.status || '').trim();
+    // A Revisit is always a site visit, whatever activity was ticked — except Insurance's 'Remeeting', saved as a meeting
+    if (status === 'Revisit') {
+      if (hasMeetingFlag(f.visitMeet) && !hasSiteVisitFlag(f.visitMeet)) meetings += 1;
+      else visits += 1;
+      return;
+    }
+    // Only calls logged from this page's Followup form carry the call flag; Lead & Followup calls never do
+    if (hasLogs && hasCallFlag(f.visitMeet)) {
+      calls += 1;
+      return;
+    }
     if (NO_VISIT_STATUSES.includes(status)) return;
     const visited = hasSiteVisitFlag(f.visitMeet);
     const met = hasMeetingFlag(f.visitMeet);
@@ -54,11 +69,11 @@ export const getVisitMeetCounts = (item) => {
     if (met) meetings += 1;
     if (hasLogs && !visited && !met && VISIT_OUTCOME_STATUSES.includes(status)) visits += 1;
   });
-  return { visits, meetings };
+  return { visits, meetings, calls };
 };
 
 const STATUS_STYLES = {
-  'Deal Lock': 'bg-emerald-100 text-emerald-800 border-emerald-400',
+  'Deal Lock': 'bg-violet-100 text-violet-800 border-violet-400',
   Interested: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   'Not Interested': 'bg-red-50 text-red-700 border-red-200',
   'Future Plan': 'bg-amber-50 text-amber-700 border-amber-200',
@@ -71,6 +86,7 @@ const STATUS_STYLES = {
   'Pending Assignment': 'bg-indigo-50 text-indigo-700 border-indigo-200',
   'Did Not Show': 'bg-slate-100 text-slate-700 border-slate-300',
   'Under Negotiation': 'bg-orange-50 text-orange-700 border-orange-200',
+  'Revisit': 'bg-teal-50 text-teal-700 border-teal-200',
   'Closed Won': 'bg-emerald-100 text-emerald-800 border-emerald-300',
   'Closed Lost': 'bg-rose-50 text-rose-700 border-rose-200',
   Pending: 'bg-indigo-50 text-indigo-700 border-indigo-200',
@@ -116,6 +132,7 @@ export default function SiteVisitCategoryView({
   activeTab,
   onTabChange,
   initialDateFilter,
+  initialClosedDealsOnly = false,
   leads = [],
   loading = false,
   visitorsMaster = [],
@@ -126,12 +143,30 @@ export default function SiteVisitCategoryView({
 }) {
   const user = useAuthStore(state => state.user);
   const isAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
+  // Call follow-ups (Total Calls) are logged for Real Estate and Insurance
+  const showCalls = category === 'Real Estate' || category === 'Insurance';
+  // Insurance meetings are Online / Offline — the latest meeting's type is shown in the list
+  const showMeetingType = category === 'Insurance';
+  // Insurance / Mutual Fund have meetings only: no Site Visited / Meeting / Total Visits columns, and the
+  // assigned person is who takes the meeting
+  const showVisitCols = category === 'Real Estate';
+  const assignedLabel = showVisitCols ? 'Assigned Visitor' : 'Meeting Assigned To';
+  const getMeetingType = (item) => {
+    const logs = item.followUps || [];
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const mode = logs[i].visitMeet?.meetingMode;
+      if (mode) return `${mode} Meeting`;
+    }
+    return '';
+  };
+  // Insurance calls a Revisit 'Remeeting' (stored as 'Revisit')
+  const statusText = (status) => (category === 'Insurance' && status === 'Revisit' ? 'Remeeting' : status);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(initialDateFilter || 'today');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [showClosedDealsOnly, setShowClosedDealsOnly] = useState(false);
+  const [showClosedDealsOnly, setShowClosedDealsOnly] = useState(initialClosedDealsOnly);
 
   // React to prop updates from Dashboard navigation
   useEffect(() => {
@@ -312,7 +347,7 @@ export default function SiteVisitCategoryView({
         if (isVisitMarkedToday(item)) todayVisitedCount++;
       }
       if (isYesterdayMatch) yesterdayCount++;
-      if (targetTime < todayTime && (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan' || item.status === 'Under Negotiation' || item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply')) overdueCount++;
+      if (targetTime < todayTime && (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan' || item.status === 'Revisit' || item.status === 'Under Negotiation' || item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply')) overdueCount++;
       if ((nextTime && nextTime > todayTime) || (callTime && callTime > todayTime) || (mTime && mTime > todayTime)) upcomingCount++;
       if (fromMs !== null && toMs !== null) {
         const isCustomMatch = (mTime && mTime >= fromMs && mTime <= toMs) ||
@@ -397,7 +432,7 @@ export default function SiteVisitCategoryView({
         }
         if (dateFilter === 'overdue') {
           return targetTime < today.getTime() &&
-            (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan' || item.status === 'Under Negotiation' || item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply');
+            (item.status === 'Pending Assignment' || item.status === 'Assigned' || item.status === 'Future Plan' || item.status === 'Revisit' || item.status === 'Under Negotiation' || item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply');
         }
         if (dateFilter === 'upcoming') {
           return (nextTime && nextTime > today.getTime()) || (callTime && callTime > today.getTime()) || (mTime && mTime > today.getTime());
@@ -493,21 +528,25 @@ export default function SiteVisitCategoryView({
 
     const exportData = filteredLeads.map((item, idx) => {
       const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
-      const { visits: totalVisits, meetings: totalMeetings } = getVisitMeetCounts(item);
+      const { visits: totalVisits, meetings: totalMeetings, calls: totalCalls } = getVisitMeetCounts(item);
       return {
         'SR No': idx + 1,
         'Meeting Date': formatDate(item.meetingDate || item.visitDate),
         'Next Meeting Date': formatDate(item.nextMeetingDate || item.nextVisitDate),
         'Customer Name': item.customerName || item.personName || '-',
-        ...(isAdmin ? { 'Status': item.status || '-' } : {}),
-        'Site Visited': (!isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) ? 'Yes' : 'No',
-        'Meeting': (!isNoContact && item.visitMeet?.meeting) ? 'Yes' : 'No',
+        ...(isAdmin ? { 'Status': statusText(item.status) || '-' } : {}),
+        ...(showVisitCols ? {
+          'Site Visited': (!isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) ? 'Yes' : 'No',
+          'Meeting': (!isNoContact && item.visitMeet?.meeting) ? 'Yes' : 'No'
+        } : {}),
         'Customer Status': item.customerStatus || '-',
         'Latest Feedback': item.whatHappened || item.visitorRemarks || '-',
         'Phone Number': item.customerNumber || item.number || '-',
-        'Assigned Visitor': item.assignedVisitor || '-',
-        'Total Visits': totalVisits,
+        [assignedLabel]: item.assignedVisitor || '-',
+        ...(showVisitCols ? { 'Total Visits': totalVisits } : {}),
         'Total Meetings': totalMeetings,
+        ...(showMeetingType ? { 'Meeting Type': getMeetingType(item) || '-' } : {}),
+        ...(showCalls ? { 'Total Calls': totalCalls } : {}),
         'Location': item.location || item.customerAddress || '-',
         'Remarks': item.leadRemarks || item.remarks || '-'
       };
@@ -526,14 +565,15 @@ export default function SiteVisitCategoryView({
     "Next Meeting Date",
     "Customer Name",
     ...(isAdmin ? ["Status"] : []),
-    "Site Visited",
-    "Meeting",
+    ...(showVisitCols ? ["Site Visited", "Meeting"] : []),
     "Customer Status",
     "Latest Feedback",
     "Phone Number",
-    "Assigned Visitor",
-    "Total Visits",
+    assignedLabel,
+    ...(showVisitCols ? ["Total Visits"] : []),
     "Total Meetings",
+    ...(showMeetingType ? ["Meeting Type"] : []),
+    ...(showCalls ? ["Total Calls"] : []),
     "Location",
     "Remarks"
   ];
@@ -551,9 +591,10 @@ export default function SiteVisitCategoryView({
     const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
     const hasSiteVisited = !isNoContact && Boolean(item.visitMeet?.['site-visit'] ?? item.visitMeet?.siteVisit ?? item.visitMeet?.site_visit);
     const hasMeeting = !isNoContact && Boolean(item.visitMeet?.meeting);
-    const { visits: totalVisits, meetings: totalMeetings } = getVisitMeetCounts(item);
+    const { visits: totalVisits, meetings: totalMeetings, calls: totalCalls } = getVisitMeetCounts(item);
     // Site-visit-done mark in Today's Followup and All Dates views
     const visitedToday = showVisitMark && isVisitMarkedToday(item);
+    const dealClosed = isDealClosed(item);
 
     return (
       <tr
@@ -563,7 +604,7 @@ export default function SiteVisitCategoryView({
           if (e.target.closest('button, a, input, select, label, [role="combobox"], [role="listbox"]')) return;
           onViewHistory(item);
         }}
-        className={`group cursor-pointer transition-colors border-b border-gray-100 ${visitedToday ? 'bg-emerald-50/70 hover:bg-emerald-100/60' : 'hover:bg-indigo-50/40'}`}
+        className={`group cursor-pointer transition-colors border-b border-gray-100 ${dealClosed ? 'bg-violet-50 hover:bg-violet-100/70 border-l-4 border-l-violet-500' : visitedToday ? 'bg-emerald-50/70 hover:bg-emerald-100/60' : 'hover:bg-indigo-50/40'}`}
       >
         {/* Action column: compact icon buttons, same as Call Followup (tooltips carry the labels) */}
         <td className="px-2 py-1.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -640,9 +681,9 @@ export default function SiteVisitCategoryView({
             <span className="text-gray-900 truncate hover:text-indigo-600 transition">
               {item.customerName || item.personName || '-'}
             </span>
-            {isDealClosed(item) && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0 shadow-2xs">
-                <CheckCircle2 size={9} className="stroke-[2.5] text-emerald-700" />
+            {dealClosed && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-violet-600 text-white border border-violet-700 shrink-0 shadow-2xs">
+                <CheckCircle2 size={9} className="stroke-[2.5] text-white" />
                 CLOSED
               </span>
             )}
@@ -654,7 +695,7 @@ export default function SiteVisitCategoryView({
           <td className="px-3 py-2 text-center whitespace-nowrap">
             {item.status ? (
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase border tracking-wide ${STATUS_STYLES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-                {item.status}
+                {statusText(item.status)}
               </span>
             ) : (
               <span className="text-gray-300">-</span>
@@ -663,28 +704,32 @@ export default function SiteVisitCategoryView({
         )}
 
         {/* 5. Site Visited */}
-        <td className="px-3 py-2 text-center whitespace-nowrap">
-          {hasSiteVisited ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-              <Check size={11} className="text-emerald-600 stroke-[2.5]" />
-              Yes
-            </span>
-          ) : (
-            <span className="text-gray-300 text-xs">-</span>
-          )}
-        </td>
+        {showVisitCols && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            {hasSiteVisited ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                <Check size={11} className="text-emerald-600 stroke-[2.5]" />
+                Yes
+              </span>
+            ) : (
+              <span className="text-gray-300 text-xs">-</span>
+            )}
+          </td>
+        )}
 
         {/* 6. Meeting */}
-        <td className="px-3 py-2 text-center whitespace-nowrap">
-          {hasMeeting ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-50 text-violet-700 border border-violet-200 shadow-2xs">
-              <Check size={11} className="text-violet-600 stroke-[2.5]" />
-              Yes
-            </span>
-          ) : (
-            <span className="text-gray-300 text-xs">-</span>
-          )}
-        </td>
+        {showVisitCols && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            {hasMeeting ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-50 text-violet-700 border border-violet-200 shadow-2xs">
+                <Check size={11} className="text-violet-600 stroke-[2.5]" />
+                Yes
+              </span>
+            ) : (
+              <span className="text-gray-300 text-xs">-</span>
+            )}
+          </td>
+        )}
 
         {/* 7. Customer Status (Hot / Warm / Cold) */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -752,11 +797,13 @@ export default function SiteVisitCategoryView({
         </td>
 
         {/* 11. Total Visits */}
-        <td className="px-3 py-2 text-center whitespace-nowrap">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            {totalVisits} {totalVisits === 1 ? 'Visit' : 'Visits'}
-          </span>
-        </td>
+        {showVisitCols && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+              {totalVisits} {totalVisits === 1 ? 'Visit' : 'Visits'}
+            </span>
+          </td>
+        )}
 
         {/* 11b. Total Meetings */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -764,6 +811,29 @@ export default function SiteVisitCategoryView({
             {totalMeetings} {totalMeetings === 1 ? 'Meeting' : 'Meetings'}
           </span>
         </td>
+
+        {/* 11c. Meeting Type (Insurance: latest meeting Online / Offline) */}
+        {showMeetingType && (
+          <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
+            {getMeetingType(item) ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                {getMeetingType(item)}
+              </span>
+            ) : (
+              <span className="text-gray-300">-</span>
+            )}
+          </td>
+        )}
+
+        {/* 11d. Total Calls (call follow-ups after the visit / meeting) */}
+        {showCalls && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+              <Phone size={10} className="text-sky-500" />
+              {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
+            </span>
+          </td>
+        )}
 
         {/* 12. Location */}
         <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location || item.customerAddress}>
@@ -783,8 +853,9 @@ export default function SiteVisitCategoryView({
     const leadKey = item.id || item.leadNo || idx;
     const isExpanded = expandedCardIds.has(leadKey);
     const visitedToday = showVisitMark && isVisitMarkedToday(item);
+    const dealClosed = isDealClosed(item);
     const isNoContact = item.status === 'Call Not Received' || item.status === 'No WhatsApp Reply';
-    const { visits: totalVisits, meetings: totalMeetings } = getVisitMeetCounts(item);
+    const { visits: totalVisits, meetings: totalMeetings, calls: totalCalls } = getVisitMeetCounts(item);
 
     // Filter populated fields (skip empty/null/'-')
     const isValid = (val) => {
@@ -798,8 +869,8 @@ export default function SiteVisitCategoryView({
     if (isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget || item.budget)) details.push({ label: 'Budget', value: item.investmentBudget || item.budget, icon: IndianRupee });
-    if (!isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });
-    if (!isNoContact && item.visitMeet?.meeting) details.push({ label: 'Meeting', value: 'Yes', icon: Check });
+    if (showVisitCols && !isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });
+    if (showVisitCols && !isNoContact && item.visitMeet?.meeting) details.push({ label: 'Meeting', value: 'Yes', icon: Check });
     if (isValid(item.relationshipManager)) details.push({ label: 'Relationship Manager', value: item.relationshipManager, icon: UserCheck });
     if (isValid(item.whenToBuyPlan)) details.push({ label: 'When to Buy', value: item.whenToBuyPlan, icon: Clock });
     if (isValid(item.leadRemarks || item.remarks)) details.push({ label: 'Remarks', value: item.leadRemarks || item.remarks, icon: MessageSquare, isLong: true });
@@ -807,7 +878,7 @@ export default function SiteVisitCategoryView({
     return (
       <div
         key={leadKey}
-        className={`rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${visitedToday ? 'bg-emerald-50/70' : 'bg-white'} ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200' : (visitedToday ? 'border-emerald-300' : 'border-gray-200')}`}
+        className={`rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${dealClosed ? 'bg-violet-50 border-l-4 border-l-violet-500' : visitedToday ? 'bg-emerald-50/70' : 'bg-white'} ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200' : (dealClosed ? 'border-violet-300' : visitedToday ? 'border-emerald-300' : 'border-gray-200')}`}
       >
         {/* Card Header: Name, Lead # on left; Details dropdown on top right */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
@@ -823,9 +894,9 @@ export default function SiteVisitCategoryView({
                 #{item.leadNo}
               </span>
             )}
-            {isDealClosed(item) && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
-                <CheckCircle2 size={9} className="stroke-[2.5] text-emerald-700" /> Closed Deal
+            {dealClosed && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-violet-600 text-white border border-violet-700 shrink-0">
+                <CheckCircle2 size={9} className="stroke-[2.5] text-white" /> Closed Deal
               </span>
             )}
           </div>
@@ -852,7 +923,7 @@ export default function SiteVisitCategoryView({
           </button>
         </div>
 
-        {/* Primary Row: Phone, Total Visits, Total Meetings, Meeting Date, Next Meeting Date */}
+        {/* Primary Row: Phone, Total Visits, Total Meetings, Total Calls, Meeting Date, Next Meeting Date */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Phone</span>
@@ -875,12 +946,14 @@ export default function SiteVisitCategoryView({
             )}
           </div>
 
-          <div>
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits</span>
-            <span className="font-bold text-gray-700 mt-0.5 inline-block">
-              {totalVisits} {totalVisits === 1 ? 'Visit' : 'Visits'}
-            </span>
-          </div>
+          {showVisitCols && (
+            <div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits</span>
+              <span className="font-bold text-gray-700 mt-0.5 inline-block">
+                {totalVisits} {totalVisits === 1 ? 'Visit' : 'Visits'}
+              </span>
+            </div>
+          )}
 
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Meetings</span>
@@ -888,6 +961,22 @@ export default function SiteVisitCategoryView({
               {totalMeetings} {totalMeetings === 1 ? 'Meeting' : 'Meetings'}
             </span>
           </div>
+
+          {showMeetingType && getMeetingType(item) && (
+            <div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Meeting Type</span>
+              <span className="font-bold text-gray-700 mt-0.5 inline-block">{getMeetingType(item)}</span>
+            </div>
+          )}
+
+          {showCalls && (
+            <div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Calls</span>
+              <span className="font-bold text-gray-700 mt-0.5 inline-block">
+                {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
+              </span>
+            </div>
+          )}
 
           {(item.meetingDate || item.visitDate) && (
             <div>
@@ -938,7 +1027,7 @@ export default function SiteVisitCategoryView({
           )}
 
           <div className="flex items-center gap-1">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Visitor:</span>
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{showVisitCols ? 'Visitor:' : 'Assigned To:'}</span>
             {item.assignedVisitor ? (
               <span
                 onClick={(e) => { e.stopPropagation(); onAssignVisitor?.(item); }}
@@ -973,26 +1062,26 @@ export default function SiteVisitCategoryView({
         )}
 
         {/* Action & Status Row: Site-visit / Meeting text on bottom-left, Followup on bottom-right */}
-        <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
-          <div className="flex items-center gap-1 shrink-0 flex-wrap">
+        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
+          <div className="flex items-center gap-1 min-w-0 flex-wrap">
             {isAdmin && item.status && (
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                {item.status}
+                {statusText(item.status)}
               </span>
             )}
-            {(item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) && (
+            {showVisitCols && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) && (
               <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <Check size={9} className="stroke-[2.5]" /> Site Visited
               </span>
             )}
-            {item.visitMeet?.meeting && (
+            {showVisitCols && item.visitMeet?.meeting && (
               <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
                 <Check size={9} className="stroke-[2.5]" /> Meeting
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center ml-auto gap-1 shrink-0">
             {onLogFollowUp && renderVisitMarkButton(item, false)}
             {onLogFollowUp && (
               <button
@@ -1074,7 +1163,7 @@ export default function SiteVisitCategoryView({
         {/* Row 2: Controls Bar (Dates & Closed Deal on Left, Search & Actions on Right) */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
           {/* Left: Date Filters + Closed Deal Toggle */}
-          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+          <div className="flex flex-wrap xl:flex-nowrap items-center gap-1.5 sm:gap-2 shrink-0 w-full xl:w-auto pb-0.5">
             {/* Dedicated Tab / Button for Today's Followup */}
             <button
               type="button"
@@ -1084,7 +1173,7 @@ export default function SiteVisitCategoryView({
                 setCurrentPage(1);
               }}
               title={`Show Today's Followups — ${dateCounts.todayVisited} of ${dateCounts.today} site visits done today`}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
@@ -1100,7 +1189,7 @@ export default function SiteVisitCategoryView({
             </button>
 
             {/* Dropdown for All Dates & other date options */}
-            <div className="w-[145px] sm:w-[170px] shrink-0">
+            <div className="flex-1 min-w-[140px] sm:flex-none sm:w-[170px] shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
                 value={dateFilter === 'today' ? 'all' : dateFilter}
@@ -1171,7 +1260,7 @@ export default function SiteVisitCategoryView({
                 setCurrentPage(1);
               }}
               title={showClosedDealsOnly ? `Show all ${category} visits/deals` : `Show only closed deals for ${category}`}
-              className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 showClosedDealsOnly
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs font-bold ring-2 ring-emerald-300'
                   : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs'
@@ -1190,7 +1279,7 @@ export default function SiteVisitCategoryView({
           </div>
 
           {/* Right: Search + Excel + Refresh + Reset */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto justify-between sm:justify-end pb-0.5">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap sm:overflow-x-auto scrollbar-hide w-full xl:w-auto justify-between sm:justify-end pb-0.5">
             {/* Search Input */}
             <div className="relative min-w-[140px] sm:min-w-[180px] max-w-full sm:max-w-[240px] flex-1 sm:flex-initial">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
@@ -1223,16 +1312,6 @@ export default function SiteVisitCategoryView({
                 <span className="hidden sm:inline">Excel</span>
               </button>
             )}
-
-            {/* Refresh */}
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              title="Refresh"
-              className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95 cursor-pointer"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin text-indigo-600' : ''} />
-            </button>
 
             {/* Clear / Reset Filters */}
             {isFilterActive && (

@@ -194,7 +194,7 @@ export const productApi = {
 
     if (error) {
       console.error('Error fetching real estate products:', error);
-      return getLocalItems(LOCAL_STORAGE_KEYS.REAL_ESTATE);
+      throw error;
     }
 
     return data.map(d => ({
@@ -337,7 +337,7 @@ export const productApi = {
 
     if (error) {
       console.error('Error fetching insurance products:', error);
-      return getLocalItems(LOCAL_STORAGE_KEYS.INSURANCE);
+      throw error;
     }
 
     return data.map(d => ({
@@ -500,7 +500,7 @@ export const productApi = {
 
     if (error) {
       console.error('Error fetching mutual fund products:', error);
-      return getLocalItems(LOCAL_STORAGE_KEYS.MUTUAL_FUNDS);
+      throw error;
     }
 
     return data.map(d => ({

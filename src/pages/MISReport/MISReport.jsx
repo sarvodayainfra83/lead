@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import {
-  RefreshCw, FileSpreadsheet, Search, X, PhoneCall, Building2, ShieldCheck, TrendingUp, LayoutGrid,
+  FileSpreadsheet, Search, X, PhoneCall, Building2, ShieldCheck, TrendingUp, LayoutGrid,
   Phone, Mail, Briefcase, CalendarDays, Clock
 } from 'lucide-react';
 import { dashboardApi } from '../../api/dashboardApi';
@@ -231,14 +231,6 @@ export default function MISReport() {
             className="h-[34px] px-2.5 sm:px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold flex items-center gap-1 disabled:opacity-40"
           >
             <FileSpreadsheet size={14} /> <span className="hidden sm:inline">Export</span>
-          </button>
-          <button
-            onClick={loadData}
-            disabled={loading}
-            title="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] transition disabled:opacity-50"
-          >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>

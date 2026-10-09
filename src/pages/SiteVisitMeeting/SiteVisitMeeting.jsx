@@ -152,11 +152,12 @@ export default function SiteVisitMeeting() {
     <div className="flex flex-col h-full min-h-0">
       {/* Category View Panel */}
       <SiteVisitCategoryView
-        key={`${currentTabObj.key}_${navState.dateFilter || 'default'}`}
+        key={`${currentTabObj.key}_${navState.dateFilter || 'default'}_${navState.closedDealsOnly ? 'closed' : ''}`}
         category={currentTabObj.key}
         tabs={visibleTabs}
         activeTab={currentTabObj.key}
         initialDateFilter={navState.dateFilter}
+        initialClosedDealsOnly={Boolean(navState.closedDealsOnly)}
         onTabChange={setActiveTab}
         leads={currentTabObj.data}
         loading={loading}

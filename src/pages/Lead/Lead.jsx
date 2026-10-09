@@ -3,6 +3,8 @@ import { Building2, ShieldCheck, TrendingUp } from 'lucide-react';
 import { leadApi } from '../../api/leadApi';
 import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
+import { callTrackerApi } from '../../api/callTrackerApi';
+import { isDirectSiteVisitLead } from '../CallTracker/callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
 import { hasFullAccess, getUserLeadTypeScope, matchesUserConnection } from '../../utils/authUtils';
 import { useDashboardDrilldown } from '../../components/AccessGuard';
@@ -72,11 +74,20 @@ export default function Lead() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [leads, callers, visitorFollowUps] = await Promise.all([
+      const [leads, callers, visitorFollowUps, trackers, assignedVisitors] = await Promise.all([
         leadApi.getLeads(),
         masterApi.getCallerNames(),
-        siteVisitMeetingApi.getVisitorFollowUps().catch(() => [])
+        siteVisitMeetingApi.getVisitorFollowUps().catch(() => []),
+        callTrackerApi.getCallTrackers().catch(() => []),
+        siteVisitMeetingApi.getAssignedVisitors().catch(() => [])
       ]);
+
+      // Stage, same rule as Lead & Followup: leads the Site Visit / Meeting page lists are 'Site Visit',
+      // every other lead is 'Leads / Calling'
+      const siteVisitIds = new Set(
+        siteVisitMeetingApi.buildSiteVisitMeetingLeads(leads || [], trackers || [], assignedVisitors || [], visitorFollowUps || [])
+          .map(l => String(l.leadId ?? l.id))
+      );
 
       const followUpsByLead = {};
       (visitorFollowUps || []).forEach(f => {
@@ -106,6 +117,7 @@ export default function Lead() {
 
         return {
           ...lead,
+          stage: isDirectSiteVisitLead(lead) || siteVisitIds.has(String(lead.id)) ? 'Site Visit' : 'Leads / Calling',
           visitorFollowUps: followUps,
           latestVisitorFollowUp: latestFollowUp,
           visitorFollowUpCount: followUps.length,

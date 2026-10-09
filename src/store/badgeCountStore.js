@@ -118,7 +118,7 @@ export const useBadgeCountStore = create((set) => ({
         const leadFollowUps = (followUpsByLead[String(a.leadId)] || followUpsByLead[String(a.leadNo)] || [])
           .sort((x, y) => (x.timestampMs || 0) - (y.timestampMs || 0));
         const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
-        return !latestFollowUp || ['Future Plan', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'].includes(latestFollowUp.status);
+        return !latestFollowUp || ['Future Plan', 'Revisit', 'Under Negotiation', 'Call Not Received', 'No WhatsApp Reply'].includes(latestFollowUp.status);
       }).length;
 
       // Counts below mirror exactly what the Lead & Followup, Hot Customers and Non-interested pages list

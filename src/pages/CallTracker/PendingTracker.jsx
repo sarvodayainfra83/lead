@@ -119,7 +119,10 @@ export default function PendingTracker({ tabBar }) {
   };
 
   useEffect(() => {
-    loadPending();
+    loadPending().catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
+    });
   }, [user]);
 
   const handleClearFilters = () => {

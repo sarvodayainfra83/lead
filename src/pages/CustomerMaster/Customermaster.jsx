@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { Search, X, RotateCcw, RefreshCw, Users, Building2, ShieldCheck, TrendingUp } from 'lucide-react';
+import { Search, X, RotateCcw, Users, Building2, ShieldCheck, TrendingUp } from 'lucide-react';
 import { customerMasterApi } from '../../api/customerMasterApi';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -190,8 +190,8 @@ export default function Customermaster() {
 
   const statusBadgeClass = (status) => {
     switch (status) {
-      case 'Interested':
-      case 'Deal Lock': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'Deal Lock': return 'bg-violet-100 text-violet-800 border-violet-400';
+      case 'Interested': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
       case 'Future Plan Date': return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'Site Visit/Meeting':
       case 'Meeting': return 'bg-cyan-50 text-cyan-700 border-cyan-200';
@@ -316,7 +316,7 @@ export default function Customermaster() {
         </div>
 
         {/* Row 2: Search + Filter + Refresh + Reset */}
-        <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full justify-between sm:justify-end pb-0.5">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap sm:overflow-x-auto scrollbar-hide w-full justify-between sm:justify-end pb-0.5">
           {/* Search Input */}
           <div className="relative min-w-[140px] sm:min-w-[180px] max-w-full sm:max-w-[240px] flex-1 sm:flex-initial">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
@@ -337,16 +337,6 @@ export default function Customermaster() {
               </button>
             )}
           </div>
-
-          {/* Refresh */}
-          <button
-            onClick={loadData}
-            disabled={loading}
-            title="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95 cursor-pointer"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
 
           {/* Clear Filters (visible when any filter or search query is active) */}
           {(activeFilterCount > 0 || filters.searchQuery) && (

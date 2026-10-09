@@ -24,7 +24,12 @@ export default function LeadType({ setHeaderAction }) {
     const data = await masterApi.getLeadTypes();
     setRows(data);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load().catch(err => {
+      console.error('Failed to load from the database:', err);
+      toast.error('Could not load data from the database');
+    });
+  }, []);
 
   const openAdd = useCallback(() => { setEditRow(null); setLeadType(''); setShowForm(true); }, []);
   const openEdit = (row) => { setEditRow(row); setLeadType(row.leadType); setShowForm(true); };

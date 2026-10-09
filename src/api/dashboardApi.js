@@ -21,6 +21,12 @@ const parseLeadTimestamp = (ts) => {
   return new Date(year, month - 1, day);
 };
 
+// Visit follow-up outcome that marks a deal as closed (legacy names included, as on the Site Visit page)
+const isDealLockStatus = (status) => {
+  const s = String(status || '').toLowerCase().trim();
+  return s === 'deal lock' || s === 'closed won' || s === 'closed' || s === 'deal closed';
+};
+
 const dateKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export const dashboardApi = {
@@ -143,7 +149,8 @@ export const dashboardApi = {
       const customerStatus = getEffectiveCustomerStatus(leadTrackers, leadFollowUps, lead.id, lead.leadNo);
 
       // Current active status
-      let currentStatus = latestTracker?.status || lead.status || null;
+      // Real Estate walk-ins go straight to Site Visit / Meeting, so they start in that status (not "Not Called")
+      let currentStatus = latestTracker?.status || lead.status || (isDirectSiteVisitLead(lead) ? 'Site Visit/Meeting' : null);
       if (latestFollowUpMs >= latestTrackerMs && latestFollowUp?.status) {
         currentStatus = isFollowUpRejected(latestFollowUp) ? 'Rejected (Lost)' : latestFollowUp.status;
       }
@@ -168,6 +175,9 @@ export const dashboardApi = {
         (lead.visitMeet?.['site-visit'] || lead.visitMeet?.meeting)
       );
 
+      // Closed deal: the latest visit follow-up marked Deal Lock (same rule as the Site Visit page's Closed Deals)
+      const dealFollowUp = [...leadFollowUps].reverse().find(f => isDealLockStatus(f.status)) || null;
+
       return {
         ...lead,
         category: getLeadCategory(lead.leadType, lead.leadNo),
@@ -187,6 +197,9 @@ export const dashboardApi = {
         customerStatus,
         // Deal marked lost in a Site Visit follow-up — not a Hot/Warm client (same rule as Hot Customers page)
         isLost: isFollowUpRejected(latestFollowUp),
+        isDealClosed: Boolean(dealFollowUp) || isDealLockStatus(lead.status),
+        dealFollowUp,
+        dealClosedMs: dealFollowUp ? (Number(dealFollowUp.timestampMs) || (dealFollowUp.createdAt ? new Date(dealFollowUp.createdAt).getTime() : 0)) : 0,
         lastActivityMs
       };
     }).filter(Boolean);

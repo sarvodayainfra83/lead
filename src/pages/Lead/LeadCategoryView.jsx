@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Search, X, RotateCcw, RefreshCw, Plus, Upload, UserCheck, Phone, MessageSquare,
+  Search, X, RotateCcw, Plus, Upload, UserCheck, Phone, MessageSquare,
   Pencil, Trash2, Info, Calendar, Clock, CheckSquare, MapPin,
   Square, ChevronDown, ChevronUp, AlertCircle, Sparkles, Building2, ShieldCheck, TrendingUp,
   CalendarDays
@@ -14,6 +14,12 @@ import { getLeadTypeTextClass, getLeadTypeBadgeClass } from '../../utils/leadTyp
 import { leadApi } from '../../api/leadApi';
 import { useAuthStore } from '../../store/authStore';
 import { isUserTester } from '../../utils/authUtils';
+
+// Which stage a lead is at — shown in the Stage column beside Customer Name (same as Lead & Followup)
+const STAGE_STYLES = {
+  'Site Visit': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  'Leads / Calling': 'bg-blue-50 text-blue-700 border-blue-200'
+};
 
 export default function LeadCategoryView({
   category, // 'Real Estate' | 'Insurance' | 'Mutual Fund'ch
@@ -33,6 +39,8 @@ export default function LeadCategoryView({
 }) {
   const user = useAuthStore(state => state.user);
   const isTester = isUserTester(user);
+  // Insurance / Mutual Fund have meetings only — the 'Site Visit' stage reads 'Meeting'
+  const stageText = (stage) => ((category === 'Insurance' || category === 'Mutual Fund') && stage === 'Site Visit' ? 'Meeting' : stage);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [callerStatusFilter, setCallerStatusFilter] = useState('all'); // 'all' | 'unassigned' | 'assigned'
@@ -43,6 +51,8 @@ export default function LeadCategoryView({
   const [callerFilter, setCallerFilter] = useState('');
   const [productTypeFilter, setProductTypeFilter] = useState('');
   const [requirementFilter, setRequirementFilter] = useState('');
+  // All Dates only: 'all' (both stages) | 'Leads / Calling' | 'Site Visit' — same as Lead & Followup
+  const [stageFilter, setStageFilter] = useState('all');
   const viewMode = 'auto'; // Table on desktop, cards on mobile (same as Call Tracker)
 
   // Helper to format short date DD/MM
@@ -191,6 +201,13 @@ export default function LeadCategoryView({
     return { all: allCount, today: todayCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
   }, [leads, today, yesterday, customFrom, customTo]);
 
+  // Lead counts for the Leads / Calling and Site Visit stage buttons (all dates)
+  const stageCounts = useMemo(() => {
+    const counts = { 'Leads / Calling': 0, 'Site Visit': 0 };
+    leads.forEach(l => { counts[l.stage === 'Site Visit' ? 'Site Visit' : 'Leads / Calling'] += 1; });
+    return counts;
+  }, [leads]);
+
   const customDropdownLabel = useMemo(() => {
     if (customFrom && customTo) {
       return `Custom: ${formatShortDate(customFrom)} – ${formatShortDate(customTo)} (${dateCounts.custom})`;
@@ -217,12 +234,14 @@ export default function LeadCategoryView({
     if (callerFilter) count++;
     if (productTypeFilter) count++;
     if (requirementFilter) count++;
+    if (dateFilter === 'all' && stageFilter !== 'all') count++;
     return count;
-  }, [callerStatusFilter, dateFilter, leadSourceFilter, callerFilter, productTypeFilter, requirementFilter]);
+  }, [callerStatusFilter, dateFilter, leadSourceFilter, callerFilter, productTypeFilter, requirementFilter, stageFilter]);
 
   const handleClearFilters = useCallback(() => {
     setCallerStatusFilter('all');
     setDateFilter('today');
+    setStageFilter('all');
     setCustomFrom('');
     setCustomTo('');
     setLeadSourceFilter('');
@@ -266,6 +285,9 @@ export default function LeadCategoryView({
 
       // Requirement Filter (Real Estate)
       if (requirementFilter && l.requirement !== requirementFilter) return false;
+
+      // Stage Filter (All Dates only)
+      if (dateFilter === 'all' && category === 'Real Estate' && stageFilter !== 'all' && (l.stage || 'Leads / Calling') !== stageFilter) return false;
 
       // Date Filter
       if (dateFilter && dateFilter !== 'all') {
@@ -324,7 +346,7 @@ export default function LeadCategoryView({
 
       return true;
     });
-  }, [leads, callerStatusFilter, callerFilter, leadSourceFilter, productTypeFilter, requirementFilter, dateFilter, customFrom, customTo, searchQuery]);
+  }, [leads, callerStatusFilter, callerFilter, leadSourceFilter, productTypeFilter, requirementFilter, dateFilter, stageFilter, category, customFrom, customTo, searchQuery]);
 
   // Sort: Latest added leads at top (created_at / timestamp descending)
   const sortedLeads = useMemo(() => {
@@ -482,6 +504,7 @@ export default function LeadCategoryView({
       "Lead Date",
       "Caller Assigned",
       "Customer Name",
+      "Stage",
       "Customer Mobile",
       "Email",
       "Location"
@@ -604,6 +627,13 @@ export default function LeadCategoryView({
               </span>
             )}
           </div>
+        </td>
+
+        {/* Stage: Leads / Calling or Site Visit */}
+        <td className="px-3 py-2 text-center whitespace-nowrap">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${STAGE_STYLES[item.stage || 'Leads / Calling']}`}>
+            {stageText(item.stage || 'Leads / Calling')}
+          </span>
         </td>
 
         {/* Phone */}
@@ -806,6 +836,9 @@ export default function LeadCategoryView({
               >
                 {item.personName || item.customerName || 'Unnamed Customer'}
               </h4>
+              <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${STAGE_STYLES[item.stage || 'Leads / Calling']}`}>
+                {stageText(item.stage || 'Leads / Calling')}
+              </span>
               {item.visitorFollowUpCount > 0 && (
                 <span
                   onClick={(e) => { e.stopPropagation(); onViewDetails?.(item); }}
@@ -950,16 +983,17 @@ export default function LeadCategoryView({
         {/* Row 2: Dates & Action Buttons on Left, Search/Refresh/Reset on Right */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
           {/* Dates & Add Lead / Bulk Upload Controls */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap shrink-0 w-full xl:w-auto pb-0.5">
+          <div className="flex flex-wrap xl:flex-nowrap items-center gap-1.5 shrink-0 w-full xl:w-auto pb-0.5">
             {/* Dedicated Tab / Button for Today's Lead */}
             <button
               type="button"
               onClick={() => {
                 setDateFilter('today');
+                setStageFilter('all');
                 setCurrentPage(1);
               }}
               title="Show Today's Leads"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
@@ -975,18 +1009,20 @@ export default function LeadCategoryView({
             </button>
 
             {/* Dropdown for All Dates & other date options */}
-            <div className="w-[145px] sm:w-[170px] shrink-0">
+            <div className="flex-1 min-w-[140px] sm:flex-none sm:w-[170px] shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
                 value={dateFilter === 'today' ? 'all' : dateFilter}
                 onMainClick={() => {
                   setDateFilter('all');
+                  setStageFilter('all');
                   setCustomFrom('');
                   setCustomTo('');
                   setCurrentPage(1);
                 }}
                 onChange={(val) => {
                   setDateFilter(val);
+                  setStageFilter('all');
                   if (val === 'custom' && !customFrom && !customTo) {
                     const t = getTodayStr();
                     setCustomFrom(t);
@@ -997,13 +1033,47 @@ export default function LeadCategoryView({
                 placeholder="All Dates"
                 height="h-[34px]"
                 triggerClassName={
-                  dateFilter !== 'today'
+                  dateFilter !== 'today' && !(dateFilter === 'all' && stageFilter !== 'all')
                     ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
                     : ""
                 }
                 icon={Clock}
               />
             </div>
+
+            {/* Stage buttons (All Dates only): one stage at a time — clicking All Dates shows both again */}
+            {dateFilter === 'all' && category === 'Real Estate' && [
+              { key: 'Leads / Calling', icon: Phone },
+              { key: 'Site Visit', icon: MapPin }
+            ].map(({ key, icon: Icon }) => {
+              const active = stageFilter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setStageFilter(key);
+                    setCurrentPage(1);
+                  }}
+                  title={`All ${key} stage leads till date`}
+                  className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                    active
+                      ? (key === 'Site Visit'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-300/60 font-bold'
+                        : 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-300/60 font-bold')
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 shadow-xs'
+                  }`}
+                >
+                  <Icon size={13} className={active ? 'text-white' : 'text-gray-400'} />
+                  <span>{key}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                    active ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+                  }`}>
+                    {stageCounts[key]}
+                  </span>
+                </button>
+              );
+            })}
 
             {/* Custom Date Range Inline Inputs */}
             {dateFilter === 'custom' && (
@@ -1038,10 +1108,10 @@ export default function LeadCategoryView({
             )}
 
             {canEdit && (
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex flex-1 sm:flex-none items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => onAddLead?.(category)}
-                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                  className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
                 >
                   <Plus size={14} className="shrink-0" />
                   <span>Add Lead</span>
@@ -1049,7 +1119,7 @@ export default function LeadCategoryView({
 
                 <button
                   onClick={() => onBulkUpload?.(category)}
-                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                  className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
                 >
                   <Upload size={14} className="shrink-0" />
                   <span>Bulk Upload</span>
@@ -1059,7 +1129,7 @@ export default function LeadCategoryView({
           </div>
 
           {/* Right Controls: Search + Refresh + Reset */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap sm:overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
             {/* Search Input */}
             <div className="relative min-w-[120px] max-w-full sm:max-w-[220px] flex-1 shrink">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -1080,16 +1150,6 @@ export default function LeadCategoryView({
                 </button>
               )}
             </div>
-
-            {/* Refresh */}
-            <button
-              onClick={onRefresh}
-              disabled={loading}
-              title="Refresh"
-              className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[34px] w-[34px] shrink-0 transition disabled:opacity-50 active:scale-95"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
 
             {/* Clear Filters (visible when any filter or search query is active) */}
             {(activeFiltersCount > 0 || searchQuery) && (
