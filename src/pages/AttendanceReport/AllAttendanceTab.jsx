@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { Search, RotateCcw, Image as ImageIcon, Clock, ExternalLink, Calendar, MapPin } from 'lucide-react';
 import { attendanceApi, isRawCoordinatesOrEmpty, getGoogleMapsUrl } from '../../api/attendanceApi';
