@@ -3,6 +3,7 @@ import { callTrackerApi } from './callTrackerApi';
 import { authApi } from './authApi';
 import { attendanceApi } from './attendanceApi';
 import { siteVisitMeetingApi } from './siteVisitMeetingApi';
+import { customerMasterApi } from './customerMasterApi';
 import {
   getLeadStatus, isLeadPending, CONVERTED_STATUSES, getTrackersForLead, getLatestCustomerStatus,
   getFollowUpsForLead, getEffectiveCustomerStatus, isFollowUpRejected,
@@ -80,9 +81,19 @@ export const dashboardApi = {
     // the latest visit follow-up. Same rule as the Hot Customers page, so their counts match.
     const calledLeadKeys = buildCalledLeadKeys(allTrackers);
     // Leads the Site Visit / Meeting page lists — its card opens that page, so the count uses the same list
+    // Same filter as the sidebar Meeting / Site Visit badge, so the counts match it
+    const isStrictAdmin = String(user?.role || '').trim().toUpperCase() === 'ADMIN';
     const siteVisitListIds = new Set(
       siteVisitMeetingApi.buildSiteVisitMeetingLeads(allLeads, allTrackers, allVisits || [], allVisitFollowUps || [])
+        .filter(l => isStrictAdmin || matchesUserConnection(l, user))
         .map(l => String(l.leadId))
+    );
+    // Hot Customers page list (Hot / Warm, lost deals excluded) — the Hot / Warm cards count from it, same as
+    // the sidebar Hot Customers badge
+    const hotCustomerStatusById = new Map(
+      customerMasterApi.buildConvertedCustomers(allLeads, allTrackers, allVisitFollowUps || [])
+        .filter(c => isAdmin || matchesUserConnection(c, user))
+        .map(c => [String(c.id), c.customerStatus])
     );
     const enrichedLeads = allLeads.map(lead => {
       const leadIdStr = lead.id != null ? String(lead.id) : '';
@@ -194,6 +205,8 @@ export const dashboardApi = {
         status: currentStatus,
         followUpListStatus,
         inSiteVisitList: siteVisitListIds.has(String(lead.id)),
+        // 'Hot' / 'Warm' when the lead is listed on the Hot Customers page, else null
+        hotCustomerStatus: hotCustomerStatusById.get(String(lead.id)) || null,
         customerStatus,
         // Deal marked lost in a Site Visit follow-up — not a Hot/Warm client (same rule as Hot Customers page)
         isLost: isFollowUpRejected(latestFollowUp),

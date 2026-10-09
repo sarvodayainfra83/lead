@@ -328,16 +328,22 @@ export default function Dashboard() {
   // Employee dropdown (normalized name) — options follow the active tab
   const [employeeKey, setEmployeeKey] = useState('');
 
-  // Role USER gets tabs of all their assigned lead types; everyone else also gets "All Leads"
+  // Role USER gets tabs of all their assigned lead types; everyone else also gets "All Leads".
+  // A user with 2+ lead types also gets "All Leads" (opened first) — the combined counts of their lead types,
+  // matching the sidebar badges that count across all of them
   const scope = getUserLeadTypeScope(user);
-  const visibleTabs = scope?.categories?.length > 0
+  const scopedTabs = scope?.categories?.length > 0
     ? TABS.filter(t => scope.categories.includes(t.key))
-    : (scope?.category ? TABS.filter(t => t.key === scope.category) : [ALL_TAB, ...TABS]);
-  const [activeTab, setActiveTab] = useState(scope?.categories?.[0] || scope?.category || 'All');
+    : (scope?.category ? TABS.filter(t => t.key === scope.category) : null);
+  const visibleTabs = !scopedTabs ? [ALL_TAB, ...TABS] : (scopedTabs.length > 1 ? [ALL_TAB, ...scopedTabs] : scopedTabs);
+  const [activeTab, setActiveTab] = useState(scopedTabs?.length === 1 ? scopedTabs[0].key : 'All');
   const tab = visibleTabs.find(t => t.key === activeTab)?.key || visibleTabs[0].key;
   const isAll = tab === 'All';
   // Insurance / Mutual Fund have meetings only — no site visits — so labels say 'Meeting'
-  const isMeetingOnly = MEETING_ONLY_CATEGORIES.includes(tab);
+  // (All Leads too, when every lead type the user has is meeting-only)
+  const isMeetingOnly = isAll
+    ? visibleTabs.filter(t => t.key !== 'All').every(t => MEETING_ONLY_CATEGORIES.includes(t.key))
+    : MEETING_ONLY_CATEGORIES.includes(tab);
   const inTab = useCallback((category) => isAll || category === tab, [isAll, tab]);
 
   const loadData = useCallback(async () => {
@@ -411,9 +417,9 @@ export default function Dashboard() {
         notInterested: byStatus('Not Interested'),
         // Leads the Lead & Followup list shows as Pending (no call yet) — what its Pending filter opens
         notCalled: list.filter(l => l.followUpListStatus === 'Pending' || l.followUpListStatus === 'Unassigned').length,
-        // Same rule as the Hot Customers page, so these match its tab counts
-        hot: list.filter(l => l.customerStatus === 'Hot' && !l.isLost).length,
-        warm: list.filter(l => l.customerStatus === 'Warm' && !l.isLost).length,
+        // Leads listed on the Hot Customers page, so these match its tabs and the sidebar badge
+        hot: list.filter(l => l.hotCustomerStatus === 'Hot').length,
+        warm: list.filter(l => l.hotCustomerStatus === 'Warm').length,
         conversionRate: list.length ? Math.round((converted / list.length) * 100) : 0
       };
     };
@@ -436,7 +442,7 @@ export default function Dashboard() {
       .filter(c => c.timestampMs >= todayMs)
       .sort((a, b) => b.timestampMs - a.timestampMs);
     const hotWarm = leads
-      .filter(l => (l.customerStatus === 'Hot' || l.customerStatus === 'Warm') && !l.isLost)
+      .filter(l => l.hotCustomerStatus === 'Hot' || l.hotCustomerStatus === 'Warm')
       .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
     // Closed deals (Real Estate only — deals are locked from Site Visit follow-ups), latest first
     const dealsClosed = leads
