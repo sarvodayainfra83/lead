@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { ShieldAlert, Eye, ArrowLeft } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { canViewPage } from '../utils/authUtils';
 
@@ -40,29 +40,11 @@ export const useDashboardDrilldown = (pageKey) => {
 const AccessGuard = ({ pageKey, children }) => {
   const { user } = useAuthStore();
   const location = useLocation();
-  const navigate = useNavigate();
 
   if (!user) return null; // ProtectedRoute handles the unauthenticated case
 
   if (isDashboardDrilldown(user, pageKey, location.state)) {
-    return (
-      <div className="flex flex-col h-full min-h-0">
-        <div className="flex-shrink-0 mx-2 sm:mx-3 mt-2 flex items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] sm:text-xs text-sky-800">
-          <span className="flex items-center gap-1.5 font-semibold">
-            <Eye size={13} className="shrink-0" />
-            View-only · opened from Dashboard
-          </span>
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1 font-semibold text-sky-700 hover:text-sky-900 hover:underline whitespace-nowrap"
-          >
-            <ArrowLeft size={13} /> Back to Dashboard
-          </button>
-        </div>
-        <div className="flex-1 min-h-0">{children}</div>
-      </div>
-    );
+    return <>{children}</>;
   }
 
   // Share Product from a lead / customer: allowed even without Products page access
