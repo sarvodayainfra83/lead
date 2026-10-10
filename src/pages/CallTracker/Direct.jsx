@@ -10,6 +10,7 @@ import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
+import DateInput from '../../components/DateInput';
 import { generateLeadNo, getInvestmentBudgetsForLeadType } from '../Lead/leadConstants';
 import { ENQUIRY_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES, tomorrowInputDate } from './callTrackerConstants';
 import { useAuthStore } from '../../store/authStore';
@@ -1078,8 +1079,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         {/* DOB */}
         <div className="space-y-1 col-span-1">
           <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Customer DOB</label>
-          <input
-            type="date"
+          <DateInput
             value={formData.dob}
             onChange={(e) => handleChange('dob', e.target.value)}
             className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
@@ -1195,8 +1195,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
                   {formData.status === 'Future Plan Date' ? 'Future Plan Date' : ((isInsurance || isMutualFund) ? 'Meeting Date' : 'Visit/Meeting Date')}
                 </label>
-                <input
-                  type="date"
+                <DateInput
                   value={formData.nextCallDate}
                   onChange={(e) => handleChange('nextCallDate', e.target.value)}
                   className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"

@@ -258,7 +258,10 @@ export default function SiteVisitCategoryView({
     const done = isVisitMarkedToday(item);
     const count = getFilterFollowUpCount(item);
     const countText = `${count} follow-up${count === 1 ? '' : 's'}`;
-    const title = done ? `Site visit follow-up submitted today — ${countText}` : `Not visited yet today — ${countText}`;
+    // Insurance / Mutual Fund have meetings, not site visits
+    const title = showVisitCols
+      ? (done ? `Site visit follow-up submitted today — ${countText}` : `Not visited yet today — ${countText}`)
+      : (done ? `Meeting follow-up submitted today — ${countText}` : `No meeting follow-up yet today — ${countText}`);
     return (
       <span
         title={title}
@@ -272,7 +275,7 @@ export default function SiteVisitCategoryView({
             : 'bg-white text-gray-500 border-gray-200'}`}
       >
         <span className={`font-bold leading-none ${compact ? 'text-xs' : 'text-[11px]'}`}>{count}</span>
-        {!compact && <span>{done ? 'Visited' : 'Not visited'}</span>}
+        {!compact && <span>{showVisitCols ? (done ? 'Visited' : 'Not visited') : (done ? 'Meeting Done' : 'Meeting Due')}</span>}
       </span>
     );
   };
@@ -1178,7 +1181,7 @@ export default function SiteVisitCategoryView({
                 setShowClosedDealsOnly(false);
                 setCurrentPage(1);
               }}
-              title={`Show Today's Followups — ${dateCounts.todayVisited} of ${dateCounts.today} site visits done today`}
+              title={`Show Today's Followups — ${dateCounts.todayVisited} of ${dateCounts.today} ${showVisitCols ? 'site visits' : 'meetings'} done today`}
               className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
