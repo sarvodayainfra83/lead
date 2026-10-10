@@ -26,8 +26,7 @@ import {
   Mail,
   Share2,
   ArrowLeft,
-  Phone,
-  X
+  Phone
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
@@ -307,11 +306,6 @@ export default function Products() {
         : mutualFundProducts;
     return source.filter(p => selectedIds.has(p.id));
   }, [selectedIds, activeTab, realEstateProducts, insuranceProducts, mutualFundProducts]);
-
-  const exitShareMode = () => {
-    clearSelection();
-    navigate('/products', { replace: true, state: null });
-  };
 
   // Checkbox used on cards and table rows
   const renderSelectCheckbox = (item, extraClass = '') => (
@@ -736,13 +730,6 @@ export default function Products() {
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition"
             >
               <ArrowLeft size={13} /> Back
-            </button>
-            <button
-              onClick={exitShareMode}
-              title="Exit share mode and show all products"
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-bold transition"
-            >
-              <X size={13} /> Exit
             </button>
           </div>
         </div>

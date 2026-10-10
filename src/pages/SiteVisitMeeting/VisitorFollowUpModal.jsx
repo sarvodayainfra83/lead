@@ -450,6 +450,15 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
   const isRealEstateLead = isRealEstate;
   const isDealSectionVisible = formData.status === 'Deal Lock';
   const needsNextDate = NEXT_DATE_STATUSES.includes(formData.status);
+  // The next meeting / follow-up must come after this meeting: after today, and after the scheduled meeting
+  // date when that is later. Dates compare as YYYY-MM-DD (so 30 Oct < 1 Nov), never as DD/MM text.
+  const todayInput = formatInputDate(new Date());
+  const scheduledInput = formatInputDate(lead?.meetingDate || lead?.visitDate || '');
+  const nextDateAfter = !isNoContact && scheduledInput > todayInput ? scheduledInput : todayInput;
+  const minNextDate = (() => {
+    const [y, m, d] = nextDateAfter.split('-').map(Number);
+    return formatInputDate(new Date(y, m - 1, d + 1));
+  })();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -472,6 +481,11 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
 
     if (needsNextDate && !formData.nextVisitDate) {
       toast.error(isInsurance && isFuturePlan ? 'Followup Date is required' : (isInsurance && isRevisit ? 'Meeting Date is required' : `Next ${visitWord} / Follow-up Date is required`));
+      return;
+    }
+
+    if (needsNextDate && formatInputDate(formData.nextVisitDate) <= nextDateAfter) {
+      toast.error(`${isInsurance && isFuturePlan ? 'Followup Date' : (isInsurance && isRevisit ? 'Meeting Date' : 'Next date')} must be after ${formatDisplayDate(nextDateAfter)}`);
       return;
     }
 
@@ -944,6 +958,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                   <input
                     type="date"
                     value={formData.nextVisitDate}
+                    min={minNextDate}
                     onChange={(e) => handleChange('nextVisitDate', e.target.value)}
                     className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                     required

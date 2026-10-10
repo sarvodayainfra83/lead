@@ -143,6 +143,9 @@ export default function SiteVisitCategoryView({
 }) {
   const user = useAuthStore(state => state.user);
   const isAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
+  // Insurance / Mutual Fund: the date column is the Last Meeting Date (when the latest meeting was logged)
+  const isLastMeetingCol = category === 'Insurance' || category === 'Mutual Fund';
+  const meetingDateOf = (item) => (isLastMeetingCol ? (item.lastMeetingDate || item.meetingDate || item.visitDate) : (item.meetingDate || item.visitDate));
   // Call follow-ups (Total Calls) are logged for Real Estate and Insurance
   const showCalls = category === 'Real Estate' || category === 'Insurance';
   // Insurance meetings are Online / Offline — the latest meeting's type is shown in the list
@@ -531,7 +534,7 @@ export default function SiteVisitCategoryView({
       const { visits: totalVisits, meetings: totalMeetings, calls: totalCalls } = getVisitMeetCounts(item);
       return {
         'SR No': idx + 1,
-        'Meeting Date': formatDate(item.meetingDate || item.visitDate),
+        [isLastMeetingCol ? 'Last Meeting Date' : 'Meeting Date']: formatDate(meetingDateOf(item)),
         'Next Meeting Date': formatDate(item.nextMeetingDate || item.nextVisitDate),
         'Customer Name': item.customerName || item.personName || '-',
         ...(isAdmin ? { 'Status': statusText(item.status) || '-' } : {}),
@@ -561,7 +564,7 @@ export default function SiteVisitCategoryView({
   // Table Headers (Status column is only visible to ADMIN)
   const tableHeaders = [
     "Action",
-    "Meeting Date",
+    isLastMeetingCol ? "Last Meeting Date" : "Meeting Date",
     "Next Meeting Date",
     "Customer Name",
     ...(isAdmin ? ["Status"] : []),
@@ -637,17 +640,17 @@ export default function SiteVisitCategoryView({
 
         {/* 1. Meeting Date */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
-          {(item.meetingDate || item.visitDate) ? (
-            isToday(item.meetingDate || item.visitDate) ? (
+          {(meetingDateOf(item)) ? (
+            isToday(meetingDateOf(item)) ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-600 text-white shadow-2xs">
                 <Calendar size={11} className="text-white" />
-                <span>{formatDate(item.meetingDate || item.visitDate)}</span>
+                <span>{formatDate(meetingDateOf(item))}</span>
                 <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-white/20 text-white font-extrabold">Today</span>
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-gray-700 font-medium">
                 <Calendar size={12} className="text-gray-400" />
-                {formatDate(item.meetingDate || item.visitDate)}
+                {formatDate(meetingDateOf(item))}
               </span>
             )
           ) : (
@@ -978,19 +981,19 @@ export default function SiteVisitCategoryView({
             </div>
           )}
 
-          {(item.meetingDate || item.visitDate) && (
+          {(meetingDateOf(item)) && (
             <div>
               <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
                 <Calendar size={10} className="text-gray-400" />
-                Meeting Date
+                {isLastMeetingCol ? 'Last Meeting Date' : 'Meeting Date'}
               </span>
-              {isToday(item.meetingDate || item.visitDate) ? (
+              {isToday(meetingDateOf(item)) ? (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-indigo-600 text-white mt-0.5">
-                  {formatDate(item.meetingDate || item.visitDate)}
+                  {formatDate(meetingDateOf(item))}
                   <span className="text-[8px] uppercase px-1 py-0.2 rounded bg-white/20 font-extrabold">Today</span>
                 </span>
               ) : (
-                <span className="font-medium text-gray-700 text-xs mt-0.5 inline-block">{formatDate(item.meetingDate || item.visitDate)}</span>
+                <span className="font-medium text-gray-700 text-xs mt-0.5 inline-block">{formatDate(meetingDateOf(item))}</span>
               )}
             </div>
           )}

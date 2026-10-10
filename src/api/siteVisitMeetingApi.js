@@ -895,6 +895,21 @@ export const siteVisitMeetingApi = {
         || (leadFollowUps.length > 0 ? leadFollowUps[0].visitDate : '')
         || '';
 
+      // Last Meeting Date: the day the latest meeting / visit follow-up was logged (follow-ups keep the
+      // scheduled date in visit_date, so the log time is used); before any follow-up, the scheduled date
+      const latestMeetingLog = [...leadFollowUps].reverse().find(f => {
+        const vm = f.visitMeet || f.visit_meet;
+        return vm && (vm.meeting || vm['site-visit']);
+      }) || latestFollowUp;
+      const latestMeetingLogMs = latestMeetingLog
+        ? (Number(latestMeetingLog.timestampMs) || (latestMeetingLog.createdAt ? new Date(latestMeetingLog.createdAt).getTime() : 0))
+        : 0;
+      const logDay = latestMeetingLogMs ? new Date(latestMeetingLogMs) : null;
+      // Local YYYY-MM-DD (toISOString would shift early-morning IST logs to the previous day)
+      const lastMeetingDate = logDay
+        ? `${logDay.getFullYear()}-${String(logDay.getMonth() + 1).padStart(2, '0')}-${String(logDay.getDate()).padStart(2, '0')}`
+        : meetingDate;
+
       // Next Meeting Date: Next visit/meeting date if available from latest follow-up
       const nextMeetingDate = latestFollowUp?.nextVisitDate || '';
 
@@ -924,6 +939,7 @@ export const siteVisitMeetingApi = {
         relationshipManager: lead.leadReceiver || lead.personName || '',
         // Dates
         meetingDate,
+        lastMeetingDate,
         nextMeetingDate,
         nextVisitDate: nextMeetingDate,
         nextCallDate: latestTracker?.nextDate || lead.nextCallDate || '',
