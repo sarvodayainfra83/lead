@@ -146,12 +146,10 @@ export default function SiteVisitCategoryView({
   // Insurance / Mutual Fund: the date column is the Last Meeting Date (when the latest meeting was logged)
   const isLastMeetingCol = category === 'Insurance' || category === 'Mutual Fund';
   const meetingDateOf = (item) => (isLastMeetingCol ? (item.lastMeetingDate || item.meetingDate || item.visitDate) : (item.meetingDate || item.visitDate));
-  // Call follow-ups (Total Calls) are logged for Real Estate and Insurance
-  const showCalls = category === 'Real Estate' || category === 'Insurance';
-  // Insurance meetings are Online / Offline — the latest meeting's type is shown in the list
-  const showMeetingType = category === 'Insurance';
-  // Insurance / Mutual Fund have meetings only: no Site Visited / Meeting / Total Visits columns, and the
-  // assigned person is who takes the meeting
+  // Insurance / Mutual Fund meetings are Online / Offline — the latest meeting's type is shown in the list
+  const showMeetingType = isLastMeetingCol;
+  // Insurance / Mutual Fund have meetings only: no Site Visited / Meeting / Total Visits / Location columns, and
+  // the assigned person is who takes the meeting
   const showVisitCols = category === 'Real Estate';
   const assignedLabel = showVisitCols ? 'Assigned Visitor' : 'Meeting Assigned To';
   const getMeetingType = (item) => {
@@ -162,8 +160,8 @@ export default function SiteVisitCategoryView({
     }
     return '';
   };
-  // Insurance calls a Revisit 'Remeeting' (stored as 'Revisit')
-  const statusText = (status) => (category === 'Insurance' && status === 'Revisit' ? 'Remeeting' : status);
+  // Insurance / Mutual Fund call a Revisit 'Remeeting' (stored as 'Revisit')
+  const statusText = (status) => (isLastMeetingCol && status === 'Revisit' ? 'Remeeting' : status);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState(initialDateFilter || 'today');
@@ -305,6 +303,25 @@ export default function SiteVisitCategoryView({
     window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, '_blank');
   };
 
+  // Dates the Today / Yesterday / Overdue / Upcoming / Custom filters check. Insurance / Mutual Fund leads that
+  // already had a meeting go by their Last Meeting Date (day it was logged) and Next Meeting Date only — not the
+  // scheduled meeting date or the call's next date. Everything else: meeting, next meeting and next call dates.
+  const getVisitTimes = useCallback((item) => {
+    const dayTime = (val) => {
+      const d = parseDateObj(val);
+      return d ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : null;
+    };
+    const nextTime = dayTime(item.nextMeetingDate || item.nextVisitDate);
+    if (isLastMeetingCol && item.followUpCount > 0) {
+      return { mTime: dayTime(item.lastMeetingDate), nextTime, callTime: null };
+    }
+    return {
+      mTime: dayTime(item.meetingDate || item.visitDate),
+      nextTime,
+      callTime: dayTime(item.nextCallDate || item.nextDate)
+    };
+  }, [isLastMeetingCol]);
+
   // Live counts for each date filter
   const dateCounts = useMemo(() => {
     let list = leads || [];
@@ -331,13 +348,7 @@ export default function SiteVisitCategoryView({
     }
 
     list.forEach(item => {
-      const mObj = parseDateObj(item.meetingDate || item.visitDate);
-      const nextObj = parseDateObj(item.nextMeetingDate || item.nextVisitDate);
-      const callObj = parseDateObj(item.nextCallDate || item.nextDate);
-
-      const mTime = mObj ? new Date(mObj.getFullYear(), mObj.getMonth(), mObj.getDate()).getTime() : null;
-      const nextTime = nextObj ? new Date(nextObj.getFullYear(), nextObj.getMonth(), nextObj.getDate()).getTime() : null;
-      const callTime = callObj ? new Date(callObj.getFullYear(), callObj.getMonth(), callObj.getDate()).getTime() : null;
+      const { mTime, nextTime, callTime } = getVisitTimes(item);
 
       const targetTime = nextTime || callTime || mTime;
       if (!targetTime) return;
@@ -361,7 +372,7 @@ export default function SiteVisitCategoryView({
     });
 
     return { all: allCount, today: todayCount, todayVisited: todayVisitedCount, yesterday: yesterdayCount, overdue: overdueCount, upcoming: upcomingCount, custom: customCount };
-  }, [leads, today, customFrom, customTo, isVisitMarkedToday]);
+  }, [leads, today, customFrom, customTo, isVisitMarkedToday, getVisitTimes]);
 
   const customDropdownLabel = useMemo(() => {
     if (customFrom && customTo) {
@@ -415,13 +426,7 @@ export default function SiteVisitCategoryView({
       }
 
       list = list.filter(item => {
-        const mObj = parseDateObj(item.meetingDate || item.visitDate);
-        const nextObj = parseDateObj(item.nextMeetingDate || item.nextVisitDate);
-        const callObj = parseDateObj(item.nextCallDate || item.nextDate);
-
-        const mTime = mObj ? new Date(mObj.getFullYear(), mObj.getMonth(), mObj.getDate()).getTime() : null;
-        const nextTime = nextObj ? new Date(nextObj.getFullYear(), nextObj.getMonth(), nextObj.getDate()).getTime() : null;
-        const callTime = callObj ? new Date(callObj.getFullYear(), callObj.getMonth(), callObj.getDate()).getTime() : null;
+        const { mTime, nextTime, callTime } = getVisitTimes(item);
 
         const targetTime = nextTime || callTime || mTime;
 
@@ -496,7 +501,7 @@ export default function SiteVisitCategoryView({
     });
 
     return sorted;
-  }, [leads, searchQuery, dateFilter, customFrom, customTo, category, isAdmin, user, showClosedDealsOnly]);
+  }, [leads, searchQuery, dateFilter, customFrom, customTo, category, isAdmin, user, showClosedDealsOnly, getVisitTimes]);
 
   // Check if any non-default filter is active
   const isFilterActive = dateFilter !== 'today' || searchQuery || showClosedDealsOnly || (dateFilter === 'custom' && customFrom && customTo);
@@ -549,8 +554,8 @@ export default function SiteVisitCategoryView({
         ...(showVisitCols ? { 'Total Visits': totalVisits } : {}),
         'Total Meetings': totalMeetings,
         ...(showMeetingType ? { 'Meeting Type': getMeetingType(item) || '-' } : {}),
-        ...(showCalls ? { 'Total Calls': totalCalls } : {}),
-        'Location': item.location || item.customerAddress || '-',
+        'Total Calls': totalCalls,
+        ...(showVisitCols ? { 'Location': item.location || item.customerAddress || '-' } : {}),
         'Remarks': item.leadRemarks || item.remarks || '-'
       };
     });
@@ -576,8 +581,8 @@ export default function SiteVisitCategoryView({
     ...(showVisitCols ? ["Total Visits"] : []),
     "Total Meetings",
     ...(showMeetingType ? ["Meeting Type"] : []),
-    ...(showCalls ? ["Total Calls"] : []),
-    "Location",
+    "Total Calls",
+    ...(showVisitCols ? ["Location"] : []),
     "Remarks"
   ];
 
@@ -829,19 +834,19 @@ export default function SiteVisitCategoryView({
         )}
 
         {/* 11d. Total Calls (call follow-ups after the visit / meeting) */}
-        {showCalls && (
-          <td className="px-3 py-2 text-center whitespace-nowrap">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
-              <Phone size={10} className="text-sky-500" />
-              {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
-            </span>
+        <td className="px-3 py-2 text-center whitespace-nowrap">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+            <Phone size={10} className="text-sky-500" />
+            {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
+          </span>
+        </td>
+
+        {/* 12. Location (Real Estate site visits only) */}
+        {showVisitCols && (
+          <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location || item.customerAddress}>
+            {item.location || item.customerAddress || '-'}
           </td>
         )}
-
-        {/* 12. Location */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location || item.customerAddress}>
-          {item.location || item.customerAddress || '-'}
-        </td>
 
         {/* 13. Remarks */}
         <td className="px-3 py-2 text-center text-xs text-gray-500 whitespace-nowrap max-w-[160px] truncate" title={item.leadRemarks || item.remarks}>
@@ -869,7 +874,7 @@ export default function SiteVisitCategoryView({
 
     const details = [];
     if (isValid(item.email || item.customerEmail)) details.push({ label: 'Email', value: item.email || item.customerEmail, icon: Mail, isEmail: true });
-    if (isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
+    if (showVisitCols && isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget || item.budget)) details.push({ label: 'Budget', value: item.investmentBudget || item.budget, icon: IndianRupee });
     if (showVisitCols && !isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });
@@ -972,14 +977,12 @@ export default function SiteVisitCategoryView({
             </div>
           )}
 
-          {showCalls && (
-            <div>
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Calls</span>
-              <span className="font-bold text-gray-700 mt-0.5 inline-block">
-                {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
-              </span>
-            </div>
-          )}
+          <div>
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Calls</span>
+            <span className="font-bold text-gray-700 mt-0.5 inline-block">
+              {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
+            </span>
+          </div>
 
           {(meetingDateOf(item)) && (
             <div>
@@ -1290,7 +1293,7 @@ export default function SiteVisitCategoryView({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                placeholder={`Search ${category} visits...`}
+                placeholder={`Search ${category} ${isLastMeetingCol ? 'meetings' : 'visits'}...`}
                 className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-xs transition"
               />
               {searchQuery && (
@@ -1345,7 +1348,7 @@ export default function SiteVisitCategoryView({
             </div>
             <div>
               <h3 className="text-sm font-bold text-gray-800">
-                {showClosedDealsOnly ? `No Closed Deals in ${category}` : `No ${category} Visits Found`}
+                {showClosedDealsOnly ? `No Closed Deals in ${category}` : `No ${category} ${isLastMeetingCol ? 'Meetings' : 'Visits'} Found`}
               </h3>
               <p className="text-xs text-gray-500 mt-1 max-w-sm">
                 {showClosedDealsOnly

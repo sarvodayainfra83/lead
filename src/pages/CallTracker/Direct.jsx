@@ -12,14 +12,8 @@ import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { generateLeadNo, getInvestmentBudgetsForLeadType } from '../Lead/leadConstants';
 import { ENQUIRY_STATUSES, DATE_STATUSES, CUSTOMER_STATUSES, tomorrowInputDate } from './callTrackerConstants';
-
-// Mutual Fund meeting: the deal is still pending or the customer isn't interested
-const MF_DEAL_STATUS_OPTIONS = [
-  { value: 'Pending', label: 'Pending' },
-  { value: 'Not Interested', label: 'Not Interested' }
-];
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin } from '../../utils/authUtils';
+import { isUserAdmin, getUserLeadCategories } from '../../utils/authUtils';
 
 
 
@@ -243,18 +237,25 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
 
   const visitorOptions = useMemo(() => {
     const leadTypeClean = String(formData.leadType || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    // Insurance / Mutual Fund: only users whose lead type(s) include this lead type can take the meeting
+    const strictCategory = leadTypeClean.includes('insurance') ? 'Insurance' : (leadTypeClean === 'mutual fund' ? 'Mutual Fund' : null);
+    const hasCategory = (leadTypeStr) => getUserLeadCategories(leadTypeStr).includes(strictCategory);
     const matching = (visitorsMaster || []).filter(v => {
+      if (strictCategory) return hasCategory(v.leadTypeText || v.leadType);
       if (!leadTypeClean) return true;
       const vTypeClean = String(v.leadType || '').replace(/\s+/g, ' ').trim().toLowerCase();
       return !vTypeClean || vTypeClean === leadTypeClean || vTypeClean.includes(leadTypeClean) || leadTypeClean.includes(vTypeClean);
     });
 
-    const pool = matching.length > 0 ? matching : (visitorsMaster || []);
+    const pool = matching.length > 0 || strictCategory ? matching : (visitorsMaster || []);
     const seen = new Set();
     const opts = [];
+    // The logged-in user is listed first — for Insurance / Mutual Fund only if they work that lead type
+    // (or if nobody else does, so the meeting can still be saved)
+    const userQualifies = !strictCategory || hasCategory(user?.leadType) || matching.length === 0;
 
     // Prepend logged in user
-    if (user?.name) {
+    if (user?.name && userQualifies) {
       const cleanUser = String(user.name).replace(/\s+/g, ' ').trim();
       seen.add(cleanUser.toLowerCase());
       opts.push({ value: cleanUser, label: `${cleanUser} (You)` });
@@ -301,8 +302,11 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         ...prev,
         assignedVisitor: user?.name || (visitorOptions[0]?.value || '')
       }));
+    } else if (isMeeting && (isInsurance || isMutualFund) && visitorOptions.length > 0 && !visitorOptions.some(o => o.value === formData.assignedVisitor)) {
+      // The current pick doesn't work this lead type — default to the first allowed person
+      setFormData(prev => ({ ...prev, assignedVisitor: visitorOptions[0].value }));
     }
-  }, [formData.status, visitorOptions, user, formData.assignedVisitor]);
+  }, [formData.status, visitorOptions, user, formData.assignedVisitor, isInsurance, isMutualFund]);
 
   const realEstateProductOptions = useMemo(() => {
     return (realEstateProductsMaster || [])
@@ -749,10 +753,9 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
           assignedVisitorId: savedAssignment?.id || null,
           parentId: null,
           parent_id: null,
-          // Mutual Fund: the chosen deal status (Pending / Not Interested); others start as Pending
-          status: isMutualFund && formData.dealStatus === 'Not Interested' ? 'Not Interested' : 'Interested',
-          dealOutcome: isMutualFund ? (formData.dealStatus || 'Pending') : 'Pending',
-          deal_outcome: isMutualFund ? (formData.dealStatus || 'Pending') : 'Pending',
+          status: 'Interested',
+          dealOutcome: 'Pending',
+          deal_outcome: 'Pending',
           closingAmount: '',
           closing_amount: '',
           visitMeet,
@@ -1204,7 +1207,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
             {/* When status is Site Visit/Meeting or Meeting: Radio buttons (Site Visit, Meeting) and Assigned Visitor */}
             {(formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') && (
               <div className="space-y-3 col-span-2 p-2.5 sm:p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl animate-in fade-in duration-200">
-                <div className={`grid grid-cols-1 ${isMutualFund ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2.5 sm:gap-3 items-center`}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 items-center">
                   {/* Radio buttons: Site Visit & Meeting */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
@@ -1264,22 +1267,6 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                       )}
                     </div>
                   </div>
-
-                  {/* Deal Status (Mutual Fund) */}
-                  {isMutualFund && (
-                    <div className="space-y-1">
-                      <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                        Deal Status
-                      </label>
-                      <SearchableDropdown
-                        options={MF_DEAL_STATUS_OPTIONS}
-                        value={formData.dealStatus || 'Pending'}
-                        onChange={(val) => handleChange('dealStatus', val)}
-                        placeholder="Select deal status"
-                        height="h-[30px] md:h-[34px]"
-                      />
-                    </div>
-                  )}
 
                   {/* Assigned Visitor Dropdown (defaults to loggedIn user; Insurance / Mutual Fund: who takes the meeting) */}
                   <div className="space-y-1">

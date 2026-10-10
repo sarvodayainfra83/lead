@@ -306,6 +306,15 @@ export default function CallTrackerCategoryView({
         .filter((v, idx, arr) => arr.findIndex(x => x.id === v.id) === idx)
         .sort((a, b) => (Number(a.timestampMs || a.timestamp_ms || 0)) - (Number(b.timestampMs || b.timestamp_ms || 0)));
       const latestVisitorFollowUp = leadFollowUps.length > 0 ? leadFollowUps[leadFollowUps.length - 1] : null;
+      // Day the latest meeting / visit follow-up was logged (follow-ups keep the scheduled date in visit_date)
+      const latestMeetingLog = [...leadFollowUps].reverse().find(f => {
+        const vm = f.visitMeet || f.visit_meet;
+        return vm && (vm.meeting || vm['site-visit']);
+      }) || latestVisitorFollowUp;
+      const meetingLogMs = latestMeetingLog
+        ? (Number(latestMeetingLog.timestampMs || latestMeetingLog.timestamp_ms) || (latestMeetingLog.createdAt ? new Date(latestMeetingLog.createdAt).getTime() : 0))
+        : 0;
+      const meetingLogDay = meetingLogMs ? new Date(meetingLogMs) : null;
       // Lead & Followup keeps calling a locked deal "Interested" — 'Deal Lock' is the Site Visit page's term
       const siteVisitStatus = latestVisitorFollowUp?.status === 'Deal Lock' ? 'Interested' : (latestVisitorFollowUp?.status || '');
 
@@ -399,6 +408,9 @@ export default function CallTrackerCategoryView({
         siteVisitDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || lead.visitDate || '',
         nextVisitDate: latestVisitorFollowUp?.nextVisitDate || latestVisitorFollowUp?.next_visit_date || lead.nextMeetingDate || '',
         meetingDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || lead.meetingDate || lead.visitDate || '',
+        meetingLoggedDate: meetingLogDay
+          ? `${meetingLogDay.getFullYear()}-${String(meetingLogDay.getMonth() + 1).padStart(2, '0')}-${String(meetingLogDay.getDate()).padStart(2, '0')}`
+          : '',
         lastMeetingDate: latestVisitorFollowUp?.visitDate || latestVisitorFollowUp?.visit_date || latestAssignment?.visitDate || lead.meetingDate || lead.visitDate || '',
         nextMeetingDate: latestVisitorFollowUp?.nextVisitDate || latestVisitorFollowUp?.next_visit_date || lead.nextMeetingDate || '',
         latestActivityTime,
@@ -537,6 +549,25 @@ export default function CallTrackerCategoryView({
   }, [accessibleEnrichedLeads]);
 
   // Live counts for each date filter
+  // Dates the Today / Yesterday / Overdue / Upcoming / Custom filters check. Insurance / Mutual Fund leads that
+  // already had a meeting go by their Last Meeting Date (day it was logged) and Next Meeting Date — not the
+  // scheduled meeting date; Mutual Fund also keeps the call's next date. Every other lead: next call, meeting and
+  // next meeting dates.
+  const getFollowUpTimes = useCallback((item) => {
+    const timeOf = (val) => parseTrackerDateStr(val)?.getTime() ?? null;
+    const nextMeetTime = timeOf(item.nextMeetingDate || item.nextVisitDate);
+    if (isMeetingOnly && item.meetingLoggedDate) {
+      // Mutual Fund still follows up by call after the meeting, so its next call date counts too
+      const nextCallTime = category === 'Mutual Fund' ? timeOf(item.nextCallDate) : null;
+      return { nextCallTime, meetTime: timeOf(item.meetingLoggedDate), nextMeetTime };
+    }
+    return {
+      nextCallTime: timeOf(item.nextCallDate),
+      meetTime: timeOf(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate),
+      nextMeetTime
+    };
+  }, [isMeetingOnly, category]);
+
   const dateCounts = useMemo(() => {
     const todayTime = today.getTime();
     const yesterdayTime = yesterday.getTime();
@@ -562,18 +593,12 @@ export default function CallTrackerCategoryView({
     }
 
     callListLeads.forEach(item => {
-      const nextCallObj = parseTrackerDateStr(item.nextCallDate);
-      const meetObj = parseTrackerDateStr(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate);
-      const nextMeetObj = parseTrackerDateStr(item.nextMeetingDate || item.nextVisitDate);
-
-      const nextCallTime = nextCallObj ? nextCallObj.getTime() : null;
-      const meetTime = meetObj ? meetObj.getTime() : null;
-      const nextMeetTime = nextMeetObj ? nextMeetObj.getTime() : null;
+      const { nextCallTime, meetTime, nextMeetTime } = getFollowUpTimes(item);
 
       const targetTime = nextCallTime || nextMeetTime || meetTime;
 
-      // USER roles: a lead called today also counts as today's follow-up
-      const lastCallObj = !isAdmin ? parseTrackerDateStr(item.dateOfCallRaw) : null;
+      // USER roles (and everyone on the Mutual Fund tab): a lead called today also counts as today's follow-up
+      const lastCallObj = (!isAdmin || category === 'Mutual Fund') ? parseTrackerDateStr(item.dateOfCallRaw) : null;
       const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
       const isTodayMatch = nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday;
       const isYesterdayMatch = nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime;
@@ -608,7 +633,7 @@ export default function CallTrackerCategoryView({
       upcoming: upcomingCount,
       custom: customCount
     };
-  }, [accessibleEnrichedLeads, callListLeads, today, yesterday, customFrom, customTo, isAdmin, isCalledToday]);
+  }, [accessibleEnrichedLeads, callListLeads, today, yesterday, customFrom, customTo, isAdmin, isCalledToday, getFollowUpTimes, category]);
 
   const customDropdownLabel = useMemo(() => {
     if (customFrom && customTo) {
@@ -658,21 +683,15 @@ export default function CallTrackerCategoryView({
 
       // Date filter (evaluates Next Call Date, Last Meeting Date, and Next Meeting Date)
       if (dateFilter !== 'all') {
-        const nextCallObj = parseTrackerDateStr(item.nextCallDate);
-        const meetObj = parseTrackerDateStr(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate);
-        const nextMeetObj = parseTrackerDateStr(item.nextMeetingDate || item.nextVisitDate);
-
-        const nextCallTime = nextCallObj ? nextCallObj.getTime() : null;
-        const meetTime = meetObj ? meetObj.getTime() : null;
-        const nextMeetTime = nextMeetObj ? nextMeetObj.getTime() : null;
+        const { nextCallTime, meetTime, nextMeetTime } = getFollowUpTimes(item);
 
         const targetTime = nextCallTime || nextMeetTime || meetTime;
         const todayTime = today.getTime();
         const yesterdayTime = yesterday.getTime();
 
         if (dateFilter === 'today') {
-          // USER roles: a lead called today also counts as today's follow-up
-          const lastCallObj = !isAdmin ? parseTrackerDateStr(item.dateOfCallRaw) : null;
+          // USER roles (and everyone on the Mutual Fund tab): a lead called today also counts as today's follow-up
+          const lastCallObj = (!isAdmin || category === 'Mutual Fund') ? parseTrackerDateStr(item.dateOfCallRaw) : null;
           const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
           if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday)) return false;
         } else if (dateFilter === 'yesterday') {
@@ -724,7 +743,7 @@ export default function CallTrackerCategoryView({
 
       return true;
     });
-  }, [accessibleEnrichedLeads, callListLeads, stageFilter, category, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin]);
+  }, [accessibleEnrichedLeads, callListLeads, stageFilter, category, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin, getFollowUpTimes]);
 
   const filteredLeads = useMemo(
     () => leadsBeforeStatus.filter(item => matchesStatusFilter(item, statusFilter)),

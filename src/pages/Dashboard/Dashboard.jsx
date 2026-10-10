@@ -444,9 +444,9 @@ export default function Dashboard() {
     const hotWarm = leads
       .filter(l => l.hotCustomerStatus === 'Hot' || l.hotCustomerStatus === 'Warm')
       .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
-    // Closed deals (Real Estate only — deals are locked from Site Visit follow-ups), latest first
+    // Closed deals of the tab's lead type(s) — locked (Deal Lock) from Site Visit / Meeting follow-ups — latest first
     const dealsClosed = leads
-      .filter(l => l.category === 'Real Estate' && l.isDealClosed)
+      .filter(l => l.isDealClosed)
       .sort((a, b) => b.dealClosedMs - a.dealClosedMs);
 
     // ---- Per-employee MIS for the selected period ----
@@ -557,8 +557,6 @@ export default function Dashboard() {
     ? `${formatFullDate(range.fromMs)} – ${formatFullDate(range.toMs - 1)}`
     : PERIOD_OPTIONS.find(p => p.value === period)?.label || 'Period';
   const tabLabel = isAll ? 'All Leads' : tab;
-  // Deal Closed card: Real Estate only, so it shows on the Real Estate and All Leads tabs
-  const showDeals = tab === 'Real Estate' || (isAll && visibleTabs.some(t => t.key === 'Real Estate'));
 
   // Chart only lists employees with activity in this tab
   const chartData = mis
@@ -952,7 +950,7 @@ export default function Dashboard() {
         </div>
 
         {/* ================= Row 3: today's calling · today's leads · hot & warm · deal closed ================= */}
-        <div className={`grid grid-cols-1 md:grid-cols-2 gap-3 ${showDeals ? '2xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-3">
           <Card className="flex flex-col">
             <CardHeader
               title="Today's Calling"
@@ -1018,7 +1016,7 @@ export default function Dashboard() {
             )}
           </Card>
 
-          <Card className={`flex flex-col ${showDeals ? '' : 'md:col-span-2 xl:col-span-1'}`}>
+          <Card className="flex flex-col">
             <CardHeader
               title="Recent Hot & Warm"
               subtitle="Latest interested clients"
@@ -1046,13 +1044,13 @@ export default function Dashboard() {
             )}
           </Card>
 
-          {showDeals && (
-            <Card className="flex flex-col">
+          {/* Deal Closed: every lead type closes deals (Deal Lock in Site Visit / Meeting follow-ups) */}
+          <Card className="flex flex-col">
               <CardHeader
                 title="Deal Closed"
-                subtitle={`${dealsClosed.length} Real Estate deal${dealsClosed.length === 1 ? '' : 's'} closed`}
+                subtitle={`${dealsClosed.length} ${isAll ? '' : `${tab} `}deal${dealsClosed.length === 1 ? '' : 's'} closed`}
                 icon={CheckCircle2}
-                action={canDrillInto('/site-visit-meeting') && <ViewAll onClick={() => go('/site-visit-meeting', { dateFilter: 'all', closedDealsOnly: true }, 'Real Estate')} />}
+                action={canDrillInto('/site-visit-meeting') && <ViewAll onClick={() => go('/site-visit-meeting', { dateFilter: 'all', closedDealsOnly: true })} />}
               />
               {dealsClosed.length > 0 ? (
                 <div className="max-h-[380px] overflow-y-auto pb-1">
@@ -1067,7 +1065,10 @@ export default function Dashboard() {
                         highlight
                         name={l.personName}
                         sub={`${l.dealClosedMs ? `Closed ${formatDay(l.dealClosedMs)} · ` : ''}${closedBy}${amount ? ` · ${amount}` : ''}`}
-                        right={<StatusPill status="Deal Lock" />}
+                        right={<>
+                          <StatusPill status="Deal Lock" />
+                          {isAll && <TypePill type={l.leadType} />}
+                        </>}
                       />
                     );
                   })}
@@ -1077,7 +1078,6 @@ export default function Dashboard() {
                 <Empty text={loadingOr('No deals closed yet.')} />
               )}
             </Card>
-          )}
         </div>
         </>)}
       </div>

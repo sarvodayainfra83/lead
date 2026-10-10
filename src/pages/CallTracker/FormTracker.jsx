@@ -14,8 +14,8 @@ import { getLeadTypeTextClass } from '../../utils/leadTypeColors';
 import { getInvestmentBudgetsForLeadType } from '../Lead/leadConstants';
 import { useAuthStore } from '../../store/authStore';
 
+// Insurance / Mutual Fund meeting outcome — the deal is either closed or the customer isn't interested
 const DEAL_STATUS_OPTIONS = [
-  { value: 'Pending', label: 'Pending' },
   { value: 'Closed', label: 'Closed' },
   { value: 'Not Interested', label: 'Not Interested' }
 ];
@@ -50,7 +50,7 @@ const initialFormState = {
   whenToBuyPlan: '',
   siteVisited: false,
   meeting: false,
-  dealStatus: 'Pending',
+  dealStatus: '',
   exactBudget: '',
   assignedVisitor: '',
   meetingMode: ''
@@ -172,7 +172,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         whenToBuyPlan: lead.whenToBuyPlan || '',
         siteVisited: false,
         meeting: false,
-        dealStatus: 'Pending',
+        dealStatus: '',
         exactBudget: '',
         assignedVisitor: lead.assignedVisitor || user?.name || '',
         meetingMode: ''
@@ -384,6 +384,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     if (!isNoContact && !formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!isNoContact && !formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
     if ((isInsurance || isMutualFund) && formData.status === 'Meeting' && !formData.meetingMode) { toast.error('Please choose Online Meeting or Offline Meeting'); return; }
+    if (!isRealEstate && (formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') && !formData.dealStatus) { toast.error('Deal Status is required'); return; }
 
     let finalProductType = formData.productType;
     if ((isRealEstate || isMutualFund) && isOtherValue(formData.productType)) {
@@ -942,11 +943,11 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   {!isRealEstate && (
                     <div className="space-y-1">
                       <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                        Deal Status
+                        Deal Status *
                       </label>
                       <SearchableDropdown
                         options={DEAL_STATUS_OPTIONS}
-                        value={formData.dealStatus || 'Pending'}
+                        value={formData.dealStatus || ''}
                         onChange={(val) => handleChange('dealStatus', val)}
                         placeholder="Select deal status"
                         height="h-[30px] md:h-[34px]"

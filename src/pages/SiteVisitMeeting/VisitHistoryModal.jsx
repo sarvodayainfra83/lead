@@ -12,13 +12,11 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
   if (!isOpen || !lead) return null;
 
   const followUps = lead.followUps || [];
-  // Insurance calls a Revisit 'Remeeting' (stored as 'Revisit')
-  const isInsuranceLead = String(lead.leadType || '').toLowerCase().includes('insurance') || String(lead.leadNo || '').toUpperCase().startsWith('LI');
-  const statusText = (status) => (isInsuranceLead && status === 'Revisit' ? 'Remeeting' : status);
-  // Call follow-ups are a Real Estate feature
   const isRealEstateLead = !lead.leadType || lead.leadType.toLowerCase().includes('real') || String(lead.leadNo || '').toUpperCase().startsWith('LR');
-  // Insurance / Mutual Fund have meetings only — wording says Meeting instead of Visit
+  // Insurance / Mutual Fund have meetings (Online / Offline) and calls, no site visits — wording says Meeting
+  // instead of Visit, and a Revisit reads 'Remeeting' (stored as 'Revisit')
   const isMeetingOnly = !isRealEstateLead;
+  const statusText = (status) => (isMeetingOnly && status === 'Revisit' ? 'Remeeting' : status);
   const visitWord = isMeetingOnly ? 'Meeting' : 'Visit';
   const { visits: totalVisits, meetings: totalMeetings, calls: totalCalls } = getVisitMeetCounts(lead);
   // Latest Online / Offline meeting type (Insurance)
@@ -64,7 +62,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
           <span className="text-[10px] text-gray-400 block">Next {visitWord}</span>
           <span className={`font-semibold ${nextDate ? NEXT_DATE_CLASS : 'text-gray-400'}`}>{nextDate ? formatDisplayDate(nextDate) : '-'}</span>
         </div>
-        {isInsuranceLead ? (
+        {isMeetingOnly ? (
           <div>
             <span className="text-[10px] text-gray-400 block">Meeting Type</span>
             <span className="font-semibold text-gray-800">{latestMeetingMode ? `${latestMeetingMode} Meeting` : '-'}</span>
@@ -80,11 +78,9 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
           {totalMeetings} {totalMeetings === 1 ? 'Meeting' : 'Meetings'}
         </span>
-        {(isRealEstateLead || isInsuranceLead) && (
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
-            {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
-          </span>
-        )}
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+          {totalCalls} {totalCalls === 1 ? 'Call' : 'Calls'}
+        </span>
       </div>
     </div>
   );
@@ -271,7 +267,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                               <CheckCircle size={10} /> {fu.visitMeet?.meetingMode ? `${fu.visitMeet.meetingMode} Meeting` : 'Meeting'}
                             </span>
                           )}
-                          {fu.visitMeet?.call && (isRealEstateLead || isInsuranceLead) && (
+                          {fu.visitMeet?.call && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
                               <Phone size={10} /> Call
                             </span>

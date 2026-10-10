@@ -59,10 +59,12 @@ const CALL_ACTIVITY = { 'site-visit': false, meeting: false, call: true };
 
 const resolveInitialVisitMeet = (lead) => {
   const isRealEstate = !lead?.leadType || lead?.leadType?.toLowerCase().includes('real') || (lead?.leadNo || '').toUpperCase().startsWith('LR');
-  const isInsurance = (lead?.leadType || '').toLowerCase().includes('insurance') || (lead?.leadNo || '').toUpperCase().startsWith('LI');
+  // Insurance / Mutual Fund: meeting leads (meetings and calls, no site visits)
+  const isMeetingLead = (lead?.leadType || '').toLowerCase().includes('insurance') || (lead?.leadNo || '').toUpperCase().startsWith('LI') ||
+    (lead?.leadType || '').toLowerCase().includes('mutual') || (lead?.leadNo || '').toUpperCase().startsWith('LM');
 
-  // Call follow-ups exist for Real Estate and Insurance; other lead types log meetings only
-  if (!isRealEstate && !isInsurance) return MEETING_ACTIVITY;
+  // Call follow-ups exist for every lead type (Real Estate, Insurance, Mutual Fund)
+  if (!isRealEstate && !isMeetingLead) return MEETING_ACTIVITY;
 
   // Once a site visit / meeting has been logged, the follow-ups after it are calls
   const hasVisitedBefore = (lead?.followUps || []).some(f => {
@@ -71,7 +73,7 @@ const resolveInitialVisitMeet = (lead) => {
   });
   if (hasVisitedBefore) return CALL_ACTIVITY;
 
-  if (isInsurance) return MEETING_ACTIVITY;
+  if (isMeetingLead) return MEETING_ACTIVITY;
 
   const vm = lead?.visitMeet || lead?.visit_meet;
   if (vm?.meeting && !(vm['site-visit'] ?? vm.siteVisit ?? vm.site_visit)) return MEETING_ACTIVITY;
@@ -130,6 +132,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
   const isInsurance =
     (lead?.leadType || '').trim().toLowerCase().includes('insurance') ||
     (lead?.leadNo || '').trim().toUpperCase().startsWith('LI');
+  // Insurance / Mutual Fund have meetings (Online / Offline) and calls, not site visits
+  const isMeetingLead = isInsurance || isMutualFund;
 
   const [formData, setFormData] = useState({
     status: '',
@@ -418,6 +422,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
 
   // Read-only reference fields shown in customer info grid
   const infoFields = [
+    // Last logged event first: Site Visit / Online or Offline Meeting / Call, with its date
+    { key: 'lastEvent', label: 'Last Event' },
     { key: 'leadType', label: 'Lead Type' },
     lead?.processType === 'Direct'
       ? { key: 'callerAssigned', label: 'Caller Name' }
@@ -430,17 +436,17 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     { key: 'dob', label: 'DOB' },
     { key: 'occupation', label: 'Occupation' },
     { key: 'location', label: 'Customer Address' },
-    ...(isInsurance ? [{ key: 'anyDesease', label: 'Medical Condition' }] : []),
-    ...(isRealEstate || isInsurance ? [{ key: 'lastEvent', label: 'Last Event' }] : [])
+    ...(isInsurance ? [{ key: 'anyDesease', label: 'Medical Condition' }] : [])
   ];
 
   if (!isOpen || !lead) return null;
 
-  // Insurance has meetings, not visits: 'Revisit' reads 'Remeeting' (stored as 'Revisit') and 'Did Not Show' isn't offered
-  const visitWord = isInsurance ? 'Meeting' : 'Visit';
+  // Insurance / Mutual Fund have meetings, not visits: 'Revisit' reads 'Remeeting' (stored as 'Revisit') and
+  // 'Did Not Show' isn't offered
+  const visitWord = isMeetingLead ? 'Meeting' : 'Visit';
   const statusOptions = VISITOR_STATUS_OPTIONS
-    .filter(s => !(isInsurance && s === 'Did Not Show'))
-    .map(s => ({ value: s, label: isInsurance && s === 'Revisit' ? 'Remeeting' : s }));
+    .filter(s => !(isMeetingLead && s === 'Did Not Show'))
+    .map(s => ({ value: s, label: isMeetingLead && s === 'Revisit' ? 'Remeeting' : s }));
   const isFuturePlan = formData.status === 'Future Plan';
   const isNotInterested = formData.status === 'Not Interested' || formData.status?.toLowerCase().includes('not interested');
   const isNoContact = NO_CONTACT_STATUSES.includes(formData.status);
@@ -474,18 +480,18 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
       return;
     }
 
-    if (isInsurance && isRevisit && !formData.meetingMode) {
+    if (isMeetingLead && isRevisit && !formData.meetingMode) {
       toast.error('Please choose Online Meeting or Offline Meeting');
       return;
     }
 
     if (needsNextDate && !formData.nextVisitDate) {
-      toast.error(isInsurance && isFuturePlan ? 'Followup Date is required' : (isInsurance && isRevisit ? 'Meeting Date is required' : `Next ${visitWord} / Follow-up Date is required`));
+      toast.error(isMeetingLead && isFuturePlan ? 'Followup Date is required' : (isMeetingLead && isRevisit ? 'Meeting Date is required' : `Next ${visitWord} / Follow-up Date is required`));
       return;
     }
 
     if (needsNextDate && formatInputDate(formData.nextVisitDate) <= nextDateAfter) {
-      toast.error(`${isInsurance && isFuturePlan ? 'Followup Date' : (isInsurance && isRevisit ? 'Meeting Date' : 'Next date')} must be after ${formatDisplayDate(nextDateAfter)}`);
+      toast.error(`${isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Meeting Date' : 'Next date')} must be after ${formatDisplayDate(nextDateAfter)}`);
       return;
     }
 
@@ -565,8 +571,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
       const previousFollowUp = lead.latestFollowUp || (lead.followUps?.length > 0 ? lead.followUps[lead.followUps.length - 1] : null);
       const parentId = (previousFollowUp?.id && siteVisitMeetingApi.isUuid(previousFollowUp.id)) ? previousFollowUp.id : null;
       const finalVisitMeet = isRevisit
-        ? (isInsurance ? { ...MEETING_ACTIVITY, meetingMode: formData.meetingMode } : SITE_VISIT_ACTIVITY)
-        : (isRealEstate || isInsurance) && formData.status === 'Call Not Received'
+        ? (isMeetingLead ? { ...MEETING_ACTIVITY, meetingMode: formData.meetingMode } : SITE_VISIT_ACTIVITY)
+        : (isRealEstate || isMeetingLead) && formData.status === 'Call Not Received'
         ? CALL_ACTIVITY
         : (isNotInterested || isNoContact) ? { 'site-visit': false, meeting: false, call: false } : visitMeet;
 
@@ -899,8 +905,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                     />
                     <span>Meeting</span>
                   </label>
-                  {/* Insurance: call follow-ups after the meeting */}
-                  {isInsurance && (
+                  {/* Insurance / Mutual Fund: call follow-ups after the meeting */}
+                  {isMeetingLead && (
                     <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-medium text-gray-700 select-none">
                       <input
                         type="radio"
@@ -948,11 +954,11 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
           {needsNextDate && (
             <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 space-y-2">
               <h4 className="font-bold text-purple-800 text-xs flex items-center gap-1.5">
-                <Clock size={14} /> {isNoContact ? 'Next Call / Follow-up Date' : (isInsurance && isFuturePlan ? 'Followup Date' : (isInsurance && isRevisit ? 'Remeeting' : `Next ${visitWord} / Follow-up Schedule`))}
+                <Clock size={14} /> {isNoContact ? 'Next Call / Follow-up Date' : (isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Remeeting' : `Next ${visitWord} / Follow-up Schedule`))}
               </h4>
               <div>
                 <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
-                  {isInsurance && isFuturePlan ? 'Followup Date' : (isInsurance && isRevisit ? 'Meeting Date' : 'Next Scheduled Date')} <span className="text-red-500">*</span>
+                  {isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Meeting Date' : 'Next Scheduled Date')} <span className="text-red-500">*</span>
                 </label>
                 <div className="relative max-w-xs">
                   <input
@@ -966,8 +972,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
                   <Calendar size={14} className="absolute left-3 top-2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
-              {/* Insurance Remeeting: Online or Offline meeting */}
-              {isInsurance && isRevisit && (
+              {/* Insurance / Mutual Fund Remeeting: Online or Offline meeting */}
+              {isMeetingLead && isRevisit && (
                 <div>
                   <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
                     Meeting Type <span className="text-red-500">*</span>
