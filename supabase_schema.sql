@@ -1299,3 +1299,89 @@ ALTER TABLE visitor_follow_ups ADD CONSTRAINT visitor_follow_ups_status_check
 --   SELECT id, lead_no, visit_date, closing_amount, reference_no, sales_executive, what_happened
 --     FROM visitor_follow_ups WHERE status = 'Interested' ORDER BY created_at DESC;
 --   UPDATE visitor_follow_ups SET status = 'Deal Lock' WHERE id IN ('<id>', '<id>');
+
+-- ============================================================================
+-- 13. RECEPTION / VISITOR MANAGEMENT MODULE
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.visitor_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    visitor_name TEXT NOT NULL,
+    mobile_number TEXT NOT NULL,
+    company_name TEXT,
+    visitor_type TEXT DEFAULT 'Guest',
+    visit_purpose TEXT NOT NULL,
+    visit_location TEXT NOT NULL DEFAULT 'Office',
+    project_name TEXT,
+    project_id TEXT,
+    person_to_meet_id TEXT,
+    person_to_meet_name TEXT NOT NULL,
+    department TEXT,
+    person_actually_met_id TEXT,
+    person_actually_met_name TEXT,
+    remarks TEXT,
+    checkout_remarks TEXT,
+    check_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    check_out_at TIMESTAMPTZ,
+    checked_in_by TEXT,
+    checked_in_by_id TEXT,
+    checked_out_by TEXT,
+    checked_out_by_id TEXT,
+    status TEXT NOT NULL DEFAULT 'CHECKED_IN' CHECK (status IN ('CHECKED_IN', 'CHECKED_OUT', 'CANCELLED')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_logs_status ON public.visitor_logs(status);
+CREATE INDEX IF NOT EXISTS idx_visitor_logs_check_in ON public.visitor_logs(check_in_at DESC);
+CREATE INDEX IF NOT EXISTS idx_visitor_logs_purpose ON public.visitor_logs(visit_purpose);
+CREATE INDEX IF NOT EXISTS idx_visitor_logs_person_to_meet ON public.visitor_logs(person_to_meet_name);
+CREATE INDEX IF NOT EXISTS idx_visitor_logs_mobile ON public.visitor_logs(mobile_number);
+
+ALTER TABLE public.visitor_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public all on visitor_logs" ON public.visitor_logs;
+CREATE POLICY "Allow public all on visitor_logs" ON public.visitor_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================================
+-- 14. ATTENDANCE LEAVE REQUESTS MODULE
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.leave_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT,
+    user_name TEXT NOT NULL,
+    user_position TEXT,
+    leave_type TEXT NOT NULL DEFAULT 'Full Day',
+    leave_category TEXT NOT NULL DEFAULT 'Casual Leave',
+    from_date DATE NOT NULL,
+    to_date DATE NOT NULL,
+    total_days NUMERIC(4, 1) DEFAULT 1,
+    reason TEXT NOT NULL,
+    document_url TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')),
+    reviewed_by TEXT,
+    reviewed_by_id TEXT,
+    reviewed_at TIMESTAMPTZ,
+    admin_notes TEXT,
+    applied_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_leave_requests_user ON public.leave_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON public.leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_dates ON public.leave_requests(from_date, to_date);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_created ON public.leave_requests(created_at DESC);
+
+ALTER TABLE public.leave_requests ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public all on leave_requests" ON public.leave_requests;
+CREATE POLICY "Allow public all on leave_requests" ON public.leave_requests FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================================
+-- 15. ATTENDANCE LOGS LEAVE SUPPORT & CONSTRAINTS
+-- ============================================================================
+ALTER TABLE public.attendance_logs DROP CONSTRAINT IF EXISTS attendance_logs_status_check;
+ALTER TABLE public.attendance_logs ADD CONSTRAINT attendance_logs_status_check 
+  CHECK (status IN ('In', 'Out', 'Half Day', 'Leave', 'IN', 'OUT', 'HALF DAY', 'LEAVE'));
+ALTER TABLE public.attendance_logs ADD COLUMN IF NOT EXISTS leave_request_id TEXT;
+ALTER TABLE public.attendance_logs ALTER COLUMN photo_url DROP NOT NULL;
+
+

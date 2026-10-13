@@ -11,6 +11,7 @@ import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import FormTracker from './FormTracker';
+import VisitorFollowUpModal from '../SiteVisitMeeting/VisitorFollowUpModal';
 import CallTrackerViewModal from './CallTrackerViewModal';
 import RemarkThreadModal from './RemarkThreadModal';
 import { formatIST, leadApi } from '../../api/leadApi';
@@ -142,6 +143,8 @@ export default function CallTrackerCategoryView({
   onBulkUpload,
   initialStatusFilter, // e.g. 'Interested' when opened from a Dashboard card
   initialDateFilter, // e.g. 'all' or 'today'
+  initialStageFilter, // e.g. 'Site Visit' when opened from a Dashboard card
+  initialCalledOnly = false, // true when opened from Dashboard "Today's Calls"
   openRemarkLeadId, // open this lead's remark conversation (from a navbar notification)
   openRemarkNonce // changes on every notification click, so the same lead can be reopened
 }) {
@@ -157,12 +160,13 @@ export default function CallTrackerCategoryView({
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter || 'all');
-  const [dateFilter, setDateFilter] = useState(initialDateFilter || (initialStatusFilter ? 'all' : 'today'));
+  const [dateFilter, setDateFilter] = useState(initialDateFilter || (initialStatusFilter || initialStageFilter ? 'all' : 'today'));
+  const [calledOnly, setCalledOnly] = useState(Boolean(initialCalledOnly));
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [callerFilter, setCallerFilter] = useState('all');
   // Stage buttons (All Dates only): 'all' | 'Leads / Calling' | 'Site Visit'
-  const [stageFilter, setStageFilter] = useState('all');
+  const [stageFilter, setStageFilter] = useState(initialStageFilter || 'all');
 
   // Helper to format short date DD/MM
   const formatShortDate = (str) => {
@@ -183,7 +187,16 @@ export default function CallTrackerCategoryView({
     if (initialDateFilter !== undefined) {
       setDateFilter(initialDateFilter);
     }
-  }, [initialStatusFilter, initialDateFilter]);
+    if (initialStageFilter !== undefined) {
+      setStageFilter(initialStageFilter || 'all');
+      if (initialDateFilter === undefined && initialStageFilter) {
+        setDateFilter('all');
+      }
+    }
+    if (initialCalledOnly !== undefined) {
+      setCalledOnly(Boolean(initialCalledOnly));
+    }
+  }, [initialStatusFilter, initialDateFilter, initialStageFilter, initialCalledOnly]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -191,7 +204,19 @@ export default function CallTrackerCategoryView({
 
   // Modals state
   const [callingLead, setCallingLead] = useState(null);
+  const [visitorFollowUpLead, setVisitorFollowUpLead] = useState(null);
   const [viewingLead, setViewingLead] = useState(null);
+
+  // Open appropriate followup modal: Visitor follow-up for Site Visit stage leads, Calling form for others
+  const handleOpenFollowup = (item) => {
+    if (!item) return;
+    const isSiteVisit = item.stage === 'Site Visit' || item.inSiteVisitList;
+    if (isSiteVisit) {
+      setVisitorFollowUpLead(item);
+    } else {
+      setCallingLead(item);
+    }
+  };
 
   // Lead-level remark thread (leads.admin_remark / leads.user_remark)
   const [remarkLead, setRemarkLead] = useState(null);
@@ -513,15 +538,13 @@ export default function CallTrackerCategoryView({
         className={compact
           ? `w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-default ${done
             ? 'bg-emerald-600 text-white border-emerald-600'
-            : `bg-white border-gray-200 ${callCount > 0 ? 'text-gray-500' : 'text-gray-300'}`}`
+            : `bg-white border-gray-200 ${callCount > 0 ? 'text-gray-500' : 'text-gray-400'}`}`
           : `inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-default shrink-0 ${done
             ? 'bg-emerald-600 text-white border-emerald-600'
             : 'bg-white text-gray-400 border-gray-200'}`}
       >
-        {/* No calls yet → the badge stays empty (no ✓) */}
-        {callCount > 0 && (
-          <span className={`font-bold leading-none ${compact ? 'text-xs' : 'text-[11px]'}`}>{callCount}</span>
-        )}
+        {/* Always show the count — 0 when there are no calls yet */}
+        <span className={`font-bold leading-none ${compact ? 'text-xs' : 'text-[11px]'}`}>{callCount}</span>
         {!compact && <span>{done ? 'Called' : 'Not called'}</span>}
       </span>
     );
@@ -535,10 +558,11 @@ export default function CallTrackerCategoryView({
     });
   }, [enrichedLeads, isAdmin, user]);
 
-  // The Lead & Followup (call) list — what every date filter except All Dates works on
+  // The Lead & Followup list — what every date filter except All Dates works on.
+  // For Admin: Site Visit / Meeting is merged into this page, so all accessible leads are included.
   const callListLeads = useMemo(
-    () => accessibleEnrichedLeads.filter(item => item.inCallList),
-    [accessibleEnrichedLeads]
+    () => accessibleEnrichedLeads.filter(item => isAdmin || item.inCallList),
+    [accessibleEnrichedLeads, isAdmin]
   );
 
   // Lead counts for the Leads / Calling and Site Visit stage buttons (all dates)
@@ -597,10 +621,17 @@ export default function CallTrackerCategoryView({
 
       const targetTime = nextCallTime || nextMeetTime || meetTime;
 
-      // USER roles (and everyone on the Mutual Fund tab): a lead called today also counts as today's follow-up
-      const lastCallObj = (!isAdmin || category === 'Mutual Fund') ? parseTrackerDateStr(item.dateOfCallRaw) : null;
+      // A lead called or visited today also counts as today's follow-up (for all roles including Admin)
+      const lastCallObj = parseTrackerDateStr(item.dateOfCallRaw);
       const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
-      const isTodayMatch = nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday;
+      const lastVisitObj = parseTrackerDateStr(item.siteVisitDate || item.visitDate);
+      const lastVisitToday = Boolean(lastVisitObj) && lastVisitObj.getTime() === todayTime;
+      const hasFollowupToday = (item.visitorFollowUps || []).some(v => {
+        const d = parseTrackerDateStr(v.visit_date || v.visitDate || v.timestamp || v.created_at);
+        return Boolean(d) && d.getTime() === todayTime;
+      });
+
+      const isTodayMatch = nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday || lastVisitToday || hasFollowupToday;
       const isYesterdayMatch = nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime;
 
       if (isTodayMatch) {
@@ -633,7 +664,7 @@ export default function CallTrackerCategoryView({
       upcoming: upcomingCount,
       custom: customCount
     };
-  }, [accessibleEnrichedLeads, callListLeads, today, yesterday, customFrom, customTo, isAdmin, isCalledToday, getFollowUpTimes, category]);
+  }, [accessibleEnrichedLeads, callListLeads, today, yesterday, customFrom, customTo, isCalledToday, getFollowUpTimes]);
 
   const customDropdownLabel = useMemo(() => {
     if (customFrom && customTo) {
@@ -667,10 +698,11 @@ export default function CallTrackerCategoryView({
 
   // Filter leads by everything except status (the status dropdown counts come from this list)
   const leadsBeforeStatus = useMemo(() => {
-    // All Dates → every lead (calling + site visit stage, or one stage via its button); other dates → the call list
-    const baseLeads = dateFilter === 'all'
-      ? accessibleEnrichedLeads.filter(item => stageFilter === 'all' || category !== 'Real Estate' || item.stage === stageFilter)
-      : callListLeads;
+    // All Dates → every lead (calling + site visit stage, or one stage via its button); other dates → the pool
+    // For Admin: both stages are on this page, so stageFilter applies to all date filters
+    const baseLeads = (dateFilter === 'all' || isAdmin)
+      ? accessibleEnrichedLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter)
+      : callListLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter);
     return baseLeads.filter(item => {
 
       // "New remarks" chip: unread admin remarks for users, new user replies for admins
@@ -690,10 +722,18 @@ export default function CallTrackerCategoryView({
         const yesterdayTime = yesterday.getTime();
 
         if (dateFilter === 'today') {
-          // USER roles (and everyone on the Mutual Fund tab): a lead called today also counts as today's follow-up
-          const lastCallObj = (!isAdmin || category === 'Mutual Fund') ? parseTrackerDateStr(item.dateOfCallRaw) : null;
+          // A lead called or visited today also counts as today's follow-up (for all roles including Admin)
+          const lastCallObj = parseTrackerDateStr(item.dateOfCallRaw);
           const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
-          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday)) return false;
+          const lastVisitObj = parseTrackerDateStr(item.siteVisitDate || item.visitDate);
+          const lastVisitToday = Boolean(lastVisitObj) && lastVisitObj.getTime() === todayTime;
+          const hasFollowupToday = (item.visitorFollowUps || []).some(v => {
+            const d = parseTrackerDateStr(v.visit_date || v.visitDate || v.timestamp || v.created_at);
+            return Boolean(d) && d.getTime() === todayTime;
+          });
+
+          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday || lastVisitToday || hasFollowupToday)) return false;
+          if (calledOnly && !isCalledToday(item)) return false;
         } else if (dateFilter === 'yesterday') {
           if (!(nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime)) return false;
         } else if (dateFilter === 'overdue') {
@@ -799,7 +839,7 @@ export default function CallTrackerCategoryView({
     });
   }, [filteredLeads, isAdmin]);
 
-  const newRemarkCount = enrichedLeads.filter(l => l.inCallList && (isAdmin ? l.hasNewUserReply : l.hasNewAdminRemark)).length;
+  const newRemarkCount = enrichedLeads.filter(l => (isAdmin || l.inCallList) && (isAdmin ? l.hasNewUserReply : l.hasNewAdminRemark)).length;
 
   // Pagination
   const totalPages = Math.ceil(sortedLeads.length / itemsPerPage) || 1;
@@ -901,8 +941,10 @@ export default function CallTrackerCategoryView({
           <div className="flex items-center justify-center gap-1">
             {canEdit && (
               <button
-                onClick={() => setCallingLead(item)}
-                title={`Followup — log a call for ${item.personName || 'Customer'}`}
+                onClick={() => handleOpenFollowup(item)}
+                title={item.stage === 'Site Visit' || item.inSiteVisitList
+                  ? `Followup — log a ${isMeetingOnly ? 'meeting' : 'visit'} follow-up for ${item.personName || 'Customer'}`
+                  : `Followup — log a call for ${item.personName || 'Customer'}`}
                 aria-label="Followup"
                 className="w-7 h-7 inline-flex items-center justify-center rounded-md bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-600 hover:text-white transition active:scale-95"
               >
@@ -1436,7 +1478,7 @@ export default function CallTrackerCategoryView({
             {canEdit && (
               <button
                 type="button"
-                onClick={() => setCallingLead(item)}
+                onClick={() => handleOpenFollowup(item)}
                 className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
               >
                 <Phone size={12} />
@@ -1611,6 +1653,7 @@ export default function CallTrackerCategoryView({
               onClick={() => {
                 setDateFilter('today');
                 setStageFilter('all');
+                setCalledOnly(false);
                 setCurrentPage(1);
               }}
               title={`Show Today's Followups — ${dateCounts.todayCalled} of ${dateCounts.today} called today`}
@@ -1628,6 +1671,20 @@ export default function CallTrackerCategoryView({
                 {dateCounts.todayCalled}/{dateCounts.today}
               </span>
             </button>
+
+            {calledOnly && dateFilter === 'today' && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+                Calls Logged Today ({dateCounts.todayCalled})
+                <button
+                  type="button"
+                  onClick={() => setCalledOnly(false)}
+                  className="hover:text-emerald-950 p-0.5 rounded cursor-pointer ml-0.5"
+                  title="Show all today's followups"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            )}
 
             {/* Dropdown for All Dates & other date options */}
             <div className="flex-1 min-w-[140px] sm:flex-none sm:w-[170px] shrink-0">
@@ -1745,21 +1802,20 @@ export default function CallTrackerCategoryView({
           </div>
 
           {/* Stage buttons (All Dates only): one stage at a time — All Dates shows both stages again */}
-          {/* Hidden for admin and for Insurance / Mutual Fund */}
-          {dateFilter === 'all' && !isAdmin && category === 'Real Estate' && [
-            { key: 'Leads / Calling', icon: Phone },
-            { key: 'Site Visit', icon: MapPin }
-          ].map(({ key, icon: Icon }) => {
+          {dateFilter === 'all' && [
+            { key: 'Leads / Calling', label: 'Leads / Calling', icon: Phone },
+            { key: 'Site Visit', label: isMeetingOnly ? 'Meeting' : 'Site Visit', icon: MapPin }
+          ].map(({ key, label, icon: Icon }) => {
             const active = stageFilter === key;
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => {
-                  setStageFilter(key);
+                  setStageFilter(active ? 'all' : key);
                   setCurrentPage(1);
                 }}
-                title={`All ${key} stage leads till date`}
+                title={`All ${label} stage leads till date`}
                 className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                   active
                     ? (key === 'Site Visit'
@@ -1769,7 +1825,7 @@ export default function CallTrackerCategoryView({
                 }`}
               >
                 <Icon size={13} className={active ? 'text-white' : 'text-gray-400'} />
-                <span>{key}</span>
+                <span>{label}</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
                   active ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
                 }`}>
@@ -1994,6 +2050,19 @@ export default function CallTrackerCategoryView({
         onSaved={handleCallSaved}
       />
 
+      {/* Pop-up "Visitor Followup" Modal (for Site Visit stage records) */}
+      {visitorFollowUpLead && (
+        <VisitorFollowUpModal
+          isOpen={!!visitorFollowUpLead}
+          onClose={() => setVisitorFollowUpLead(null)}
+          lead={visitorFollowUpLead}
+          onSaved={() => {
+            setVisitorFollowUpLead(null);
+            if (onRefresh) onRefresh();
+          }}
+        />
+      )}
+
       {/* Lead remark thread: admin remark ↔ user reply */}
       <RemarkThreadModal
         isOpen={!!remarkLead}
@@ -2014,7 +2083,7 @@ export default function CallTrackerCategoryView({
         onRemarkSaved={onRefresh}
         onFollowup={(lead) => {
           setViewingLead(null);
-          setCallingLead(lead);
+          handleOpenFollowup(lead);
         }}
       />
     </div>

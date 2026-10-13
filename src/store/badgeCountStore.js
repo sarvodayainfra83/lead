@@ -4,13 +4,14 @@ import { callTrackerApi } from '../api/callTrackerApi';
 import { siteVisitMeetingApi } from '../api/siteVisitMeetingApi';
 import { customerMasterApi } from '../api/customerMasterApi';
 import { nonInterestedApi } from '../api/nonInterestedApi';
+import { leaveRequestApi } from '../api/leaveRequestApi';
 import { registerBadgeRefresh, refreshBadgeCounts } from '../utils/badgeNotifier';
 import {
   isLeadPending, getLeadStatus, isDirectSiteVisitLead, buildCalledLeadKeys, isInFollowUpQueue
 } from '../pages/CallTracker/callTrackerConstants';
 import { useAuthStore } from './authStore';
 import {
-  isUserAdmin, hasFullAccess, getUserLeadTypeScope, matchesUserAssignment, matchesUserReceiver, matchesUserVisitor, matchesUserConnection, matchesAuthorizedUserForNonInterested
+  isUserAdmin, canViewPage, hasFullAccess, getUserLeadTypeScope, matchesUserAssignment, matchesUserReceiver, matchesUserVisitor, matchesUserConnection, matchesAuthorizedUserForNonInterested
 } from '../utils/authUtils';
 
 const ALL_CATEGORIES = ['Real Estate', 'Insurance', 'Mutual Fund'];
@@ -50,6 +51,7 @@ export const useBadgeCountStore = create((set) => ({
   customerCount: 0,
   nonInterestedCount: 0,
   callerReportCount: 0,
+  pendingLeaveCount: 0,
   loaded: false,
 
   refresh: async () => {
@@ -58,12 +60,20 @@ export const useBadgeCountStore = create((set) => ({
       const isAdmin = isUserAdmin(user);
       const isStrictAdmin = (user?.role || '').trim().toUpperCase() === 'ADMIN';
 
-      const [allLeads, allTrackers, allVisitors, allFollowUps] = await Promise.all([
+      const canManageLeaves = isAdmin || canViewPage(user, 'leaveRequests');
+
+      const [allLeads, allTrackers, allVisitors, allFollowUps, allLeaves] = await Promise.all([
         leadApi.getLeads(),
         callTrackerApi.getCallTrackers(),
         siteVisitMeetingApi.getAssignedVisitors(),
-        siteVisitMeetingApi.getVisitorFollowUps()
+        siteVisitMeetingApi.getVisitorFollowUps(),
+        canManageLeaves ? leaveRequestApi.getLeaveRequests({ role: 'ADMIN' }).catch(() => []) : Promise.resolve([])
       ]);
+
+      // Pending leave count (all employees, admin view or users with leaveRequests access)
+      const pendingLeaveCount = canManageLeaves
+        ? allLeaves.filter(l => l.status === 'PENDING').length
+        : 0;
 
       // Leads assigned to the user (or all if admin)
       const userLeads = isAdmin ? allLeads : allLeads.filter(l => matchesUserAssignment(l, user));
@@ -125,11 +135,11 @@ export const useBadgeCountStore = create((set) => ({
       const visibleCategories = getVisibleCategories(user);
       const isVisible = (l) => visibleCategories.some(c => isInCategory(l, c));
 
-      // Lead & Followup: accessible leads with a caller (or call history), except direct site-visit leads
+      // Lead & Followup: accessible leads with a caller (or call history), except direct site-visit leads.
+      // For Admin: Site Visit / Meeting is merged into Lead & Followup, so all accessible leads count.
       const calledLeadKeys = buildCalledLeadKeys(allTrackers);
       const callTrackerCount = allLeads.filter(l =>
-        !isDirectSiteVisitLead(l) && isInFollowUpQueue(l, calledLeadKeys) &&
-        (isAdmin || matchesUserConnection(l, user)) && isVisible(l)
+        (isAdmin || (!isDirectSiteVisitLead(l) && isInFollowUpQueue(l, calledLeadKeys) && matchesUserConnection(l, user))) && isVisible(l)
       ).length;
 
       // Site Visit / Meeting: every lead its tabs list — only ADMIN sees all, others their connected leads
@@ -162,6 +172,7 @@ export const useBadgeCountStore = create((set) => ({
         customerCount,
         nonInterestedCount,
         callerReportCount,
+        pendingLeaveCount,
         loaded: true
       });
     } catch (err) {

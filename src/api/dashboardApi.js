@@ -22,6 +22,28 @@ const parseLeadTimestamp = (ts) => {
   return new Date(year, month - 1, day);
 };
 
+const parseAnyDate = (val) => {
+  if (!val) return null;
+  const str = String(val).trim();
+  const datePart = str.split('T')[0].split(' ')[0];
+  if (datePart.includes('-')) {
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    }
+  }
+  if (datePart.includes('/')) {
+    const parts = datePart.split('/');
+    if (parts.length === 3) {
+      const [d, m, y] = parts.map(Number);
+      return new Date(y < 100 ? 2000 + y : y, m - 1, d);
+    }
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 // Visit follow-up outcome that marks a deal as closed (legacy names included, as on the Site Visit page)
 const isDealLockStatus = (status) => {
   const s = String(status || '').toLowerCase().trim();
@@ -86,7 +108,7 @@ export const dashboardApi = {
     const siteVisitListIds = new Set(
       siteVisitMeetingApi.buildSiteVisitMeetingLeads(allLeads, allTrackers, allVisits || [], allVisitFollowUps || [])
         .filter(l => isStrictAdmin || matchesUserConnection(l, user))
-        .map(l => String(l.leadId))
+        .map(l => String(l.leadId ?? l.id))
     );
     // Hot Customers page list (Hot / Warm, lost deals excluded) — the Hot / Warm cards count from it, same as
     // the sidebar Hot Customers badge
@@ -166,14 +188,13 @@ export const dashboardApi = {
         currentStatus = isFollowUpRejected(latestFollowUp) ? 'Rejected (Lost)' : latestFollowUp.status;
       }
 
-      // Status as the Lead & Followup list shows it — only leads that list carries, latest call only
-      // (matched by phone too). The Converted / Future Plan cards open that list, so their counts use this.
-      const inFollowUpList = !isDirectSiteVisitLead(lead) && isInFollowUpQueue(lead, calledLeadKeys) &&
+      // Status as the Lead & Followup list shows it — matching CallTrackerCategoryView logic
+      const inSiteVisitList = Boolean(siteVisitListIds.has(String(lead.id)) || isDirectSiteVisitLead(lead));
+      const inCallList = !isDirectSiteVisitLead(lead) && isInFollowUpQueue(lead, calledLeadKeys) &&
         (isAdmin || matchesUserConnection(lead, user));
       const latestListTracker = getTrackersForLead(allTrackers, lead.id, lead.leadNo, lead.number || lead.customerNumber).pop();
-      const followUpListStatus = inFollowUpList
-        ? (latestListTracker?.status || (lead.callerAssigned ? 'Pending' : 'Unassigned'))
-        : null;
+      const followUpListStatus = latestListTracker?.status ||
+        (!inCallList && inSiteVisitList ? 'Site Visit/Meeting' : (lead.callerAssigned ? 'Pending' : 'Unassigned'));
 
       // Site Visit detection: assigned visitor, follow ups, direct site visit, or visit tracker status
       const isSiteVisit = Boolean(
@@ -204,7 +225,7 @@ export const dashboardApi = {
         siteVisitsCount: Math.max(leadVisits.length, leadFollowUps.length, isSiteVisit ? 1 : 0),
         status: currentStatus,
         followUpListStatus,
-        inSiteVisitList: siteVisitListIds.has(String(lead.id)),
+        inSiteVisitList,
         // 'Hot' / 'Warm' when the lead is listed on the Hot Customers page, else null
         hotCustomerStatus: hotCustomerStatusById.get(String(lead.id)) || null,
         customerStatus,
@@ -213,21 +234,35 @@ export const dashboardApi = {
         isDealClosed: Boolean(dealFollowUp) || isDealLockStatus(lead.status),
         dealFollowUp,
         dealClosedMs: dealFollowUp ? (Number(dealFollowUp.timestampMs) || (dealFollowUp.createdAt ? new Date(dealFollowUp.createdAt).getTime() : 0)) : 0,
-        lastActivityMs
+        lastActivityMs,
+        nextCallDate: latestTracker?.nextDate || lead.nextCallDate || '',
+        dateOfCallRaw: latestTracker?.dateOfCall || latestTracker?.date_of_call || latestTracker?.timestamp || latestTracker?.created_at || '',
+        siteVisitDate: latestFollowUp?.visitDate || latestFollowUp?.visit_date || latestVisit?.visitDate || lead.visitDate || '',
+        nextVisitDate: latestFollowUp?.nextVisitDate || latestFollowUp?.next_visit_date || lead.nextMeetingDate || '',
+        meetingDate: latestFollowUp?.visitDate || latestFollowUp?.visit_date || latestVisit?.visitDate || lead.meetingDate || lead.visitDate || '',
+        nextMeetingDate: latestFollowUp?.nextVisitDate || latestFollowUp?.next_visit_date || lead.nextMeetingDate || '',
+        visitorFollowUps: leadFollowUps
       };
     }).filter(Boolean);
 
     // Every call entry, joined to its (visible) lead
-    const calls = enrichedLeads.flatMap(lead => lead.trackers.map(t => ({
-      ...t,
-      timestampMs: Number(t.timestampMs) || 0,
-      leadId: lead.id,
-      leadNo: lead.leadNo,
-      personName: lead.personName,
-      number: lead.number,
-      category: lead.category,
-      callerAssigned: lead.callerAssigned || ''
-    })));
+    const calls = enrichedLeads.flatMap(lead => lead.trackers.map(t => {
+      let tMs = Number(t.timestampMs) || 0;
+      if (!tMs) {
+        const d = parseAnyDate(t.timestamp || t.created_at || t.createdAt);
+        if (d) tMs = d.getTime();
+      }
+      return {
+        ...t,
+        timestampMs: tMs,
+        leadId: lead.id,
+        leadNo: lead.leadNo,
+        personName: lead.personName,
+        number: lead.number,
+        category: lead.category,
+        callerAssigned: lead.callerAssigned || t.callerAssigned || ''
+      };
+    }));
 
     const employees = (isAdmin ? allUsers : allUsers.filter(u => matchesUserAssignment(u.name, user) || matchesUserAssignment(u.id, user)))
       .filter(u => u.name && u.name.trim())

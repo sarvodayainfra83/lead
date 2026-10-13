@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { User, Lock, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
-import companyLogo from '../Assets/Logo.jpeg';
+import companyLogo from '../Assets/Logo.png';
 
 const Login = () => {
   const [id, setId] = useState('');
@@ -55,15 +55,16 @@ const Login = () => {
         <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 space-y-6">
 
           {/* Logo Section */}
-          <div className="flex flex-col items-center space-y-6">
-            <img
-              src={companyLogo}
-              alt="Sarvodaya Infracon Logo"
-              className="w-24 h-24 object-contain"
-            />
-            <div className="text-center space-y-2">
-              <h1 className="text-4xl font-bold text-gray-900">Sarvodaya</h1>
-              <p className="text-gray-600 text-2xl font-semibold">Infracon</p>
+          <div className="flex flex-col items-center space-y-3">
+            <div className="w-full max-w-[280px] bg-[#1e232a] px-5 py-3.5 rounded-2xl shadow-lg border border-slate-700/40 flex items-center justify-center">
+              <img
+                src={companyLogo}
+                alt="Tikariha Advisors Logo"
+                className="w-full h-auto object-contain"
+              />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider">Lead Management System</p>
             </div>
           </div>
 

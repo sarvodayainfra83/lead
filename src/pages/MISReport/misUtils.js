@@ -172,8 +172,9 @@ export const buildEmployeeRows = ({ employees, leads, calls, attendance, visits,
   rows.forEach(row => {
     row.leadsCalled.forEach(id => {
       const lead = leadById[id];
-      if (lead?.customerStatus === 'Hot') row.hot += 1;
-      if (lead?.customerStatus === 'Warm') row.warm += 1;
+      // A closed deal is no longer a Hot / Warm customer
+      if (lead?.customerStatus === 'Hot' && !lead.isDealClosed) row.hot += 1;
+      if (lead?.customerStatus === 'Warm' && !lead.isDealClosed) row.warm += 1;
       if (lead?.customerStatus === 'Cold') row.cold += 1;
     });
   });

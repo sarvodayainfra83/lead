@@ -18,7 +18,6 @@ import { CUSTOMER_STATUS_STYLES } from '../CallTracker/callTrackerConstants';
 import LeadDetailsModal from '../Lead/LeadDetailsModal';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import PageTabs from '../../components/PageTabs';
-import DateRangeModal from '../../components/DateRangeModal';
 import { getPeriodRange, toInputDate, formatDate as formatFullDate, countWorkingDays, parseAttendanceDate } from '../MISReport/misUtils';
 
 const ALL_TAB = { key: 'All', label: 'All Leads', icon: LayoutGrid };
@@ -56,6 +55,30 @@ const STATUS_STYLES = {
 const STATUS_LABELS = { 'Deal Lock': 'Deal Closed' };
 
 const CHART_COLORS = { assigned: '#c7d2fe', calls: '#4f46e5', converted: '#10b981', newLeads: '#a5b4fc' };
+
+const LEAD_TYPE_THEMES = {
+  'Real Estate': {
+    border: 'border-amber-200/90 hover:border-amber-300',
+    bg: 'bg-amber-50/50 hover:bg-amber-100/50',
+    text: 'text-amber-900',
+    iconColor: 'text-amber-600',
+    countColor: 'text-amber-800'
+  },
+  'Insurance': {
+    border: 'border-sky-200/90 hover:border-sky-300',
+    bg: 'bg-sky-50/50 hover:bg-sky-100/50',
+    text: 'text-sky-900',
+    iconColor: 'text-sky-600',
+    countColor: 'text-sky-800'
+  },
+  'Mutual Fund': {
+    border: 'border-emerald-200/90 hover:border-emerald-300',
+    bg: 'bg-emerald-50/50 hover:bg-emerald-100/50',
+    text: 'text-emerald-900',
+    iconColor: 'text-emerald-600',
+    countColor: 'text-emerald-800'
+  }
+};
 
 const EMPTY_TOTALS = {
   assigned: 0, newLeads: 0, calls: 0, todayCalls: 0, interested: 0, futurePlan: 0,
@@ -99,6 +122,29 @@ const formatIsoDate = (val) => (val ? String(val).split('T')[0].split('-').rever
 const normName = (s) => String(s || '').trim().toLowerCase();
 const isAdminRole = (e) => String(e.role || '').toUpperCase() === 'ADMIN';
 
+const parseTrackerDateStr = (dateStr) => {
+  if (!dateStr) return null;
+  const str = String(dateStr).trim().split('T')[0].split(' ')[0];
+  if (str.includes('-')) {
+    const parts = str.split('-').map(Number);
+    if (parts.length === 3) {
+      return parts[0] > 1000
+        ? new Date(parts[0], parts[1] - 1, parts[2])
+        : new Date(parts[2], parts[1] - 1, parts[0]);
+    }
+  }
+  if (str.includes('/')) {
+    const parts = str.split('/').map(Number);
+    if (parts.length === 3) {
+      const [d, m, y] = parts;
+      const fullYear = y < 100 ? 2000 + y : y;
+      return new Date(fullYear, m - 1, d);
+    }
+  }
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 // ----------------------------------------------------------------------------
 // Small presentational pieces
 // ----------------------------------------------------------------------------
@@ -109,6 +155,7 @@ const PATH_PAGE_KEYS = {
   '/call-tracker': 'callTracker',
   '/site-visit-meeting': 'siteVisitMeeting',
   '/customer-master': 'customerMaster',
+  '/deal-closed': 'dealClosed',
   '/products': 'products',
   '/mis-report': 'misReport',
   '/attendance': 'attendance',
@@ -295,30 +342,10 @@ export default function Dashboard() {
 
   const [data, setData] = useState({ leads: [], calls: [], employees: [], attendance: [] });
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('month');
+  const [period, setPeriod] = useState('today');
   const [customFrom, setCustomFrom] = useState(() => toInputDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
   const [customTo, setCustomTo] = useState(() => toInputDate(new Date()));
   const range = useMemo(() => getPeriodRange(period, customFrom, customTo), [period, customFrom, customTo]);
-  const [showRangeModal, setShowRangeModal] = useState(false);
-
-  const periodOptions = useMemo(() => [
-    { value: 'today', label: 'Today' },
-    { value: 'month', label: 'This Month' },
-    {
-      value: 'custom',
-      label: period === 'custom'
-        ? `Custom: ${formatFullDate(range.fromMs).slice(0, 5)} – ${formatFullDate(range.toMs - 1).slice(0, 5)}`
-        : 'Custom'
-    }
-  ], [period, range]);
-
-  const handlePeriodChange = (val) => {
-    if (val === 'custom') {
-      setShowRangeModal(true);
-    } else {
-      setPeriod(val);
-    }
-  };
   const [loadedOnce, setLoadedOnce] = useState(false);
   // "Show more" paging for the long record lists
   const LIST_PAGE = 15;
@@ -335,6 +362,8 @@ export default function Dashboard() {
   const scopedTabs = scope?.categories?.length > 0
     ? TABS.filter(t => scope.categories.includes(t.key))
     : (scope?.category ? TABS.filter(t => t.key === scope.category) : null);
+  const userCategories = scopedTabs || TABS;
+  const hasMultipleLeadTypes = userCategories.length > 1;
   const visibleTabs = !scopedTabs ? [ALL_TAB, ...TABS] : (scopedTabs.length > 1 ? [ALL_TAB, ...scopedTabs] : scopedTabs);
   const [activeTab, setActiveTab] = useState(scopedTabs?.length === 1 ? scopedTabs[0].key : 'All');
   const tab = visibleTabs.find(t => t.key === activeTab)?.key || visibleTabs[0].key;
@@ -403,14 +432,36 @@ export default function Dashboard() {
     const leads = data.leads.filter(l => inTab(l.category) && (byEmployee(l.callerAssigned) || byEmployee(l.assignedVisitor)));
     const calls = data.calls.filter(c => inTab(c.category) && byEmployee(c.callerAssigned));
 
+    const isTodayFollowUpLead = (item) => {
+      const timeOf = (val) => {
+        const d = parseTrackerDateStr(val);
+        return d ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : null;
+      };
+      const nextCallTime = timeOf(item.nextCallDate || item.latestTracker?.nextDate);
+      const meetTime = timeOf(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate || item.latestFollowUp?.visitDate || item.latestFollowUp?.visit_date);
+      const nextMeetTime = timeOf(item.nextMeetingDate || item.nextVisitDate || item.latestFollowUp?.nextVisitDate || item.latestFollowUp?.next_visit_date);
+
+      const lastCallObj = parseTrackerDateStr(item.dateOfCallRaw || item.latestTracker?.dateOfCall || item.latestTracker?.date_of_call || item.latestTracker?.timestamp || item.latestTracker?.created_at);
+      const lastCallToday = Boolean(lastCallObj) && new Date(lastCallObj.getFullYear(), lastCallObj.getMonth(), lastCallObj.getDate()).getTime() === todayMs;
+      const lastVisitObj = parseTrackerDateStr(item.siteVisitDate || item.visitDate || item.latestVisit?.visitDate);
+      const lastVisitToday = Boolean(lastVisitObj) && new Date(lastVisitObj.getFullYear(), lastVisitObj.getMonth(), lastVisitObj.getDate()).getTime() === todayMs;
+      const hasFollowupToday = (item.visitorFollowUps || item.followUps || []).some(v => {
+        const d = parseTrackerDateStr(v.visit_date || v.visitDate || v.timestamp || v.created_at);
+        return Boolean(d) && new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === todayMs;
+      });
+
+      return nextCallTime === todayMs || meetTime === todayMs || nextMeetTime === todayMs || lastCallToday || lastVisitToday || hasFollowupToday;
+    };
+
     const summarize = (list, callList) => {
       // Same status the Lead & Followup list filters on, so each card's count matches the list it opens
       const byStatus = (s) => list.filter(l => l.followUpListStatus === s).length;
       const converted = byStatus('Interested');
+      const todayFollowUpsCount = list.filter(isTodayFollowUpLead).length;
       return {
         total: list.length,
-        todayLeads: list.filter(l => l.createdDate && l.createdDate.getTime() === todayMs).length,
-        todayCalls: callList.filter(c => c.timestampMs >= todayMs).length,
+        todayLeads: todayFollowUpsCount,
+        todayCalls: callList.filter(c => c.timestampMs >= todayMs && c.timestampMs < todayMs + 86400000).length,
         futurePlan: byStatus('Future Plan Date'),
         converted,
         siteVisit: list.filter(l => l.inSiteVisitList).length,
@@ -436,10 +487,10 @@ export default function Dashboard() {
     }));
 
     const todayLeads = leads
-      .filter(l => l.createdDate && l.createdDate.getTime() === todayMs)
-      .sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')));
+      .filter(isTodayFollowUpLead)
+      .sort((a, b) => (b.lastActivityMs || 0) - (a.lastActivityMs || 0));
     const todayCalls = calls
-      .filter(c => c.timestampMs >= todayMs)
+      .filter(c => c.timestampMs >= todayMs && c.timestampMs < todayMs + 86400000)
       .sort((a, b) => b.timestampMs - a.timestampMs);
     const hotWarm = leads
       .filter(l => l.hotCustomerStatus === 'Hot' || l.hotCustomerStatus === 'Warm')
@@ -467,15 +518,16 @@ export default function Dashboard() {
       if (!row) return;
       row.assigned += 1;
       if (l.createdDate && inRange(l.createdDate.getTime())) row.newLeads += 1;
-      if (l.trackers.length === 0) row.notCalled += 1;
+      if (l.followUpListStatus === 'Pending' || l.followUpListStatus === 'Unassigned') row.notCalled += 1;
       // Current outcome / temperature, counted when its latest call or visit falls in the period
       if (inRange(l.lastActivityMs) && (l.trackers.length > 0 || l.followUps?.length > 0)) {
         if (l.status === 'Interested' || l.status === 'Deal Lock') row.interested += 1;
         if (l.status === 'Future Plan Date') row.futurePlan += 1;
         if (l.isSiteVisit || l.status === 'Site Visit/Meeting' || l.status === 'Meeting') row.siteVisit += 1;
         if (l.status === 'Not Interested') row.notInterested += 1;
-        if (l.customerStatus === 'Hot') row.hot += 1;
-        if (l.customerStatus === 'Warm') row.warm += 1;
+        // A closed deal is no longer a Hot / Warm customer
+        if (l.customerStatus === 'Hot' && !l.isDealClosed) row.hot += 1;
+        if (l.customerStatus === 'Warm' && !l.isDealClosed) row.warm += 1;
         if (l.customerStatus === 'Cold') row.cold += 1;
       }
     });
@@ -510,34 +562,101 @@ export default function Dashboard() {
       .sort((a, b) => String(a.inTime || '').localeCompare(String(b.inTime || '')));
     const teamSize = tabEmployees.filter(e => !isAdminRole(e)).length;
 
-    // ---- Personal view (role USER): day-wise performance & own attendance for the period ----
+    // ---- Personal view (role USER): day-wise or hourly performance & own attendance for the period ----
     const DAY_MS = 24 * 60 * 60 * 1000;
     const endMs = Math.min(range.toMs, todayMs + DAY_MS);
     const daily = [];
     if (!isAdmin) {
-      const byDay = {};
-      for (let t = range.fromMs; t < endMs; t += DAY_MS) {
-        const d = new Date(t);
-        const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-        if (!byDay[key]) {
-          byDay[key] = { dayMs: key, Calls: 0, Converted: 0, 'New Leads': 0 };
-          daily.push(byDay[key]);
+      const isSingleDay = period === 'today' || (range.toMs - range.fromMs <= DAY_MS);
+      if (isSingleDay) {
+        // Hourly breakdown for single day / Today so user sees a clean intraday timeline
+        const hourBuckets = [];
+        let minH = 9;
+        let maxH = 19;
+        // Check if any call or lead occurred earlier or later today
+        calls.forEach(c => {
+          const cMs = Number(c.timestampMs) || 0;
+          if (cMs >= range.fromMs && cMs < range.toMs) {
+            const h = new Date(cMs).getHours();
+            if (h < minH && h >= 6) minH = h;
+            if (h > maxH && h <= 23) maxH = h;
+          }
+        });
+        for (let h = minH; h <= maxH; h++) {
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const displayH = h % 12 || 12;
+          hourBuckets.push({
+            hour: h,
+            name: `${displayH} ${ampm}`,
+            Calls: 0,
+            Converted: 0,
+            'New Leads': 0
+          });
         }
+        calls.forEach(c => {
+          const cMs = Number(c.timestampMs) || 0;
+          if (cMs >= range.fromMs && cMs < range.toMs) {
+            const h = new Date(cMs).getHours();
+            let b = hourBuckets.find(x => x.hour === h);
+            if (!b) {
+              const ampm = h >= 12 ? 'PM' : 'AM';
+              const displayH = h % 12 || 12;
+              b = { hour: h, name: `${displayH} ${ampm}`, Calls: 0, Converted: 0, 'New Leads': 0 };
+              hourBuckets.push(b);
+              hourBuckets.sort((x, y) => x.hour - y.hour);
+            }
+            b.Calls += 1;
+            if (c.status === 'Interested') b.Converted += 1;
+          }
+        });
+        leads.forEach(l => {
+          const lDate = l.createdDate;
+          const lMs = lDate ? lDate.getTime() : 0;
+          if (lMs >= range.fromMs && lMs < range.toMs) {
+            const rawTime = l.timestamp || l.created_at || l.createdAt;
+            let h = 10;
+            if (rawTime && String(rawTime).includes(':')) {
+              const parsed = new Date(rawTime);
+              if (!isNaN(parsed.getTime())) h = parsed.getHours();
+            }
+            let b = hourBuckets.find(x => x.hour === h);
+            if (b) b['New Leads'] += 1;
+            else if (hourBuckets.length > 0) hourBuckets[0]['New Leads'] += 1;
+          }
+        });
+        daily.push(...hourBuckets);
+      } else {
+        const byDay = {};
+        for (let t = range.fromMs; t < endMs; t += DAY_MS) {
+          const d = new Date(t);
+          const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+          if (!byDay[key]) {
+            const item = { dayMs: key, name: formatDay(key), Calls: 0, Converted: 0, 'New Leads': 0 };
+            byDay[key] = item;
+            daily.push(item);
+          }
+        }
+        if (daily.length === 0) {
+          const key = new Date(range.fromMs).getTime();
+          const item = { dayMs: key, name: formatDay(key), Calls: 0, Converted: 0, 'New Leads': 0 };
+          byDay[key] = item;
+          daily.push(item);
+        }
+        const dayOf = (ms) => {
+          const d = new Date(ms);
+          return byDay[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()];
+        };
+        calls.forEach(c => {
+          const day = dayOf(c.timestampMs);
+          if (!day) return;
+          day.Calls += 1;
+          if (c.status === 'Interested') day.Converted += 1;
+        });
+        leads.forEach(l => {
+          const day = l.createdDate && byDay[l.createdDate.getTime()];
+          if (day) day['New Leads'] += 1;
+        });
       }
-      const dayOf = (ms) => {
-        const d = new Date(ms);
-        return byDay[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()];
-      };
-      calls.forEach(c => {
-        const day = dayOf(c.timestampMs);
-        if (!day) return;
-        day.Calls += 1;
-        if (c.status === 'Interested') day.Converted += 1;
-      });
-      leads.forEach(l => {
-        const day = l.createdDate && byDay[l.createdDate.getTime()];
-        if (day) day['New Leads'] += 1;
-      });
     }
     const myName = normName(user?.name);
     const myAttendance = isAdmin ? [] : data.attendance
@@ -552,15 +671,19 @@ export default function Dashboard() {
   }, [data, tab, isAll, inTab, range, employeeKey, isAdmin, user]);
 
   const { kpis, byType, todayLeads, todayCalls, hotWarm, dealsClosed, mis, totals, present, teamSize, daily, myAttendance, myToday, myWorkingDays } = view;
+  const hotByType = useMemo(
+    () => byType.filter(t => userCategories.some(u => u.key === t.key)),
+    [byType, userCategories]
+  );
   const leadById = useMemo(() => Object.fromEntries(data.leads.map(l => [String(l.id), l])), [data.leads]);
   const periodLabel = period === 'custom'
     ? `${formatFullDate(range.fromMs)} – ${formatFullDate(range.toMs - 1)}`
     : PERIOD_OPTIONS.find(p => p.value === period)?.label || 'Period';
   const tabLabel = isAll ? 'All Leads' : tab;
 
-  // Chart only lists employees with activity in this tab
+  // Chart lists employees for the team performance view
   const chartData = mis
-    .filter(r => r.assigned > 0 || r.calls > 0)
+    .filter(r => r.name && r.name !== 'Unassigned')
     .map(r => ({ name: r.name, Assigned: r.assigned, Calls: r.calls, Converted: r.interested }));
 
   // Only open pages the user has access to (Setting → Page Access); links to the rest are hidden or refused
@@ -579,12 +702,23 @@ export default function Dashboard() {
 
   // Open a page on the same lead type (the All tab lets the page pick its default tab)
   const go = (path, state = {}, tabKey = tab) => {
-    if (!canDrillInto(path)) {
+    let targetPath = path;
+    let targetState = { ...state };
+    // For Admins, Site Visit / Meeting is merged into Lead & Followup
+    if (isAdmin && (targetPath === '/site-visit-meeting' || targetPath === '/assign-visitor' || targetPath === '/visitor-follow-up')) {
+      targetPath = '/call-tracker';
+      targetState = {
+        dateFilter: 'all',
+        stageFilter: 'Site Visit',
+        ...targetState
+      };
+    }
+    if (!canDrillInto(targetPath)) {
       toast.error("You don't have access to this page");
       return;
     }
-    const navState = { ...state, fromDashboard: true };
-    navigate(path, {
+    const navState = { ...targetState, fromDashboard: true };
+    navigate(targetPath, {
       state: tabKey && tabKey !== 'All' ? { tab: tabKey, ...navState } : navState
     });
   };
@@ -595,40 +729,32 @@ export default function Dashboard() {
     <div className="h-full min-h-0 overflow-y-auto">
       <div className="space-y-3 pb-3">
 
-        {/* Header: lead type tabs · period · employee · refresh */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
+        {/* Header: Lead category tabs (left) · My Dashboard / Employee selector (right) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <PageTabs
             tabs={visibleTabs.map(t => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
             activeKey={tab}
             onChange={setActiveTab}
           />
 
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 xl:justify-end">
-            <div className="flex-1 sm:flex-none min-w-[130px] sm:w-[165px]">
-              <SearchableDropdown
-                options={periodOptions}
-                value={period}
-                onChange={handlePeriodChange}
-                placeholder="Select Period"
-                height="h-[34px]"
-                searchable={false}
-                icon={CalendarDays}
-              />
-            </div>
+          {/* Right group: My Dashboard badge or Employee selector (Admin) */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:justify-end">
             {!isAdmin && (
               <span className="inline-flex items-center gap-1.5 h-[34px] px-3 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold whitespace-nowrap">
                 <UserCircle2 size={14} /> My Dashboard · {user?.name || 'Me'}
               </span>
             )}
-            {isAdmin && <div className="flex-1 sm:flex-none min-w-[140px] sm:w-[180px]">
-              <SearchableDropdown
-                options={[{ value: '', label: isAll ? 'All Employees' : `All ${tab} Employees` }, ...employeeOptions]}
-                value={employeeKey}
-                onChange={setEmployeeKey}
-                placeholder={isAll ? 'All Employees' : `All ${tab} Employees`}
-                height="h-[34px]"
-              />
-            </div>}
+            {isAdmin && (
+              <div className="flex-1 sm:flex-none min-w-[140px] sm:w-[180px]">
+                <SearchableDropdown
+                  options={[{ value: '', label: isAll ? 'All Employees' : `All ${tab} Employees` }, ...employeeOptions]}
+                  value={employeeKey}
+                  onChange={setEmployeeKey}
+                  placeholder={isAll ? 'All Employees' : `All ${tab} Employees`}
+                  height="h-[34px]"
+                />
+              </div>
+            )}
           </div>
         </div>
 
@@ -642,13 +768,94 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
           {/* Hero: total leads + performance chart */}
           <Card className="lg:col-span-8 xl:col-span-6 flex flex-col">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3.5">
-              <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
-                <TrendingUp size={15} className="text-indigo-600" />
-                {isAdmin ? 'Employee Performance' : 'My Performance'}
-                <span className="text-[11px] font-medium text-gray-400">· {tabLabel} · {periodLabel}</span>
-              </p>
-              <div className="flex items-center gap-3 text-[11px] text-gray-500">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2 border-b border-gray-100">
+              <div className="flex items-center gap-2 min-w-0">
+                <p className="text-sm font-bold text-gray-900 flex items-center gap-1.5 truncate">
+                  <TrendingUp size={16} className="text-indigo-600 flex-shrink-0" />
+                  <span>{isAdmin ? 'Employee Performance' : 'My Performance'}</span>
+                  <span className="text-[11px] font-medium text-gray-400 truncate">· {tabLabel}</span>
+                </p>
+              </div>
+
+              {/* Segmented Period Filter inside the graph card */}
+              <div className="inline-flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200/90 shadow-2xs gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPeriod('today')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-150 cursor-pointer ${
+                    period === 'today'
+                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 font-medium'
+                  }`}
+                  title="View Today's Performance"
+                >
+                  <Clock size={12} className={period === 'today' ? 'text-white' : 'text-slate-400'} />
+                  <span>Today</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPeriod('month')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-150 cursor-pointer ${
+                    period === 'month'
+                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 font-medium'
+                  }`}
+                  title="View This Month's Performance"
+                >
+                  <CalendarDays size={12} className={period === 'month' ? 'text-white' : 'text-slate-400'} />
+                  <span>This Month</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPeriod('custom')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-150 cursor-pointer ${
+                    period === 'custom'
+                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 font-medium'
+                  }`}
+                  title="Select Custom Date Range"
+                >
+                  <CalendarClock size={12} className={period === 'custom' ? 'text-white' : 'text-slate-400'} />
+                  <span>
+                    {period === 'custom'
+                      ? `${formatDay(range.fromMs)} – ${formatDay(range.toMs - 1)}`
+                      : 'Custom'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Inline custom date range (shown instead of a popup) */}
+            {period === 'custom' && (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-gray-100 bg-indigo-50/40">
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">From</span>
+                  <input
+                    type="date"
+                    value={customFrom}
+                    max={customTo || undefined}
+                    onChange={(e) => e.target.value && setCustomFrom(e.target.value)}
+                    className="bg-white border border-gray-300 rounded-lg px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-indigo-500 [color-scheme:light]"
+                  />
+                </label>
+                <label className="inline-flex items-center gap-1.5">
+                  <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">To</span>
+                  <input
+                    type="date"
+                    value={customTo}
+                    min={customFrom || undefined}
+                    onChange={(e) => e.target.value && setCustomTo(e.target.value)}
+                    className="bg-white border border-gray-300 rounded-lg px-2 text-xs h-[30px] text-gray-700 focus:outline-none focus:border-indigo-500 [color-scheme:light]"
+                  />
+                </label>
+              </div>
+            )}
+
+            {/* Sub-header: Legend indicators & period label */}
+            <div className="flex items-center justify-between px-4 pt-2.5 pb-1 text-[11px] text-gray-500">
+              <div className="flex items-center gap-3">
                 {(isAdmin
                   ? [['Assigned', CHART_COLORS.assigned], ['Calls', CHART_COLORS.calls], ['Converted', CHART_COLORS.converted]]
                   : [['Calls', CHART_COLORS.calls], ['Converted', CHART_COLORS.converted], ['New Leads', CHART_COLORS.newLeads]]
@@ -658,17 +865,20 @@ export default function Dashboard() {
                   </span>
                 ))}
               </div>
+              <span className="text-[10px] text-gray-400 font-medium">
+                {periodLabel}
+              </span>
             </div>
 
-            {(isAdmin ? chartData.length > 0 : daily.some(d => d.Calls || d['New Leads'])) ? (
+            {(isAdmin ? chartData.length > 0 : daily.length > 0) ? (
               <div className="flex-1 px-2 pb-2 overflow-x-auto">
-                <div style={{ minWidth: `${Math.max((isAdmin ? chartData.length * 84 : daily.length * 44), 300)}px` }}>
+                <div style={{ minWidth: `${Math.max((isAdmin ? chartData.length * 84 : daily.length * (period === 'today' ? 36 : 44)), 300)}px` }}>
                   <ResponsiveContainer width="100%" height={typeof window !== 'undefined' && window.innerWidth < 640 ? 200 : 260}>
                     <BarChart
-                      data={isAdmin ? chartData : daily.map(d => ({ ...d, name: formatDay(d.dayMs) }))}
+                      data={isAdmin ? chartData : daily.map(d => ({ ...d, name: d.name || formatDay(d.dayMs) }))}
                       margin={{ top: 18, right: 8, left: -18, bottom: 0 }}
-                      barGap={3}
-                      barCategoryGap="22%"
+                      barGap={period === 'today' ? 2 : 3}
+                      barCategoryGap={period === 'today' ? '18%' : '22%'}
                     >
                       <CartesianGrid vertical={false} stroke="#f1f1ee" />
                       <XAxis
@@ -677,7 +887,7 @@ export default function Dashboard() {
                         height={isAdmin && chartData.length > 5 ? 52 : 28}
                         angle={isAdmin && chartData.length > 5 ? -28 : 0}
                         textAnchor={isAdmin && chartData.length > 5 ? 'end' : 'middle'}
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        tick={{ fontSize: 10, fill: '#6b7280' }}
                         axisLine={false}
                         tickLine={false}
                       />
@@ -721,12 +931,12 @@ export default function Dashboard() {
             <MetricBlock
               label="Today's Leads"
               value={kpis.todayLeads}
-              onClick={() => go('/lead', { dateFilter: 'today' })}
+              onClick={() => go('/call-tracker', { dateFilter: 'today' })}
             />
             <MetricBlock
               label="Today's Calls"
               value={kpis.todayCalls}
-              onClick={() => go('/call-tracker', { dateFilter: 'today' })}
+              onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })}
             />
             <MetricBlock
               label="Future Plan"
@@ -772,6 +982,103 @@ export default function Dashboard() {
                 <p className="text-[10px] opacity-80">clients</p>
               </button>
             </div>
+
+            {/* Multi-lead-type breakdown: Hot & Warm clients count per individual lead type */}
+            {hasMultipleLeadTypes && (
+              <div className="px-4 pt-2.5 space-y-2.5">
+                {/* Hot by Lead Type */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <Flame size={11} className="text-rose-500 fill-rose-500" /> Hot by Lead Type
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-semibold">
+                      {hotByType.reduce((sum, t) => sum + (t.hot || 0), 0)} Hot Total
+                    </span>
+                  </div>
+                  <div className={`grid ${hotByType.length === 3 ? 'grid-cols-3 gap-1.5' : 'grid-cols-2 gap-2'}`}>
+                    {hotByType.map(t => {
+                      const Icon = t.icon;
+                      const theme = LEAD_TYPE_THEMES[t.key] || LEAD_TYPE_THEMES['Real Estate'];
+                      const isTabActive = tab === t.key;
+                      return (
+                        <button
+                          key={`hot-${t.key}`}
+                          type="button"
+                          onClick={() => go('/customer-master', { customerStatus: 'Hot' }, t.key)}
+                          className={`p-2 rounded-xl border transition-all text-left cursor-pointer shadow-2xs hover:shadow-xs flex flex-col justify-between group ${theme.border} ${theme.bg} ${
+                            isTabActive ? 'ring-2 ring-indigo-400 shadow-xs' : ''
+                          }`}
+                          title={`View ${t.hot} Hot ${t.label} clients in Customer Master`}
+                        >
+                          <div className="flex items-center justify-between gap-1 w-full min-w-0">
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-gray-700 truncate">
+                              <Icon size={12} className={`${theme.iconColor} shrink-0`} />
+                              <span className="truncate">{t.label}</span>
+                            </span>
+                            <Flame size={10} className="text-rose-500 shrink-0" />
+                          </div>
+                          <div className="flex items-baseline justify-between mt-1 pt-0.5 border-t border-black/5">
+                            <span className={`text-base font-extrabold leading-none ${theme.countColor}`}>
+                              {t.hot}
+                            </span>
+                            <span className="text-[9px] font-bold text-rose-600">
+                              Hot
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Warm by Lead Type */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                      <Thermometer size={11} className="text-amber-500" /> Warm by Lead Type
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-semibold">
+                      {hotByType.reduce((sum, t) => sum + (t.warm || 0), 0)} Warm Total
+                    </span>
+                  </div>
+                  <div className={`grid ${hotByType.length === 3 ? 'grid-cols-3 gap-1.5' : 'grid-cols-2 gap-2'}`}>
+                    {hotByType.map(t => {
+                      const Icon = t.icon;
+                      const theme = LEAD_TYPE_THEMES[t.key] || LEAD_TYPE_THEMES['Real Estate'];
+                      const isTabActive = tab === t.key;
+                      return (
+                        <button
+                          key={`warm-${t.key}`}
+                          type="button"
+                          onClick={() => go('/customer-master', { customerStatus: 'Warm' }, t.key)}
+                          className={`p-2 rounded-xl border transition-all text-left cursor-pointer shadow-2xs hover:shadow-xs flex flex-col justify-between group ${theme.border} ${theme.bg} ${
+                            isTabActive ? 'ring-2 ring-indigo-400 shadow-xs' : ''
+                          }`}
+                          title={`View ${t.warm} Warm ${t.label} clients in Customer Master`}
+                        >
+                          <div className="flex items-center justify-between gap-1 w-full min-w-0">
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-gray-700 truncate">
+                              <Icon size={12} className={`${theme.iconColor} shrink-0`} />
+                              <span className="truncate">{t.label}</span>
+                            </span>
+                            <Thermometer size={10} className="text-amber-500 shrink-0" />
+                          </div>
+                          <div className="flex items-baseline justify-between mt-1 pt-0.5 border-t border-black/5">
+                            <span className={`text-base font-extrabold leading-none ${theme.countColor}`}>
+                              {t.warm}
+                            </span>
+                            <span className="text-[9px] font-bold text-amber-600">
+                              Warm
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Quick actions */}
             <div className="grid grid-cols-5 gap-1 px-3 pt-3">
@@ -990,9 +1297,9 @@ export default function Dashboard() {
           <Card className="flex flex-col">
             <CardHeader
               title="Today's Leads"
-              subtitle={`${todayLeads.length} new leads today`}
+              subtitle={`${todayLeads.length} followups scheduled today`}
               icon={UserPlus}
-              action={canDrillInto('/lead') && <ViewAll onClick={() => go('/lead', { dateFilter: 'today' })} />}
+              action={canDrillInto('/call-tracker') && <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today' })} />}
             />
             {todayLeads.length > 0 ? (
               <div className="max-h-[380px] overflow-y-auto pb-1">
@@ -1050,7 +1357,7 @@ export default function Dashboard() {
                 title="Deal Closed"
                 subtitle={`${dealsClosed.length} ${isAll ? '' : `${tab} `}deal${dealsClosed.length === 1 ? '' : 's'} closed`}
                 icon={CheckCircle2}
-                action={canDrillInto('/site-visit-meeting') && <ViewAll onClick={() => go('/site-visit-meeting', { dateFilter: 'all', closedDealsOnly: true })} />}
+                action={canDrillInto('/deal-closed') && <ViewAll onClick={() => go('/deal-closed')} />}
               />
               {dealsClosed.length > 0 ? (
                 <div className="max-h-[380px] overflow-y-auto pb-1">
@@ -1082,15 +1389,6 @@ export default function Dashboard() {
         </>)}
       </div>
 
-      {/* Custom date range picker */}
-      <DateRangeModal
-        isOpen={showRangeModal}
-        onClose={() => setShowRangeModal(false)}
-        from={customFrom}
-        to={customTo}
-        onApply={(from, to) => { setCustomFrom(from); setCustomTo(to); setPeriod('custom'); }}
-        title="Custom Date Range"
-      />
 
       {/* Full lead record + call report */}
       <LeadDetailsModal

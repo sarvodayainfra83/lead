@@ -19,18 +19,23 @@ import {
   ClipboardCheck,
   Layers,
   FileBarChart,
-  UserX
+  UserX,
+  Handshake,
+  Contact,
+  CalendarClock
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
-import { canViewPage, getUserLeadTypeScope } from '../utils/authUtils';
+import { canViewPage, getUserLeadTypeScope, isAdminOnlyAttendanceUser, isUserAdmin } from '../utils/authUtils';
 import companyLogo from '../Assets/Logo.jpeg';
+import sidebarLogo from '../Assets/SidebarLogo.png';
+import companyIcon from '../Assets/TikarihaIcon.png';
 
 const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuthStore();
-  const { pendingLeadCount, siteVisitMeetingCount, callTrackerCount, customerCount, nonInterestedCount, refresh } = useBadgeCountStore();
+  const { pendingLeadCount, siteVisitMeetingCount, callTrackerCount, customerCount, nonInterestedCount, pendingLeaveCount, refresh } = useBadgeCountStore();
 
   useEffect(() => {
     refresh();
@@ -62,16 +67,28 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     { path: '/site-visit-meeting', icon: MapPin, label: isMeetingOnlyUser ? 'Meeting' : 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: siteVisitMeetingCount },
     { path: '/customer-master', icon: Users, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount },
     { path: '/non-interested', icon: UserX, label: 'Non-interested', pageKey: 'nonInterested', badgeCount: nonInterestedCount },
+    { path: '/deal-closed', icon: Handshake, label: 'Deal Closed', pageKey: 'dealClosed' },
     // { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
     { path: '/mis-report', icon: FileBarChart, label: 'MIS Report', pageKey: 'misReport' },
     { path: '/attendance', icon: Fingerprint, label: 'Attendance', pageKey: 'attendance' },
+    { path: '/leave-requests', icon: CalendarClock, label: 'Leave Requests', pageKey: 'leaveRequests', badgeCount: pendingLeaveCount },
     { path: '/attendance-report', icon: ClipboardCheck, label: 'Attendance Report', pageKey: 'attendanceReport' },
+    { path: '/reception', icon: Contact, label: 'Reception', pageKey: 'reception' },
     { path: '/products', icon: Layers, label: 'Products', pageKey: 'products' },
     { path: '/master', icon: Database, label: 'Master / Setting', pageKey: 'master' },
   ];
 
   // Admins see everything; Users only see pages their access level isn't 'none' for
-  const menuItems = allMenuItems.filter((item) => canViewPage(user, item.pageKey));
+  // Admins mark and view attendance from the Attendance Report page only
+  // For Admin role: Site Visit / Meeting is merged into Lead & Followup, so hide it from the sidebar
+  // For Admin role: Lead page is hidden for now
+  const menuItems = allMenuItems.filter((item) =>
+    canViewPage(user, item.pageKey) &&
+    !(item.pageKey === 'lead' && isUserAdmin(user)) &&
+    !(item.pageKey === 'siteVisitMeeting' && isUserAdmin(user)) &&
+    !(item.pageKey === 'attendanceReport' && isUserAdmin(user)) &&
+    !(item.adminOnly && !isUserAdmin(user))
+  );
 
   return (
     <>
@@ -93,22 +110,33 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
       >
         <div className="flex flex-col h-full relative">
 
-          {/* Logo Section */}
-          <div className="p-4 border-b border-indigo-100 flex items-center justify-between overflow-hidden">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden bg-white border border-indigo-100">
-                <img src={companyLogo} alt="Sarvodaya Infracon Logo" className="w-full h-full object-contain" />
+          {/* Logo Section - Spreads across complete rectangle formed by sidebar and aligns with h-16 header line */}
+          <div className="h-16 border-b border-indigo-200 flex items-center justify-between overflow-hidden bg-[#2e333a] relative flex-shrink-0 select-none">
+            {collapsed ? (
+              <div className="w-full h-full flex items-center justify-center p-2.5" title="Tikariha Advisors">
+                <img
+                  src={companyIcon}
+                  alt="Tikariha Advisors"
+                  className="w-full h-full object-contain"
+                />
               </div>
-              {!collapsed && (
-                <span className="text-xl font-bold text-indigo-600 tracking-tight truncate min-w-0">
-                  Sarvodaya
-                </span>
-              )}
-            </div>
-            {/* Mobile close button */}
-            <button onClick={onClose} className="lg:hidden p-2 hover:bg-indigo-100/50 rounded-lg flex-shrink-0">
-              <X size={20} className="text-indigo-600" />
-            </button>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center relative">
+                <img
+                  src={sidebarLogo}
+                  alt="Tikariha Advisors"
+                  className="w-full h-full object-cover"
+                />
+                {/* Mobile close button */}
+                <button
+                  onClick={onClose}
+                  className="lg:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-white/80 hover:text-white hover:bg-black/30 rounded-lg flex-shrink-0"
+                  aria-label="Close menu"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Navigation */}

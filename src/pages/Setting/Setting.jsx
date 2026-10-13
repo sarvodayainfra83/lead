@@ -18,11 +18,13 @@ const APP_PAGES = [
   { key: 'siteVisitMeeting', label: 'Site Visit / Meeting' },
   { key: 'customerMaster', label: 'Customer Master' },
   { key: 'nonInterested', label: 'Non-interested' },
+  { key: 'dealClosed', label: 'Deal Closed' },
   { key: 'products', label: 'Products' },
-  // { key: 'callerReport', label: 'Caller Report' },
   { key: 'misReport', label: 'MIS Report' },
   { key: 'attendance', label: 'Attendance' },
   { key: 'attendanceReport', label: 'Attendance Report' },
+  { key: 'leaveRequests', label: 'Leave Requests' },
+  { key: 'reception', label: 'Reception / Visitors' },
   { key: 'master', label: 'Master / Setting' }
 ];
 
@@ -120,6 +122,7 @@ export default function Setting({ setHeaderAction }) {
           ...next.accessPages,
           attendance: 'full',
           attendanceReport: 'full',
+          leaveRequests: 'full',
           nonInterested: 'none'
         };
       }

@@ -406,14 +406,27 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
       onClose={handleCloseModal}
       title="ATTENDANCE"
       onSubmit={handleSubmit}
-      submitText={attendanceStatus.isLocked ? 'COMPLETED FOR TODAY' : (saving ? 'Saving...' : 'SAVE')}
-      disabled={attendanceStatus.isLocked}
+      submitText={attendanceStatus.isOnLeave ? 'ON LEAVE TODAY' : attendanceStatus.isLocked ? 'COMPLETED FOR TODAY' : (saving ? 'Saving...' : 'SAVE')}
+      disabled={attendanceStatus.isLocked || attendanceStatus.isOnLeave}
       loading={saving}
       maxWidth="max-w-md"
     >
       <div className="space-y-3 sm:space-y-4">
+        {/* Banner: If on approved Leave today */}
+        {attendanceStatus.isOnLeave && (
+          <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-start gap-2.5 text-purple-900 text-xs shadow-2xs">
+            <AlertTriangle size={17} className="text-purple-600 flex-shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="font-bold text-purple-950">On Approved Leave Today</p>
+              <p className="text-purple-800 leading-relaxed">
+                You have an approved leave for today ({attendanceStatus.todayDate}). Attendance punches are not required.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Banner: If marked OUT, locked until 12:00 AM IST */}
-        {attendanceStatus.isLocked && (
+        {!attendanceStatus.isOnLeave && attendanceStatus.isLocked && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2.5 text-amber-900 text-xs shadow-2xs">
             <AlertTriangle size={17} className="text-amber-600 flex-shrink-0 mt-0.5" />
             <div className="space-y-0.5">

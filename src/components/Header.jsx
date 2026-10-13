@@ -9,8 +9,8 @@ const Header = ({ sidebarOpen, onMenuClick, user }) => {
   const avatarSrc = user?.avatarUrl || user?.avatar_url;
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-indigo-200">
-      <div className="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 bg-white border-b border-indigo-200 h-16">
+      <div className="flex justify-between items-center h-full px-4 sm:px-6 lg:px-8">
 
         {/* Left Section: Mobile Menu */}
         <div className="flex items-center gap-4 flex-1">

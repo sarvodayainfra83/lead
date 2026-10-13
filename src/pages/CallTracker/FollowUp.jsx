@@ -96,9 +96,11 @@ export default function FollowUp() {
     );
     return allLeads.map(lead => ({
       ...lead,
-      inCallList: !isDirectSiteVisitLead(lead) &&
-        isInFollowUpQueue(lead, calledLeadKeys) &&
-        (isAdmin || matchesUserConnection(lead, user)),
+      inCallList: isAdmin
+        ? true
+        : (!isDirectSiteVisitLead(lead) &&
+            isInFollowUpQueue(lead, calledLeadKeys) &&
+            matchesUserConnection(lead, user)),
       inSiteVisitList: isDirectSiteVisitLead(lead) || siteVisitIds.has(String(lead.id))
     }));
   }, [allLeads, allTrackers, allAssignedVisitors, allVisitorFollowUps, user]);
@@ -163,6 +165,8 @@ export default function FollowUp() {
         activeTab={activeTab}
         initialStatusFilter={navState.statusFilter}
         initialDateFilter={navState.dateFilter || (navState.statusFilter ? 'all' : 'today')}
+        initialStageFilter={navState.stageFilter}
+        initialCalledOnly={Boolean(navState.calledOnly)}
         openRemarkLeadId={navState.openRemarkLeadId}
         openRemarkNonce={navState.openRemarkNonce}
         onTabChange={setActiveTab}

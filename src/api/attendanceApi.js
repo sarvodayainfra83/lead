@@ -3,7 +3,8 @@ import {
   getAttendanceLogs as getLocalAttendanceLogs,
   saveAttendanceLogs as saveLocalAttendanceLogs,
   saveAttendanceLog as saveLocalAttendanceLog,
-  deleteAttendanceLog as deleteLocalAttendanceLog
+  deleteAttendanceLog as deleteLocalAttendanceLog,
+  getLeaveRequests as getLocalLeaveRequests
 } from '../utils/storageManager';
 
 // Haversine distance calculator between two coordinates in meters
@@ -172,18 +173,38 @@ export const attendanceApi = {
           finalStatus = 'Out';
         } else if (statusUpper === 'HALF DAY') {
           finalStatus = 'Half Day';
+        } else if (statusUpper === 'LEAVE' || statusUpper === 'ON LEAVE') {
+          finalStatus = 'Leave';
+        } else if ((existing.status || '').toUpperCase() === 'LEAVE') {
+          finalStatus = 'Leave';
+        } else if (statusUpper.includes('PENDING')) {
+          finalStatus = (existing.status && existing.status !== '-' && !existing.status.toUpperCase().includes('PENDING'))
+            ? existing.status
+            : 'Pending Leave';
         }
+
+        const isAnyLeave = statusUpper === 'LEAVE' ||
+          (existing.status || '').toUpperCase() === 'LEAVE' ||
+          statusUpper.includes('PENDING') ||
+          (existing.status || '').toUpperCase().includes('PENDING');
+
+        const leaveLocation = isAnyLeave
+          ? (log.locationName || existing.locationName || '')
+          : '';
 
         grouped.set(groupKey, {
           ...existing,
           inTime: inTime || existing.inTime || '',
           outTime: outTime || existing.outTime || '',
+          photoUrl: existing.photoUrl || log.photoUrl || '',
           outPhotoUrl: existing.outPhotoUrl || (statusUpper === 'OUT' ? log.photoUrl : ''),
+          locationName: leaveLocation || existing.locationName || log.locationName || '',
           outLocationName: existing.outLocationName || (statusUpper === 'OUT' ? log.locationName : ''),
           outLatitude: existing.outLatitude || (statusUpper === 'OUT' ? (log.outLatitude || log.latitude) : existing.outLatitude),
           outLongitude: existing.outLongitude || (statusUpper === 'OUT' ? (log.outLongitude || log.longitude) : existing.outLongitude),
           outAccuracy: existing.outAccuracy || (statusUpper === 'OUT' ? (log.outAccuracy || log.accuracy) : existing.outAccuracy),
           outGeocodingStatus: existing.outGeocodingStatus || (statusUpper === 'OUT' ? (log.outGeocodingStatus || log.geocodingStatus) : existing.outGeocodingStatus),
+          leaveRequestId: existing.leaveRequestId || log.leaveRequestId || null,
           status: finalStatus
         });
       }
@@ -199,9 +220,20 @@ export const attendanceApi = {
   mapFromDb(row) {
     const joinedUser = row.users || {};
     const fallbackTime = row.timestamp ? (row.timestamp.includes(' ') ? row.timestamp.split(' ')[1] : row.timestamp) : '';
+    const locName = row.location_name || row.locationName || row.location || '';
     const statusUpper = (row.status || '').toUpperCase();
-    const inTime = row.in_time || row.inTime || (statusUpper === 'IN' || statusUpper === 'HALF DAY' ? fallbackTime : (statusUpper === 'OUT' ? null : fallbackTime));
-    const outTime = row.out_time || row.outTime || (statusUpper === 'OUT' ? fallbackTime : null);
+    const isApprovedLeave = statusUpper === 'LEAVE' || locName.startsWith('Approved Leave');
+    let effectiveStatus = row.status || 'In';
+    if (isApprovedLeave) {
+      effectiveStatus = locName.toLowerCase().includes('half day') ? 'Half Day' : 'Leave';
+    }
+
+    const inTime = (isApprovedLeave && effectiveStatus === 'Leave')
+      ? ''
+      : (row.in_time || row.inTime || (statusUpper === 'IN' || statusUpper === 'HALF DAY' ? fallbackTime : (statusUpper === 'OUT' ? null : fallbackTime)));
+    const outTime = (isApprovedLeave && effectiveStatus === 'Leave')
+      ? ''
+      : (row.out_time || row.outTime || (statusUpper === 'OUT' ? fallbackTime : null));
 
     return {
       id: row.id,
@@ -213,7 +245,7 @@ export const attendanceApi = {
       timestampMs: row.timestamp_ms ? Number(row.timestamp_ms) : (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
       inTime: inTime || '',
       outTime: outTime || '',
-      status: row.status || 'In',
+      status: effectiveStatus,
       photoUrl: row.photo_url || row.photoUrl || '',
       outPhotoUrl: row.out_photo_url || row.outPhotoUrl || '',
       latitude: row.latitude !== null && row.latitude !== undefined ? Number(row.latitude) : null,
@@ -255,11 +287,141 @@ export const attendanceApi = {
     };
   },
 
+  // Merge approved leaves from leave_requests into attendance logs so approved leaves always show up
+  // Merge approved and pending leaves from leave_requests into attendance logs
+  async mergeApprovedLeaves(logs) {
+    try {
+      let leavesList = [];
+      if (isSupabaseConfigured) {
+        const { data, error } = await supabase
+          .from('leave_requests')
+          .select('*')
+          .in('status', ['APPROVED', 'PENDING']);
+        if (!error && Array.isArray(data)) {
+          leavesList = data;
+        }
+      }
+      if (!leavesList.length) {
+        const local = getLocalLeaveRequests();
+        if (Array.isArray(local)) {
+          leavesList = local.filter(l => {
+            const s = (l.status || '').toUpperCase();
+            return s === 'APPROVED' || s === 'PENDING';
+          });
+        }
+      }
+
+      if (!leavesList || !leavesList.length) return logs;
+
+      const result = [...logs];
+
+      const getDatesList = (fromStr, toStr) => {
+        if (!fromStr) return [];
+        const end = toStr || fromStr;
+        const list = [];
+        try {
+          const cur = new Date(fromStr + 'T00:00:00');
+          const endDate = new Date(end + 'T00:00:00');
+          while (cur <= endDate) {
+            const dd = String(cur.getDate()).padStart(2, '0');
+            const mm = String(cur.getMonth() + 1).padStart(2, '0');
+            const yyyy = cur.getFullYear();
+            list.push(`${dd}/${mm}/${yyyy}`);
+            cur.setDate(cur.getDate() + 1);
+          }
+        } catch (e) {}
+        return list;
+      };
+
+      // Sort so APPROVED leaves are processed before PENDING leaves
+      const sortedLeaves = [...leavesList].sort((a, b) => {
+        const aStatus = (a.status || '').toUpperCase();
+        const bStatus = (b.status || '').toUpperCase();
+        if (aStatus === 'APPROVED' && bStatus !== 'APPROVED') return -1;
+        if (bStatus === 'APPROVED' && aStatus !== 'APPROVED') return 1;
+        return 0;
+      });
+
+      sortedLeaves.forEach(leave => {
+        const sUpper = (leave.status || 'PENDING').toUpperCase();
+        const isApproved = sUpper === 'APPROVED';
+        const dates = getDatesList(leave.from_date || leave.fromDate, leave.to_date || leave.toDate);
+        const isHalfDay = (leave.leave_type || leave.leaveType || '').toLowerCase().includes('half');
+        const leaveStatus = isApproved ? (isHalfDay ? 'Half Day' : 'Leave') : 'Pending Leave';
+        const leaveReason = leave.reason ? `: ${leave.reason}` : '';
+        const leaveCategory = leave.leave_category || leave.leaveCategory || 'Casual Leave';
+        const leaveLocation = isApproved
+          ? `Approved Leave (${leaveCategory})${leaveReason}`
+          : `Pending Leave (${leaveCategory})${leaveReason}`;
+        const targetUserId = (leave.user_id || leave.userId || '').trim().toLowerCase();
+        const targetUserName = (leave.user_name || leave.userName || '').trim().toLowerCase();
+
+        dates.forEach(dateStr => {
+          const existingIdx = result.findIndex(l => {
+            const matchDate = (l.date || '').replace(/-/g, '/') === dateStr.replace(/-/g, '/');
+            const matchUser = (targetUserId && (l.userId || '').toLowerCase() === targetUserId) ||
+                              (targetUserName && (l.userName || '').trim().toLowerCase() === targetUserName);
+            return matchDate && matchUser;
+          });
+
+          if (existingIdx >= 0) {
+            const ex = result[existingIdx];
+            // If already an approved leave, don't overwrite with pending
+            if (!isApproved && (ex.isApprovedLeave || (ex.status || '').toUpperCase() === 'LEAVE')) {
+              return;
+            }
+            if (!ex.inTime || ex.inTime === '-' || (ex.status || '').toUpperCase() === 'LEAVE' || (ex.status || '').toUpperCase().includes('PENDING')) {
+              result[existingIdx] = {
+                ...ex,
+                status: leaveStatus,
+                locationName: leaveLocation,
+                photoUrl: ex.photoUrl || leave.document_url || leave.documentUrl || '',
+                isApprovedLeave: isApproved,
+                isPendingLeave: !isApproved
+              };
+            }
+          } else {
+            const [dd, mm, yyyy] = dateStr.split('/');
+            const fakeMs = new Date(`${yyyy}-${mm}-${dd}T09:00:00+05:30`).getTime() || Date.now();
+            result.push({
+              id: `leave_${leave.id}_${dd}_${mm}_${yyyy}`,
+              userId: leave.user_id || leave.userId || '',
+              userName: leave.user_name || leave.userName || 'Employee',
+              date: dateStr,
+              timestamp: `${dateStr} 09:00:00 AM`,
+              timestampMs: fakeMs,
+              inTime: isApproved && isHalfDay ? '09:00 AM' : '-',
+              outTime: '-',
+              status: leaveStatus,
+              photoUrl: leave.document_url || leave.documentUrl || '',
+              outPhotoUrl: '',
+              latitude: null,
+              longitude: null,
+              accuracy: null,
+              locationName: leaveLocation,
+              geocodingStatus: 'RESOLVED',
+              createdAt: leave.created_at || leave.createdAt || new Date().toISOString(),
+              updatedAt: leave.updated_at || leave.updatedAt || new Date().toISOString(),
+              isApprovedLeave: isApproved,
+              isPendingLeave: !isApproved
+            });
+          }
+        });
+      });
+
+      return result;
+    } catch (e) {
+      console.warn('mergeApprovedLeaves error:', e);
+      return logs;
+    }
+  },
+
   // Fetch all attendance logs (joins users table for user_name, consolidates single-row per user per date)
   async getAttendanceLogs() {
     if (!isSupabaseConfigured) {
       const localLogs = getLocalAttendanceLogs().map(this.mapFromDb);
-      return this.consolidateSingleDayRows(localLogs);
+      const merged = await this.mergeApprovedLeaves(localLogs);
+      return this.consolidateSingleDayRows(merged);
     }
 
     try {
@@ -279,11 +441,13 @@ export const attendanceApi = {
           throw fallbackError;
         }
         const mapped = (fallbackData || []).map(this.mapFromDb);
-        return this.consolidateSingleDayRows(mapped);
+        const merged = await this.mergeApprovedLeaves(mapped);
+        return this.consolidateSingleDayRows(merged);
       }
 
       const mapped = (data || []).map(this.mapFromDb);
-      return this.consolidateSingleDayRows(mapped);
+      const merged = await this.mergeApprovedLeaves(mapped);
+      return this.consolidateSingleDayRows(merged);
     } catch (err) {
       console.error('Supabase attendance logs fetch error:', err);
       throw err;
@@ -949,6 +1113,7 @@ async updateAttendanceLog(id, updatedFields) {
         hasMarkedIn: false,
         hasMarkedOut: false,
         hasMarkedHalfDay: false,
+        isOnLeave: false,
         isLocked: false,
         allowedStatuses: ['In', 'Half Day'],
         defaultStatus: 'In',
@@ -970,6 +1135,9 @@ async updateAttendanceLog(id, updatedFields) {
       return (matchId || matchName) && this.isLogFromTodayIST(l);
     });
 
+    const isOnLeave = userTodayLogs.some(l => 
+      (l.status || '').toUpperCase() === 'LEAVE' || (l.status || '').toUpperCase() === 'ON LEAVE'
+    );
     const hasMarkedOut = userTodayLogs.some(l => 
       (l.status || '').toUpperCase() === 'OUT' || (l.outTime && l.outTime !== '-' && l.outTime !== '')
     );
@@ -980,6 +1148,21 @@ async updateAttendanceLog(id, updatedFields) {
       (l.status || '').toUpperCase() === 'HALF DAY'
     );
 
+    // Rule 0: If on approved full-day leave today, punches are locked
+    if (isOnLeave) {
+      return {
+        todayDate,
+        hasMarkedIn: false,
+        hasMarkedOut: false,
+        hasMarkedHalfDay: false,
+        isOnLeave: true,
+        isLocked: true,
+        allowedStatuses: [],
+        defaultStatus: '',
+        message: 'You have an approved leave for today.'
+      };
+    }
+
     // Rule 1: If already marked OUT today, no further In/Out/Half Day punches are permitted today
     if (hasMarkedOut) {
       return {
@@ -987,6 +1170,7 @@ async updateAttendanceLog(id, updatedFields) {
         hasMarkedIn,
         hasMarkedOut: true,
         hasMarkedHalfDay,
+        isOnLeave: false,
         isLocked: true,
         allowedStatuses: [],
         defaultStatus: '',

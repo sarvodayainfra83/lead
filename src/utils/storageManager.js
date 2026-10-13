@@ -50,7 +50,9 @@ const STORAGE_KEYS = {
   ACTUALS: 'pcb_actuals_v1',
   ATTENDANCE: 'pcb_attendance_v1',
   LOCATION_CACHE: 'pcb_location_cache_v1',
-  LAST_RESOLVED_ADDRESS: 'pcb_last_resolved_address_v1'
+  LAST_RESOLVED_ADDRESS: 'pcb_last_resolved_address_v1',
+  VISITOR_LOGS: 'pcb_visitor_logs_v1',
+  LEAVE_REQUESTS: 'pcb_leave_requests_v1'
 };
 
 // Initialize default data
@@ -68,6 +70,7 @@ export const DEFAULT_USER_ACCESS = {
   misReport: 'view',
   attendance: 'edit',
   attendanceReport: 'view',
+  reception: 'edit',
   master: 'none',
   setting: 'none'
 };
@@ -2976,4 +2979,102 @@ export const saveLastResolvedAddress = (entry) => {
     resolvedAt: new Date().toISOString()
   });
 };
+
+// --- Visitor Log Operations (Reception Module) ---
+export const getVisitorLogs = () => {
+  const existing = getFromStorage(STORAGE_KEYS.VISITOR_LOGS);
+  if (!existing || !Array.isArray(existing)) {
+    return [];
+  }
+  // Remove any legacy hardcoded sample entries
+  const cleaned = existing.filter(l => !l.id?.startsWith('vis_sample_'));
+  if (cleaned.length !== existing.length) {
+    saveToStorage(STORAGE_KEYS.VISITOR_LOGS, cleaned);
+  }
+  return cleaned;
+};
+
+export const saveVisitorLogs = (data) => saveToStorage(STORAGE_KEYS.VISITOR_LOGS, data);
+
+export const saveVisitorLog = (entry) => {
+  const logs = getVisitorLogs();
+  const index = entry.id ? logs.findIndex(l => l.id === entry.id) : -1;
+
+  if (index >= 0) {
+    logs[index] = {
+      ...logs[index],
+      ...entry,
+      updatedAt: new Date().toISOString()
+    };
+    saveVisitorLogs(logs);
+    return logs[index];
+  } else {
+    const newEntry = {
+      ...entry,
+      id: entry.id || `vis_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`,
+      createdAt: entry.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    logs.unshift(newEntry);
+    saveVisitorLogs(logs);
+    return newEntry;
+  }
+};
+
+export const deleteVisitorLog = (id) => {
+  const logs = getVisitorLogs();
+  const filtered = logs.filter(l => l.id !== id);
+  saveVisitorLogs(filtered);
+  return true;
+};
+
+// Leave Requests Management
+export const getLeaveRequests = () => {
+  const existing = getFromStorage(STORAGE_KEYS.LEAVE_REQUESTS);
+  if (!existing || !Array.isArray(existing)) {
+    return [];
+  }
+  // Remove any legacy hardcoded sample entries
+  const cleaned = existing.filter(l => !l.id?.startsWith('leave_sample_'));
+  if (cleaned.length !== existing.length) {
+    saveToStorage(STORAGE_KEYS.LEAVE_REQUESTS, cleaned);
+  }
+  return cleaned;
+};
+
+export const saveLeaveRequests = (data) => saveToStorage(STORAGE_KEYS.LEAVE_REQUESTS, data);
+
+export const saveLeaveRequest = (entry) => {
+  const list = getLeaveRequests();
+  const index = entry.id ? list.findIndex(l => l.id === entry.id) : -1;
+  if (index >= 0) {
+    list[index] = {
+      ...list[index],
+      ...entry,
+      updatedAt: new Date().toISOString()
+    };
+    saveLeaveRequests(list);
+    return list[index];
+  } else {
+    const newEntry = {
+      ...entry,
+      id: entry.id || `leave_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`,
+      status: entry.status || 'PENDING',
+      appliedAt: entry.appliedAt || new Date().toISOString(),
+      createdAt: entry.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    list.unshift(newEntry);
+    saveLeaveRequests(list);
+    return newEntry;
+  }
+};
+
+export const deleteLeaveRequest = (id) => {
+  const list = getLeaveRequests();
+  const filtered = list.filter(l => l.id !== id);
+  saveLeaveRequests(filtered);
+  return true;
+};
+
 

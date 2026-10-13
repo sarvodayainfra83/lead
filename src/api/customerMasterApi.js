@@ -8,9 +8,16 @@ import {
   normalizeCustomerStatus
 } from '../pages/CallTracker/callTrackerConstants';
 
+// A closed deal: a Site Visit / Meeting follow-up with outcome 'Deal Lock' (legacy names included) — same rule as
+// the Deal Closed page and the Dashboard's Deal Closed card
+const isDealLockStatus = (status) => {
+  const s = String(status || '').toLowerCase().trim();
+  return s === 'deal lock' || s === 'closed won' || s === 'closed' || s === 'deal closed';
+};
+
 export const customerMasterApi = {
   // Fetch Customer Master records: leads whose latest customer status (from Call Tracker or Site Visit/Meeting) is Hot or Warm
-  // (excluding deals marked lost in Site Visit follow-up)
+  // (excluding deals marked lost in Site Visit follow-up, and closed deals — those move to the Deal Closed page)
   async getConvertedCustomers() {
     const [leads, trackers, followUps] = await Promise.all([
       leadApi.getLeads(),
@@ -100,6 +107,7 @@ export const customerMasterApi = {
         // Effective customer status across trackers and visitor follow-ups
         const customerStatus = getEffectiveCustomerStatus(leadTrackers, leadFollowUps, lead.id, lead.leadNo);
         const isRejected = isFollowUpRejected(latestFollowUp);
+        const isDealClosed = isDealLockStatus(lead.status) || leadFollowUps.some(f => isDealLockStatus(f.status));
 
         // Determine active status: pick status from the most recent interaction
         const latestFollowUpMs = latestFollowUp ? (Number(latestFollowUp.timestampMs) || (latestFollowUp.createdAt ? new Date(latestFollowUp.createdAt).getTime() : 0)) : 0;
@@ -116,7 +124,8 @@ export const customerMasterApi = {
           ...lead,
           status: isRejected ? 'Rejected (Lost)' : activeStatus,
           customerStatus,
-          isConverted: CUSTOMER_MASTER_STATUSES.includes(customerStatus) && !isRejected,
+          // Hot / Warm customers stop counting once their deal is closed (Hot Customers page, sidebar badge, Dashboard)
+          isConverted: CUSTOMER_MASTER_STATUSES.includes(customerStatus) && !isRejected && !isDealClosed,
           dealOutcome: latestFollowUp?.dealOutcome || null,
           rejectionReason: latestFollowUp?.rejectionReason || null,
           salesExecutive: latestFollowUp?.salesExecutive || null,

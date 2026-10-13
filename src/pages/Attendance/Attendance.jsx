@@ -8,15 +8,23 @@ import {
   RotateCcw,
   MapPin,
   Calendar,
+  CalendarDays,
+  CalendarPlus,
   UserCheck,
   Clock,
   CheckCircle2,
+  X,
+  CalendarCheck,
+  FileText,
 } from "lucide-react";
 import { attendanceApi, isRawCoordinatesOrEmpty, getGoogleMapsUrl } from "../../api/attendanceApi";
+import { leaveRequestApi } from "../../api/leaveRequestApi";
 import DataTable from "../../components/DataTable";
 import AttendanceModal from "./AttendanceModal";
 import PhotoViewModal from "./PhotoViewModal";
 import AttendanceEdit from "./AttendanceEdit";
+import ApplyLeaveModal from "./ApplyLeaveModal";
+import AllAttendanceTab from "../AttendanceReport/AllAttendanceTab";
 import { useAuthStore } from "../../store/authStore";
 import { isUserAdmin, isUserHR, isUserTester, hasFullAccess } from "../../utils/authUtils";
 
@@ -27,12 +35,19 @@ export default function Attendance() {
   const isTester = isUserTester(user);
   const canEdit = hasFullAccess(user, "attendance");
 
+  // For Admin: merged view uses 'today' / 'all' tabs; others use 'attendance' / 'leaves'
+  const [activeAttendanceTab, setActiveAttendanceTab] = useState(isAdmin ? "today" : "attendance");
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [viewLog, setViewLog] = useState(null);
   const [editLog, setEditLog] = useState(null);
+
+  // Leave Requests state
+  const [leaveRequests, setLeaveRequests] = useState([]);
+  const [leavesLoading, setLeavesLoading] = useState(false);
+  const [showApplyLeaveModal, setShowApplyLeaveModal] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
@@ -102,7 +117,7 @@ export default function Attendance() {
     setLoading(true);
     try {
       const allLogs = await attendanceApi.getAttendanceLogs();
-      const userLogs = (isAdmin || isHR)
+      const userLogs = (isAdmin || isHR || isTester)
         ? allLogs
         : allLogs.filter(
           (l) =>
@@ -119,9 +134,32 @@ export default function Attendance() {
     }
   };
 
+  const loadLeaves = async () => {
+    setLeavesLoading(true);
+    try {
+      const data = await leaveRequestApi.getLeaveRequests(user);
+      setLeaveRequests(data);
+    } catch (err) {
+      console.error("Failed to load leave requests:", err);
+    } finally {
+      setLeavesLoading(false);
+    }
+  };
+
   useEffect(() => {
-    loadLogs();
-  }, [user]);
+    let isMounted = true;
+    const init = async () => {
+      try {
+        await leaveRequestApi.syncAllApprovedLeavesToAttendance();
+      } catch (e) { }
+      if (isMounted) {
+        loadLogs();
+        loadLeaves();
+      }
+    };
+    init();
+    return () => { isMounted = false; };
+  }, [user, isAdmin, isTester]);
 
   // Retry any pending geocoding records on mount and when connection comes back online
   useEffect(() => {
@@ -220,6 +258,10 @@ export default function Attendance() {
       if (s === "HALF DAY")
         return "bg-amber-50 text-amber-700 border-amber-200";
       if (s === "OUT") return "bg-blue-50 text-blue-700 border-blue-200";
+      if (s === "LEAVE" || s === "ON LEAVE")
+        return "bg-purple-50 text-purple-700 border-purple-200";
+      if (s.includes("PENDING"))
+        return "bg-amber-50 text-amber-800 border-amber-300";
       return "bg-gray-50 text-gray-700 border-gray-200";
     };
 
@@ -379,6 +421,10 @@ export default function Attendance() {
       if (s === "HALF DAY")
         return "bg-amber-50 text-amber-700 border-amber-200";
       if (s === "OUT") return "bg-blue-50 text-blue-700 border-blue-200";
+      if (s === "LEAVE" || s === "ON LEAVE")
+        return "bg-purple-50 text-purple-700 border-purple-200";
+      if (s.includes("PENDING"))
+        return "bg-amber-50 text-amber-800 border-amber-300";
       return "bg-gray-50 text-gray-700 border-gray-200";
     };
 
@@ -488,52 +534,150 @@ export default function Attendance() {
     );
   };
 
+  // ── Admin: Merged Attendance view (Todays + All tabs) ──────────────────────
+  if (isAdmin) {
+    const adminTabBar = (
+      <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl w-fit">
+        <button
+          type="button"
+          onClick={() => setActiveAttendanceTab("today")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+            activeAttendanceTab === "today"
+              ? "bg-white text-gray-900 shadow-2xs"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          <CalendarCheck size={14} className={activeAttendanceTab === "today" ? "text-indigo-600" : "text-gray-400"} />
+          <span>Todays</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveAttendanceTab("all")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+            activeAttendanceTab === "all"
+              ? "bg-white text-gray-900 shadow-2xs"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          <FileText size={14} className={activeAttendanceTab === "all" ? "text-indigo-600" : "text-gray-400"} />
+          <span>All</span>
+        </button>
+      </div>
+    );
+
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <AllAttendanceTab
+          tabBar={adminTabBar}
+          scope={activeAttendanceTab === "today" ? "today" : "all"}
+          showMarkButton={true}
+        />
+
+        {/* Modals still available for Admin */}
+        <AttendanceModal
+          isOpen={showModal}
+          onClose={() => {
+            try { sessionStorage.removeItem("attendance_camera_session"); } catch (e) { }
+            setShowModal(false);
+          }}
+          onSaved={loadLogs}
+          existingLogs={logs}
+        />
+        <ApplyLeaveModal
+          isOpen={showApplyLeaveModal}
+          onClose={() => setShowApplyLeaveModal(false)}
+          onApplied={() => { loadLeaves(); loadLogs(); }}
+        />
+      </div>
+    );
+  }
+
+  // ── Non-Admin: Original view (Daily Attendance only) ────────────
   return (
     <div className="p-2 sm:p-4 md:p-6 space-y-3 flex flex-col h-full min-h-0">
-      {/* Top Header Row */}
-      <div className="flex items-center justify-between gap-3 w-full flex-shrink-0">
-        <div className="flex-1 max-w-sm relative">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-            size={15}
-          />
-          <input
-            type="text"
-            placeholder="Search attendance logs..."
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[38px] shadow-2xs transition-colors"
-          />
+      {/* Top Header Row with Action Buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full flex-shrink-0">
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Search box for Attendance logs */}
+          <div className="relative w-64 sm:w-72">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+              size={14}
+            />
+            <input
+              type="text"
+              placeholder="Search attendance logs..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-8 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[34px] shadow-2xs transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setCurrentPage(1);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
 
-        {canEdit && (
-          <button
-            onClick={() => setShowModal(true)}
-            className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[34px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer ${todayStatus.isLocked
-              ? "bg-emerald-700 hover:bg-emerald-800 text-white"
-              : todayStatus.hasMarkedIn
-                ? "bg-amber-600 hover:bg-amber-700 text-white"
-                : "bg-slate-900 hover:bg-slate-800 text-white"
-              }`}
-          >
-            {todayStatus.isLocked ? (
-              <>
-                <CheckCircle2 size={16} /> Completed Today
-              </>
-            ) : todayStatus.hasMarkedIn ? (
-              <>
-                <Clock size={16} /> Mark Out
-              </>
-            ) : (
-              <>
-                <UserCheck size={16} /> Attendance
-              </>
-            )}
-          </button>
-        )}
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          {/* Apply Leave Button (For Non-Admin employees and Tester role) */}
+          {(!isAdmin || isTester) && (
+            <button
+              onClick={() => setShowApplyLeaveModal(true)}
+              className="flex items-center justify-center gap-1.5 rounded-lg px-3.5 h-[34px] text-xs font-bold uppercase tracking-wider bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer"
+            >
+              <CalendarPlus size={15} />
+              <span>Apply Leave</span>
+            </button>
+          )}
+
+          {canEdit && activeAttendanceTab === "attendance" && (
+            <button
+              disabled={todayStatus.isOnLeave}
+              onClick={() => !todayStatus.isOnLeave && setShowModal(true)}
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[34px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer ${todayStatus.isOnLeave
+                ? "bg-purple-700 hover:bg-purple-800 text-white cursor-not-allowed opacity-90"
+                : todayStatus.isLocked
+                  ? "bg-emerald-700 hover:bg-emerald-800 text-white"
+                  : todayStatus.hasMarkedIn
+                    ? "bg-amber-600 hover:bg-amber-700 text-white"
+                    : "bg-slate-900 hover:bg-slate-800 text-white"
+                }`}
+            >
+              {todayStatus.isOnLeave ? (
+                <>
+                  <Calendar size={16} /> On Leave
+                </>
+              ) : todayStatus.isLocked ? (
+                <>
+                  <CheckCircle2 size={16} /> Completed Today
+                </>
+              ) : todayStatus.hasMarkedIn ? (
+                <>
+                  <Clock size={16} /> Mark Out
+                </>
+              ) : (
+                <>
+                  <UserCheck size={16} /> Attendance
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Main Table */}
+      {/* Main Attendance Table (only content now for non-admin) */}
       <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
         <DataTable
           loading={loading}
@@ -579,6 +723,16 @@ export default function Attendance() {
         onClose={() => setEditLog(null)}
         attendance={editLog}
         onUpdated={loadLogs}
+      />
+
+      {/* Apply Leave Modal */}
+      <ApplyLeaveModal
+        isOpen={showApplyLeaveModal}
+        onClose={() => setShowApplyLeaveModal(false)}
+        onApplied={() => {
+          loadLeaves();
+          loadLogs();
+        }}
       />
     </div>
   );

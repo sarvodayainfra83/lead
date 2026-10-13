@@ -8,15 +8,29 @@
 export const isUserAdmin = (user) => {
   if (!user) return false;
   const role = (user.role || '').toUpperCase();
-  return role === 'ADMIN' || role === 'TESTER';
+  return role === 'ADMIN' || isUserTester(user);
 };
+
+/**
+ * Admins (not testers) use only the Attendance Report page — the separate
+ * Attendance page is hidden for them and marking happens from the report.
+ */
+export const isAdminOnlyAttendanceUser = (user) => (user?.role || '').toUpperCase() === 'ADMIN';
 
 /**
  * Check if the given user has a TESTER role (case-insensitive).
  */
 export const isUserTester = (user) => {
   if (!user) return false;
-  return (user.role || '').toUpperCase() === 'TESTER';
+  const role = (user.role || '').toUpperCase();
+  const pos = (user.position || '').toLowerCase();
+  const accessPages = user.accessPages || user.access_pages || {};
+  return (
+    role === 'TESTER' ||
+    accessPages.__role === 'TESTER' ||
+    Boolean(accessPages.__is_tester) ||
+    pos.split(',').map(s => s.trim()).includes('tester')
+  );
 };
 
 /**
@@ -438,6 +452,12 @@ export const hasFullAccess = (user, pageKey) => getPageAccess(user, pageKey) ===
 export const getPageAccess = (user, pageKey) => {
   if (!user) return 'none';
   if (isUserAdmin(user)) return 'full';
+
+  // Leave Requests is strictly admin-only for now; default 'none' (no access) for all other users
+  if (pageKey === 'leaveRequests') {
+    return 'none';
+  }
+
   const pages = (user.accessPages && typeof user.accessPages === 'object' && !Array.isArray(user.accessPages))
     ? user.accessPages
     : {};
@@ -464,8 +484,13 @@ export const getPageAccess = (user, pageKey) => {
   if (level === 'edit') return 'full';
   if (level === 'full' || level === 'view') return level;
 
-  // HR users default to full access for Attendance & Attendance Report unless explicitly set to 'none'
-  if (isUserHR(user) && (pageKey === 'attendance' || pageKey === 'attendanceReport')) {
+  // HR users default to full access for Attendance, Attendance Report & Leave Requests unless explicitly set to 'none'
+  if (isUserHR(user) && (pageKey === 'attendance' || pageKey === 'attendanceReport' || pageKey === 'leaveRequests')) {
+    return level === 'none' ? 'none' : 'full';
+  }
+
+  // Receptionist position users default to full access for Reception page unless explicitly set to 'none'
+  if (hasPosition(user, 'Receptionist') && pageKey === 'reception') {
     return level === 'none' ? 'none' : 'full';
   }
 
@@ -474,7 +499,7 @@ export const getPageAccess = (user, pageKey) => {
 
   // Core customer information & lead pages the admin never configured for this user default to
   // view mode, so they can still see their connected leads/customers.
-  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance'];
+  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance', 'reception'];
   if (CUSTOMER_INFO_PAGES.includes(pageKey)) {
     return 'view';
   }

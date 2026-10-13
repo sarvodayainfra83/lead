@@ -132,7 +132,6 @@ export default function SiteVisitCategoryView({
   activeTab,
   onTabChange,
   initialDateFilter,
-  initialClosedDealsOnly = false,
   leads = [],
   loading = false,
   visitorsMaster = [],
@@ -167,7 +166,6 @@ export default function SiteVisitCategoryView({
   const [dateFilter, setDateFilter] = useState(initialDateFilter || 'today');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [showClosedDealsOnly, setShowClosedDealsOnly] = useState(initialClosedDealsOnly);
 
   // React to prop updates from Dashboard navigation
   useEffect(() => {
@@ -230,12 +228,12 @@ export default function SiteVisitCategoryView({
 
   // Follow-ups counted in the badge for the active date filter: Today → today's, Yesterday → yesterday's,
   // Custom → within the range, All Dates / Overdue / Upcoming → total till date
-  const getFilterFollowUpCount = (item) => {
+  const getFilterFollowUps = (item) => {
     const logs = item.followUps || [];
-    if (dateFilter === 'today') return getTodayFollowUpCount(item);
+    if (dateFilter === 'today') return logs.filter(f => isSameDay(f.timestampMs, today));
     if (dateFilter === 'yesterday') {
       const yesterday = new Date(today.getTime() - 86400000);
-      return logs.filter(f => isSameDay(f.timestampMs, yesterday)).length;
+      return logs.filter(f => isSameDay(f.timestampMs, yesterday));
     }
     if (dateFilter === 'custom' && (customFrom || customTo)) {
       const toDay = (str, endOfDay) => {
@@ -247,21 +245,46 @@ export default function SiteVisitCategoryView({
       return logs.filter(f => {
         const ms = Number(f.timestampMs);
         return ms && ms >= fromMs && ms <= toMs;
-      }).length;
+      });
     }
-    return item.followUpCount || logs.length;
+    return logs;
   };
 
   // Read-only badge (desktop icon / mobile pill): shows the follow-up count for the active filter (0 too),
   // turns green once today's follow-up is submitted
   const renderVisitMarkButton = (item, compact) => {
     const done = isVisitMarkedToday(item);
-    const count = getFilterFollowUpCount(item);
-    const countText = `${count} follow-up${count === 1 ? '' : 's'}`;
+    const filterLogs = getFilterFollowUps(item);
+    const count = filterLogs.length;
+    // Insurance / Mutual Fund: meetings and calls counted separately for the active date filter
+    const { meetings, calls } = count > 0 ? getVisitMeetCounts({ followUps: filterLogs }) : { meetings: 0, calls: 0 };
+    const countText = showVisitCols
+      ? `${count} follow-up${count === 1 ? '' : 's'}`
+      : `${meetings} meeting${meetings === 1 ? '' : 's'}, ${calls} call${calls === 1 ? '' : 's'}`;
     // Insurance / Mutual Fund have meetings, not site visits
     const title = showVisitCols
       ? (done ? `Site visit follow-up submitted today — ${countText}` : `Not visited yet today — ${countText}`)
       : (done ? `Meeting follow-up submitted today — ${countText}` : `No meeting follow-up yet today — ${countText}`);
+    if (!showVisitCols) {
+      return (
+        <span
+          title={title}
+          aria-label={title}
+          className={`inline-flex items-center gap-1.5 rounded-md border cursor-default shrink-0 font-semibold ${compact ? 'h-7 px-1.5 text-[11px]' : 'px-2.5 py-1.5 text-xs rounded-lg'} ${done
+            ? 'bg-emerald-600 text-white border-emerald-600'
+            : 'bg-white text-gray-600 border-gray-200'}`}
+        >
+          {compact ? (
+            <>
+              <span className="inline-flex items-center gap-0.5"><CalendarDays size={11} /><b>{meetings}</b></span>
+              <span className="inline-flex items-center gap-0.5"><Phone size={11} /><b>{calls}</b></span>
+            </>
+          ) : (
+            <span><b>{meetings}</b> {meetings === 1 ? 'Meeting' : 'Meetings'} · <b>{calls}</b> {calls === 1 ? 'Call' : 'Calls'}</span>
+          )}
+        </span>
+      );
+    }
     return (
       <span
         title={title}
@@ -275,7 +298,7 @@ export default function SiteVisitCategoryView({
             : 'bg-white text-gray-500 border-gray-200'}`}
       >
         <span className={`font-bold leading-none ${compact ? 'text-xs' : 'text-[11px]'}`}>{count}</span>
-        {!compact && <span>{showVisitCols ? (done ? 'Visited' : 'Not visited') : (done ? 'Meeting Done' : 'Meeting Due')}</span>}
+        {!compact && <span>{done ? 'Visited' : 'Not visited'}</span>}
       </span>
     );
   };
@@ -392,20 +415,11 @@ export default function SiteVisitCategoryView({
     { value: 'custom', label: customDropdownLabel }
   ], [dateCounts, customDropdownLabel]);
 
-  // Count total closed deals in this category
-  const closedDealsCount = useMemo(() => {
-    let list = leads || [];
-    return list.filter(isDealClosed).length;
-  }, [leads]);
-
   // Filter and sort leads
   const filteredLeads = useMemo(() => {
     let list = leads || [];
 
-    // Filter for Closed Deals only if button is active (shows closed deals of any date)
-    if (showClosedDealsOnly) {
-      list = list.filter(isDealClosed);
-    } else if (dateFilter && dateFilter !== 'all') {
+    if (dateFilter && dateFilter !== 'all') {
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const yesterday = new Date(today);
@@ -504,17 +518,16 @@ export default function SiteVisitCategoryView({
     });
 
     return sorted;
-  }, [leads, searchQuery, dateFilter, customFrom, customTo, category, isAdmin, user, showClosedDealsOnly, getVisitTimes]);
+  }, [leads, searchQuery, dateFilter, customFrom, customTo, category, isAdmin, user, getVisitTimes]);
 
   // Check if any non-default filter is active
-  const isFilterActive = dateFilter !== 'today' || searchQuery || showClosedDealsOnly || (dateFilter === 'custom' && customFrom && customTo);
+  const isFilterActive = dateFilter !== 'today' || searchQuery || (dateFilter === 'custom' && customFrom && customTo);
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
     setDateFilter('today');
     setCustomFrom('');
     setCustomTo('');
-    setShowClosedDealsOnly(false);
     setCurrentPage(1);
     toast.success('Filters reset to Today');
   }, []);
@@ -1169,16 +1182,15 @@ export default function SiteVisitCategoryView({
           />
         </div>
 
-        {/* Row 2: Controls Bar (Dates & Closed Deal on Left, Search & Actions on Right) */}
+        {/* Row 2: Controls Bar (Dates on Left, Search & Actions on Right) */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
-          {/* Left: Date Filters + Closed Deal Toggle */}
+          {/* Left: Date Filters */}
           <div className="flex flex-wrap xl:flex-nowrap items-center gap-1.5 sm:gap-2 shrink-0 w-full xl:w-auto pb-0.5">
             {/* Dedicated Tab / Button for Today's Followup */}
             <button
               type="button"
               onClick={() => {
                 setDateFilter('today');
-                setShowClosedDealsOnly(false);
                 setCurrentPage(1);
               }}
               title={`Show Today's Followups — ${dateCounts.todayVisited} of ${dateCounts.today} ${showVisitCols ? 'site visits' : 'meetings'} done today`}
@@ -1204,14 +1216,12 @@ export default function SiteVisitCategoryView({
                 value={dateFilter === 'today' ? 'all' : dateFilter}
                 onMainClick={() => {
                   setDateFilter('all');
-                  setShowClosedDealsOnly(false);
                   setCustomFrom('');
                   setCustomTo('');
                   setCurrentPage(1);
                 }}
                 onChange={(val) => {
                   setDateFilter(val);
-                  setShowClosedDealsOnly(false);
                   if (val === 'custom' && !customFrom && !customTo) {
                     const t = getTodayStr();
                     setCustomFrom(t);
@@ -1262,29 +1272,6 @@ export default function SiteVisitCategoryView({
               </div>
             )}
 
-            {/* Closed Deal Toggle Button */}
-            <button
-              onClick={() => {
-                setShowClosedDealsOnly(prev => !prev);
-                setCurrentPage(1);
-              }}
-              title={showClosedDealsOnly ? `Show all ${category} visits/deals` : `Show only closed deals for ${category}`}
-              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
-                showClosedDealsOnly
-                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs font-bold ring-2 ring-emerald-300'
-                  : 'bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs'
-              }`}
-            >
-              <CheckCircle2 size={14} className={showClosedDealsOnly ? 'text-white' : 'text-emerald-600'} />
-              <span>Closed Deal</span>
-              {closedDealsCount > 0 && (
-                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full leading-tight ${
-                  showClosedDealsOnly ? 'bg-white text-emerald-800' : 'bg-emerald-100 text-emerald-800'
-                }`}>
-                  {closedDealsCount}
-                </span>
-              )}
-            </button>
           </div>
 
           {/* Right: Search + Excel + Refresh + Reset */}
@@ -1351,25 +1338,13 @@ export default function SiteVisitCategoryView({
             </div>
             <div>
               <h3 className="text-sm font-bold text-gray-800">
-                {showClosedDealsOnly ? `No Closed Deals in ${category}` : `No ${category} ${isLastMeetingCol ? 'Meetings' : 'Visits'} Found`}
+                {`No ${category} ${isLastMeetingCol ? 'Meetings' : 'Visits'} Found`}
               </h3>
               <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                {showClosedDealsOnly
-                  ? `There are currently no closed won deals recorded for ${category}.`
-                  : `No site visit or meeting records match your current filter criteria for this category.`}
+                No site visit or meeting records match your current filter criteria for this category.
               </p>
             </div>
-            {showClosedDealsOnly ? (
-              <button
-                onClick={() => {
-                  setShowClosedDealsOnly(false);
-                  setDateFilter('today');
-                }}
-                className="px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-emerald-100 transition cursor-pointer"
-              >
-                Show All Visits / Deals
-              </button>
-            ) : isFilterActive && (
+            {isFilterActive && (
               <button
                 onClick={handleClearFilters}
                 className="px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-indigo-100 transition cursor-pointer"
