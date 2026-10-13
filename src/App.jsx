@@ -19,6 +19,7 @@ import MISReport from './pages/MISReport/MISReport';
 import NonInterested from './pages/NonInterested/NonInterested';
 import DealClosed from './pages/DealClosed/DealClosed';
 import Reception from './pages/Reception/Reception';
+import ReceptionistDashboard from './pages/Reception/ReceptionistDashboard';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import AccessGuard from './components/AccessGuard';
@@ -92,6 +93,7 @@ function App() {
             <Route path="customer-master" element={<AccessGuard pageKey="customerMaster"><Customermaster /></AccessGuard>} />
             <Route path="non-interested" element={<AccessGuard pageKey="nonInterested"><NonInterested /></AccessGuard>} />
             <Route path="deal-closed" element={<AccessGuard pageKey="dealClosed"><DealClosed /></AccessGuard>} />
+            <Route path="reception-dashboard" element={<AccessGuard pageKey="receptionDashboard"><ReceptionistDashboard /></AccessGuard>} />
             <Route path="reception" element={<AccessGuard pageKey="reception"><Reception /></AccessGuard>} />
             <Route path="products" element={<AccessGuard pageKey="products"><Products /></AccessGuard>} />
             <Route path="caller-report" element={<AccessGuard pageKey="callerReport"><CallerReport /></AccessGuard>} />

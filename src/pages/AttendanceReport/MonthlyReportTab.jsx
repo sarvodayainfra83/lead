@@ -6,7 +6,7 @@ import { authApi } from '../../api/authApi';
 import { masterApi } from '../../api/masterApi';
 import DataTable from '../../components/DataTable';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, isUserHR } from '../../utils/authUtils';
+import { isUserAdmin, isUserHR, isUserReceptionist } from '../../utils/authUtils';
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -71,7 +71,7 @@ const getEmployeeDepartment = (user) => {
 
 export default function MonthlyReportTab({ tabBar }) {
   const { user } = useAuthStore();
-  const isAdminOrHR = isUserAdmin(user) || isUserHR(user);
+  const isAdminOrHR = isUserAdmin(user) || isUserHR(user) || isUserReceptionist(user);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [reportRows, setReportRows] = useState([]);

@@ -63,17 +63,35 @@ export const isUserHR = (user) => {
 };
 
 /**
+ * Check if the given user has a Receptionist role or position (case-insensitive).
+ */
+export const isUserReceptionist = (user) => {
+  if (!user) return false;
+  const username = String(user.username || user.id || '').trim().toLowerCase();
+  const name = String(user.name || '').trim().toLowerCase();
+  const role = String(user.role || '').trim().toUpperCase();
+  return (
+    role === 'RECEPTIONIST' ||
+    hasPosition(user, 'Receptionist') ||
+    username === 'reception' ||
+    username === 'receptionist' ||
+    name === 'reception' ||
+    name === 'receptionist'
+  );
+};
+
+/**
  * Check if an item (lead, call tracker, customer record, or caller string)
  * is assigned to the current user.
  * 
  * Rules:
- * - If user is ADMIN: always returns true (can see all data).
+ * - If user is ADMIN or RECEPTIONIST: always returns true (can see all data on authorized pages).
  * - If user is regular USER: checks if callerAssigned, caller, or leadReceiver
  *   matches user.name or user.id (username), case-insensitively.
  */
 export const matchesUserAssignment = (itemOrCaller, user) => {
   if (!user) return false;
-  if (isUserAdmin(user)) return true;
+  if (isUserAdmin(user) || isUserReceptionist(user)) return true;
 
   const caller = typeof itemOrCaller === 'string'
     ? itemOrCaller
@@ -93,7 +111,7 @@ export const matchesUserAssignment = (itemOrCaller, user) => {
  */
 export const matchesUserReceiver = (lead, user) => {
   if (!user) return false;
-  if (isUserAdmin(user)) return true;
+  if (isUserAdmin(user) || isUserReceptionist(user)) return true;
 
   const receiver = (lead?.leadReceiver || '').trim().toLowerCase();
   const userNameNorm = (user.name || '').trim().toLowerCase();
@@ -108,15 +126,15 @@ export const matchesUserReceiver = (lead, user) => {
  * Check if a site-visit / meeting lead or assigned visitor record is assigned to the current user.
  * 
  * Rules:
- * - Only pure ADMIN role sees all records.
- * - All other accounts (including TESTER and regular USER): must strictly match the assigned visitor ID / visitor data.
+ * - ADMIN and RECEPTIONIST roles see all records on authorized pages.
+ * - All other accounts: must strictly match the assigned visitor ID / visitor data.
  */
 export const matchesUserVisitor = (item, user) => {
   if (!user) return false;
 
   const role = String(user.role || '').trim().toUpperCase();
-  // Only pure ADMIN role sees all records without visitor filtering
-  if (role === 'ADMIN') return true;
+  // ADMIN and RECEPTIONIST see all records without visitor filtering
+  if (role === 'ADMIN' || isUserReceptionist(user)) return true;
 
   const userKeys = [
     user.id,
@@ -229,7 +247,7 @@ export const getUserLeadCategories = (leadTypeStr) => {
  * Returns { categories: string[], category: string | null, leadTypeId: string | null } or null.
  */
 export const getUserLeadTypeScope = (user) => {
-  if (!user || isUserAdmin(user)) return null;
+  if (!user || isUserAdmin(user) || isUserReceptionist(user)) return null;
   const categories = getUserLeadCategories(user.leadType);
   if (categories.length > 0) {
     return {
@@ -276,13 +294,13 @@ export const matchesUserLeadType = (lead, user) => {
  * Check if a lead, tracker, customer record, or visitor record has ANY connection to the current user.
  * 
  * Rules:
- * - ADMIN / TESTER: always returns true (can view all data).
+ * - ADMIN / TESTER / RECEPTIONIST: always returns true (can view all data on authorized pages).
  * - Regular USER: returns true if they are the assigned caller, visitor, receiver,
  *   sales executive, creator, or mentioned in any call tracker / visitor follow-up.
  */
 export const matchesUserConnection = (item, user) => {
   if (!user) return false;
-  if (isUserAdmin(user) || isUserTester(user)) return true;
+  if (isUserAdmin(user) || isUserTester(user) || isUserReceptionist(user)) return true;
 
   if (matchesUserAssignment(item, user)) return true;
   if (matchesUserReceiver(item, user)) return true;
@@ -378,7 +396,7 @@ export const matchesUserConnection = (item, user) => {
 export const matchesAuthorizedUserForNonInterested = (item, user) => {
   if (!user) return false;
   const role = String(user.role || '').trim().toUpperCase();
-  if (role === 'ADMIN') return true;
+  if (role === 'ADMIN' || isUserReceptionist(user)) return true;
 
   if (!item || typeof item !== 'object') return false;
 
@@ -477,6 +495,8 @@ export const getPageAccess = (user, pageKey) => {
     } else {
       level = pages.siteVisitMeeting ?? pages.callTracker ?? 'view';
     }
+  } else if (pageKey === 'receptionDashboard') {
+    level = pages.receptionDashboard ?? pages.reception;
   } else {
     level = pages[pageKey];
   }
@@ -489,8 +509,13 @@ export const getPageAccess = (user, pageKey) => {
     return level === 'none' ? 'none' : 'full';
   }
 
-  // Receptionist position users default to full access for Reception page unless explicitly set to 'none'
-  if (hasPosition(user, 'Receptionist') && pageKey === 'reception') {
+  // Receptionist users always get full access to Reception & Reception Dashboard pages
+  if (isUserReceptionist(user) && (pageKey === 'reception' || pageKey === 'receptionDashboard')) {
+    return 'full';
+  }
+
+  // Receptionist users default to full access for Attendance Report unless explicitly set to 'none'
+  if (isUserReceptionist(user) && pageKey === 'attendanceReport') {
     return level === 'none' ? 'none' : 'full';
   }
 

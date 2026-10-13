@@ -35,7 +35,7 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { logout, user } = useAuthStore();
-  const { pendingLeadCount, siteVisitMeetingCount, callTrackerCount, customerCount, nonInterestedCount, pendingLeaveCount, refresh } = useBadgeCountStore();
+  const { pendingLeadCount, siteVisitMeetingCount, callTrackerCount, customerCount, nonInterestedCount, dealClosedCount, pendingLeaveCount, refresh } = useBadgeCountStore();
 
   useEffect(() => {
     refresh();
@@ -67,12 +67,13 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     { path: '/site-visit-meeting', icon: MapPin, label: isMeetingOnlyUser ? 'Meeting' : 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: siteVisitMeetingCount },
     { path: '/customer-master', icon: Users, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount },
     { path: '/non-interested', icon: UserX, label: 'Non-interested', pageKey: 'nonInterested', badgeCount: nonInterestedCount },
-    { path: '/deal-closed', icon: Handshake, label: 'Deal Closed', pageKey: 'dealClosed' },
+    { path: '/deal-closed', icon: Handshake, label: 'Deal Closed', pageKey: 'dealClosed', badgeCount: dealClosedCount },
     // { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
     { path: '/mis-report', icon: FileBarChart, label: 'MIS Report', pageKey: 'misReport' },
     { path: '/attendance', icon: Fingerprint, label: 'Attendance', pageKey: 'attendance' },
     { path: '/leave-requests', icon: CalendarClock, label: 'Leave Requests', pageKey: 'leaveRequests', badgeCount: pendingLeaveCount },
     { path: '/attendance-report', icon: ClipboardCheck, label: 'Attendance Report', pageKey: 'attendanceReport' },
+    { path: '/reception-dashboard', icon: UserCheck, label: 'Reception Dashboard', pageKey: 'receptionDashboard' },
     { path: '/reception', icon: Contact, label: 'Reception', pageKey: 'reception' },
     { path: '/products', icon: Layers, label: 'Products', pageKey: 'products' },
     { path: '/master', icon: Database, label: 'Master / Setting', pageKey: 'master' },

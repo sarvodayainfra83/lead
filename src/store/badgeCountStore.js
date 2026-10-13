@@ -16,6 +16,11 @@ import {
 
 const ALL_CATEGORIES = ['Real Estate', 'Insurance', 'Mutual Fund'];
 
+const isLockedStatus = (status) => {
+  const s = String(status || '').toLowerCase().trim();
+  return s === 'deal lock' || s === 'closed won' || s === 'closed' || s === 'deal closed';
+};
+
 // Same category partitioning as the Lead & Followup, Hot Customers and Non-interested tabs
 const isInCategory = (l, category) => {
   const type = (l.leadType || '').toLowerCase();
@@ -50,6 +55,7 @@ export const useBadgeCountStore = create((set) => ({
   callTrackerCount: 0,
   customerCount: 0,
   nonInterestedCount: 0,
+  dealClosedCount: 0,
   callerReportCount: 0,
   pendingLeaveCount: 0,
   loaded: false,
@@ -143,7 +149,8 @@ export const useBadgeCountStore = create((set) => ({
       ).length;
 
       // Site Visit / Meeting: every lead its tabs list — only ADMIN sees all, others their connected leads
-      const siteVisitMeetingCount = siteVisitMeetingApi.buildSiteVisitMeetingLeads(allLeads, allTrackers, allVisitors, allFollowUps)
+      const siteVisitMeetingLeads = siteVisitMeetingApi.buildSiteVisitMeetingLeads(allLeads, allTrackers, allVisitors, allFollowUps);
+      const siteVisitMeetingCount = siteVisitMeetingLeads
         .filter(l => (isStrictAdmin || matchesUserConnection(l, user)) && isVisible(l))
         .length;
 
@@ -156,6 +163,16 @@ export const useBadgeCountStore = create((set) => ({
       // Non-interested: leads marked Not Interested / Rejected in Call Tracker or Site Visit follow-ups
       const nonInterestedCount = nonInterestedApi.buildNonInterestedLeads(allLeads, allTrackers, allVisitors, allFollowUps)
         .filter(l => (isStrictAdmin || matchesAuthorizedUserForNonInterested(l, user)) && isVisible(l))
+        .length;
+
+      // Deal Closed badge: leads that have a closed deal (Deal Lock outcome or closed status)
+      const dealClosedCount = siteVisitMeetingLeads
+        .filter(l => {
+          const followUps = l.followUps || [];
+          const hasLockedFollowUp = followUps.some(f => isLockedStatus(f.status));
+          if (!hasLockedFollowUp && !isLockedStatus(l.status)) return false;
+          return (isAdmin || matchesUserConnection(l, user)) && isVisible(l);
+        })
         .length;
 
       // Distinct leads with call activity in caller report
@@ -171,6 +188,7 @@ export const useBadgeCountStore = create((set) => ({
         callTrackerCount,
         customerCount,
         nonInterestedCount,
+        dealClosedCount,
         callerReportCount,
         pendingLeaveCount,
         loaded: true

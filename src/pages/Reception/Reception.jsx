@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
@@ -28,20 +29,22 @@ import {
 
 export default function Reception() {
   const { user } = useAuthStore();
+  const location = useLocation();
+  const initFilters = location.state || {};
   const isAdmin = isUserAdmin(user);
   const canEdit = hasFullAccess(user, 'reception') || isAdmin;
 
   const [visitors, setVisitors] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filter States
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dateFilter, setDateFilter] = useState('today');
+  // Filter States (initialized from location.state if navigated with params)
+  const [searchQuery, setSearchQuery] = useState(initFilters.searchQuery || '');
+  const [dateFilter, setDateFilter] = useState(initFilters.dateFilter || 'today');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [purposeFilter, setPurposeFilter] = useState('all');
-  const [locationFilter, setLocationFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(initFilters.statusFilter || 'all');
+  const [purposeFilter, setPurposeFilter] = useState(initFilters.purposeFilter || 'all');
+  const [locationFilter, setLocationFilter] = useState(initFilters.locationFilter || 'all');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -82,6 +85,20 @@ export default function Reception() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Sync state if navigated with filters from Receptionist Dashboard
+  useEffect(() => {
+    if (location.state) {
+      if (location.state.dateFilter !== undefined) setDateFilter(location.state.dateFilter);
+      if (location.state.statusFilter !== undefined) setStatusFilter(location.state.statusFilter);
+      if (location.state.purposeFilter !== undefined) setPurposeFilter(location.state.purposeFilter);
+      if (location.state.locationFilter !== undefined) setLocationFilter(location.state.locationFilter);
+      if (location.state.searchQuery !== undefined) setSearchQuery(location.state.searchQuery);
+      if (location.state.openNewModal) setIsNewModalOpen(true);
+      if (location.state.openReports) setIsReportsOpen(true);
+      setCurrentPage(1);
+    }
+  }, [location.state]);
 
   // Real-time Dashboard KPI stats (calculated from all actual visitor records)
   const stats = useMemo(() => {

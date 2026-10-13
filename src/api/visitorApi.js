@@ -303,6 +303,20 @@ export const visitorApi = {
     let meetingsToday = 0;
     let siteVisitsToday = 0;
     let awaitingCheckout = 0;
+    let checkedOutToday = 0;
+
+    const todayPurposeCounts = {
+      Meeting: 0,
+      'Site Visit': 0,
+      'Supply Item': 0,
+      Broking: 0,
+      Other: 0
+    };
+
+    const todayLocationCounts = {
+      Office: 0,
+      'Construction Site': 0
+    };
 
     const purposeCounts = {
       Meeting: 0,
@@ -320,13 +334,28 @@ export const visitorApi = {
     const employeeVisits = {};
 
     visitors.forEach(v => {
+      if (v.status === 'CANCELLED') return;
       const isToday = isDateToday(v.checkInAt);
       const isInside = v.status === 'CHECKED_IN';
+      const isCheckedOut = v.status === 'CHECKED_OUT';
 
       if (isToday) {
         totalToday++;
         if (v.visitPurpose === 'Meeting') meetingsToday++;
         if (v.visitPurpose === 'Site Visit') siteVisitsToday++;
+        if (isCheckedOut) checkedOutToday++;
+
+        // Purpose breakdown for today
+        const p = v.visitPurpose || 'Other';
+        if (todayPurposeCounts[p] !== undefined) {
+          todayPurposeCounts[p]++;
+        } else {
+          todayPurposeCounts.Other++;
+        }
+
+        // Location breakdown for today
+        const loc = v.visitLocation === 'Construction Site' ? 'Construction Site' : 'Office';
+        todayLocationCounts[loc] = (todayLocationCounts[loc] || 0) + 1;
       }
 
       if (isInside) {
@@ -334,7 +363,7 @@ export const visitorApi = {
         awaitingCheckout++;
       }
 
-      // Purpose breakdown (for today or all time)
+      // Purpose breakdown (all time)
       const p = v.visitPurpose || 'Other';
       if (purposeCounts[p] !== undefined) {
         purposeCounts[p]++;
@@ -342,7 +371,7 @@ export const visitorApi = {
         purposeCounts.Other++;
       }
 
-      // Location breakdown
+      // Location breakdown (all time)
       const loc = v.visitLocation === 'Construction Site' ? 'Construction Site' : 'Office';
       locationCounts[loc] = (locationCounts[loc] || 0) + 1;
 
@@ -357,6 +386,9 @@ export const visitorApi = {
       meetingsToday,
       siteVisitsToday,
       awaitingCheckout,
+      checkedOutToday,
+      todayPurposeCounts,
+      todayLocationCounts,
       purposeCounts,
       locationCounts,
       employeeVisits

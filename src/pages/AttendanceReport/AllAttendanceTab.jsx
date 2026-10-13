@@ -11,7 +11,7 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import PhotoViewModal from '../Attendance/PhotoViewModal';
 import AttendanceModal from '../Attendance/AttendanceModal';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, isUserHR, hasFullAccess, isAdminOnlyAttendanceUser } from '../../utils/authUtils';
+import { isUserAdmin, isUserHR, isUserReceptionist, hasFullAccess, isAdminOnlyAttendanceUser } from '../../utils/authUtils';
 
 const STATUS_BADGES = {
   PRESENT: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -75,7 +75,7 @@ const formatTimeDisplay = (rawTime) => {
  */
 export default function AllAttendanceTab({ tabBar, scope = 'all', showMarkButton = false }) {
   const { user } = useAuthStore();
-  const isAdminOrHR = isUserAdmin(user) || isUserHR(user);
+  const isAdminOrHR = isUserAdmin(user) || isUserHR(user) || isUserReceptionist(user);
   const canMark = showMarkButton && hasFullAccess(user, 'attendance');
   const isTodayScope = scope === 'today';
   // Excel export is for the ADMIN role only
@@ -216,7 +216,9 @@ export default function AllAttendanceTab({ tabBar, scope = 'all', showMarkButton
         } else if (statusUpper === 'OUT') {
           grouped[key].outTimes.push({ time: log.outTime || timeStr, ms: log.timestampMs || 0 });
           if (log.outPhotoUrl || log.photoUrl) grouped[key].outPhotoUrl = log.outPhotoUrl || log.photoUrl;
-          if (log.outLocationName || log.locationName) grouped[key].outLocationName = log.outLocationName || log.locationName;
+          if (log.outLocationName) grouped[key].outLocationName = log.outLocationName;
+          if (log.outLatitude) grouped[key].outLatitude = log.outLatitude;
+          if (log.outLongitude) grouped[key].outLongitude = log.outLongitude;
         } else {
           // Half Day or other status
           if (log.inTime) grouped[key].inTimes.push({ time: log.inTime, ms: log.timestampMs || 0 });
@@ -283,6 +285,9 @@ export default function AllAttendanceTab({ tabBar, scope = 'all', showMarkButton
           locationName: group.locationName || group.outLocationName,
           latitude: group.latitude,
           longitude: group.longitude,
+          outLatitude: group.outLatitude,
+          outLongitude: group.outLongitude,
+          outLocationName: group.outLocationName,
           workingHours,
           status,
           sortMs: group.latestTimestampMs

@@ -24,6 +24,7 @@ const APP_PAGES = [
   { key: 'attendance', label: 'Attendance' },
   { key: 'attendanceReport', label: 'Attendance Report' },
   { key: 'leaveRequests', label: 'Leave Requests' },
+  { key: 'receptionDashboard', label: 'Reception Dashboard' },
   { key: 'reception', label: 'Reception / Visitors' },
   { key: 'master', label: 'Master / Setting' }
 ];

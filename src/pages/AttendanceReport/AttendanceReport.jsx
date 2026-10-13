@@ -5,13 +5,15 @@ import MonthlyReportTab from './MonthlyReportTab';
 import LeaveRequestsTab from '../Attendance/LeaveRequestsTab';
 import PageTabs from '../../components/PageTabs';
 import { useAuthStore } from '../../store/authStore';
-import { isAdminOnlyAttendanceUser } from '../../utils/authUtils';
+import { isAdminOnlyAttendanceUser, isUserReceptionist, isUserHR } from '../../utils/authUtils';
 import { leaveRequestApi } from '../../api/leaveRequestApi';
 
 export default function AttendanceReport() {
   const { user } = useAuthStore();
   const isAdminView = isAdminOnlyAttendanceUser(user);
-  const [activeTab, setActiveTab] = useState(isAdminView ? 'today' : 'all');
+  const isReception = isUserReceptionist(user);
+  const isHR = isUserHR(user);
+  const [activeTab, setActiveTab] = useState((isAdminView || isReception || isHR) ? 'today' : 'all');
 
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [leavesLoading, setLeavesLoading] = useState(false);
@@ -37,6 +39,12 @@ export default function AttendanceReport() {
       { key: 'today', label: "Today's", icon: CalendarCheck },
       { key: 'all', label: 'All', icon: FileText },
       { key: 'leaves', label: 'Leave Requests', icon: CalendarDays }
+    ]
+    : (isReception || isHR)
+    ? [
+      { key: 'today', label: "Today's", icon: CalendarCheck },
+      { key: 'all', label: 'All Attendance', icon: FileText },
+      { key: 'monthly', label: 'Monthly Report', icon: BarChart2 }
     ]
     : [
       { key: 'all', label: 'All Attendance', icon: FileText },
