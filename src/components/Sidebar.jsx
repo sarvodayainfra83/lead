@@ -100,6 +100,18 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
       const [receptionDashItem] = menuItems.splice(receptionDashIndex, 1);
       menuItems.unshift(receptionDashItem);
     }
+  } else if (isUserAdmin(user)) {
+    // For Admin role: keep Reception Dashboard beneath Dashboard
+    const receptionDashIndex = menuItems.findIndex(i => i.pageKey === 'receptionDashboard');
+    if (receptionDashIndex >= 0) {
+      const [receptionDashItem] = menuItems.splice(receptionDashIndex, 1);
+      const dashIndex = menuItems.findIndex(i => i.pageKey === 'dashboard');
+      if (dashIndex >= 0) {
+        menuItems.splice(dashIndex + 1, 0, receptionDashItem);
+      } else {
+        menuItems.unshift(receptionDashItem);
+      }
+    }
   }
 
   return (
