@@ -150,7 +150,7 @@ function DealDetailsModal({ deal, onClose }) {
           <Section icon={Briefcase} title="Lead Details">
             <Field label="Lead No" value={deal.leadNo} />
             <Field label="Lead Source" value={deal.leadSource} />
-            <Field label="Referencer Name" value={deal.referencerName} />
+            <Field label="Reference Name" value={deal.referencerName || deal.referenceName} />
             <Field label="Lead Receiver / RM" value={deal.leadReceiver || deal.relationshipManager} />
             <Field label="Caller Assigned" value={deal.callerAssigned} />
             <Field label="Lead Created On" value={deal.timestamp ? formatDate(deal.timestamp) : ''} />
@@ -216,8 +216,27 @@ export default function DealClosed() {
       const rows = (leads || [])
         .map(lead => {
           const followUps = lead.followUps || [];
-          const dealFollowUp = [...followUps].reverse().find(f => isLockedStatus(f.status)) || null;
-          if (!dealFollowUp && !isLockedStatus(lead.status)) return null;
+          const sortedFollowUps = [...followUps].sort((a, b) => logMs(a) - logMs(b));
+          const latestFollowUp = sortedFollowUps.length > 0 ? sortedFollowUps[sortedFollowUps.length - 1] : null;
+
+          // Page depend and counts depends only on the last follow up status in site visit page
+          // or if there is no site visit then followup status from Leads&Followups or calls only
+          let lastStatus = null;
+          if (latestFollowUp?.status) {
+            lastStatus = latestFollowUp.status;
+          } else if (lead.latestTracker?.status) {
+            lastStatus = lead.latestTracker.status;
+          } else {
+            lastStatus = lead.status || '';
+          }
+
+          // Deal lock or deal closed will only be counted or shown inside Deal closed page
+          // only when the last status is Deal Closed / Deal Lock
+          if (!isLockedStatus(lastStatus)) {
+            return null;
+          }
+
+          const dealFollowUp = latestFollowUp || null;
           const deal = dealFollowUp || lead;
           const closedMs = dealFollowUp ? logMs(dealFollowUp) : (new Date(lead.lastUpdated || 0).getTime() || 0);
           return {
@@ -347,7 +366,7 @@ export default function DealClosed() {
       'Deal Remarks': d.dealRemarks || '-',
       'Customer Status': d.customerStatus || '-',
       'Lead Source': d.leadSource || '-',
-      'Referencer Name': d.referencerName || '-',
+      'Reference Name': d.referencerName || d.referenceName || '-',
       'Lead Receiver / RM': d.leadReceiver || d.relationshipManager || '-',
       'Caller Assigned': d.callerAssigned || '-',
       'Total Follow-ups': (d.followUps || []).length,

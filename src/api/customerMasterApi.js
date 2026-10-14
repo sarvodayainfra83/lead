@@ -107,18 +107,21 @@ export const customerMasterApi = {
         // Effective customer status across trackers and visitor follow-ups
         const customerStatus = getEffectiveCustomerStatus(leadTrackers, leadFollowUps, lead.id, lead.leadNo);
         const isRejected = isFollowUpRejected(latestFollowUp);
-        const isDealClosed = isDealLockStatus(lead.status) || leadFollowUps.some(f => isDealLockStatus(f.status));
 
-        // Determine active status: pick status from the most recent interaction
         const latestFollowUpMs = latestFollowUp ? (Number(latestFollowUp.timestampMs) || (latestFollowUp.createdAt ? new Date(latestFollowUp.createdAt).getTime() : 0)) : 0;
         const latestTrackerMs = latestTracker ? (Number(latestTracker.timestampMs) || 0) : 0;
 
-        let activeStatus = lead.status || null;
-        if (latestFollowUpMs >= latestTrackerMs && latestFollowUp?.status) {
+        // Page depend and counts depends only on the last follow up status in site visit page
+        // or if there is no site visit then followup status from Leads&Followups or calls only
+        let activeStatus = null;
+        if (latestFollowUp?.status) {
           activeStatus = latestFollowUp.status;
         } else if (latestTracker?.status) {
           activeStatus = latestTracker.status;
+        } else {
+          activeStatus = lead.status || null;
         }
+        const isDealClosed = isDealLockStatus(activeStatus);
 
         return {
           ...lead,

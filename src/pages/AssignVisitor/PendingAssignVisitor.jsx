@@ -223,7 +223,7 @@ export default function PendingAssignVisitor({ tabBar, onRefresh }) {
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{formatDisplayDate(item.leadDate || item.timestamp || item.date || item.created_at)}</td>
       <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.referencerName || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.referencerName || item.referenceName || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.productType || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.insuranceSubType || '-'}</td>
@@ -276,7 +276,7 @@ export default function PendingAssignVisitor({ tabBar, onRefresh }) {
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Reference Name</p>
-          <p className="text-gray-700 truncate leading-tight">{item.referencerName || '-'}</p>
+          <p className="text-gray-700 truncate leading-tight">{item.referencerName || item.referenceName || '-'}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Product Type</p>

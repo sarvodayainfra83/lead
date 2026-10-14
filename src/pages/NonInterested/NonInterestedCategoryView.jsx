@@ -550,6 +550,8 @@ export default function NonInterestedCategoryView({
     const details = [];
     if (isValid(item.email || item.customerEmail)) details.push({ label: 'Email', value: item.email || item.customerEmail, icon: Mail, isEmail: true });
     if (isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
+    if (isValid(item.leadSource)) details.push({ label: 'Lead Source', value: item.leadSource, icon: FileText });
+    if (isValid(item.referencerName || item.referenceName)) details.push({ label: 'Reference Name', value: item.referencerName || item.referenceName, icon: UserCheck });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget || item.budget)) details.push({ label: 'Budget', value: item.investmentBudget || item.budget, icon: IndianRupee });
     if (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });

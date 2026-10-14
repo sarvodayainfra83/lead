@@ -22,6 +22,7 @@ import { tomorrowInputDate } from '../CallTracker/callTrackerConstants';
 import { buildShareClient } from '../../utils/productShare';
 
 const VISITOR_STATUS_OPTIONS = [
+  'Interested',
   'Deal Lock',
   'Future Plan',
   'Revisit',
@@ -105,6 +106,7 @@ const getLeadFieldVal = (lead, key) => {
   if (key === 'location') return lead.location || lead.customerAddress || '-';
   if (key === 'leadReceiver') return lead.leadReceiver || lead.relationshipManager || lead.callerAssigned || '-';
   if (key === 'callerAssigned') return lead.callerAssigned || lead.leadReceiver || '-';
+  if (key === 'referencerName' || key === 'referenceName') return lead.referencerName || lead.referenceName || '-';
   if (key === 'lastEvent') return getLastEvent(lead);
   return lead[key] || '-';
 };
@@ -140,6 +142,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     customerStatus: 'Warm',
     whatHappened: '',
     nextVisitDate: '',
+    nextVisitTime: '',
     // Product / Requirement Details
     requirement: '',
     requirementOption: '',
@@ -250,6 +253,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         customerStatus: resolveInitialCustomerStatus(lead),
         whatHappened: '',
         nextVisitDate: formatInputDate(lead.nextVisitDate || ''),
+        nextVisitTime: lead.nextVisitTime || lead.nextMeetingTime || lead.nextCallTime || '',
         requirement: reqValue,
         requirementOption: reqValue,
         customRequirement: '',
@@ -462,6 +466,10 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
   const scheduledInput = formatInputDate(lead?.meetingDate || lead?.visitDate || '');
   const nextDateAfter = !isNoContact && scheduledInput > todayInput ? scheduledInput : todayInput;
   const minNextDate = (() => {
+    // For Future Plan, allow today onwards
+    if (isFuturePlan) {
+      return todayInput;
+    }
     const [y, m, d] = nextDateAfter.split('-').map(Number);
     return formatInputDate(new Date(y, m - 1, d + 1));
   })();
@@ -490,9 +498,18 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
       return;
     }
 
-    if (needsNextDate && formatInputDate(formData.nextVisitDate) <= nextDateAfter) {
-      toast.error(`${isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Meeting Date' : 'Next date')} must be after ${formatDisplayDate(nextDateAfter)}`);
-      return;
+    if (needsNextDate) {
+      if (isFuturePlan) {
+        if (formatInputDate(formData.nextVisitDate) < todayInput) {
+          toast.error(`${isMeetingLead ? 'Followup Date' : 'Next date'} cannot be in the past`);
+          return;
+        }
+      } else {
+        if (formatInputDate(formData.nextVisitDate) <= nextDateAfter) {
+          toast.error(`${isMeetingLead && isRevisit ? 'Meeting Date' : 'Next date'} must be after ${formatDisplayDate(nextDateAfter)}`);
+          return;
+        }
+      }
     }
 
     let finalProductType = formData.productType;
@@ -593,6 +610,9 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         interestLevel: formData.customerStatus || 'Warm',
         whatHappened: formData.whatHappened.trim(),
         nextVisitDate: needsNextDate ? formData.nextVisitDate : null,
+        nextVisitTime: needsNextDate ? (formData.nextVisitTime || null) : null,
+        next_visit_date: needsNextDate ? formData.nextVisitDate : null,
+        next_visit_time: needsNextDate ? (formData.nextVisitTime || null) : null,
         dealOutcome: formData.status === 'Not Interested'
           ? 'Rejected (Lost)'
           : (isCloseDeal ? 'Closed (Won)' : null),
@@ -954,22 +974,39 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
           {needsNextDate && (
             <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 space-y-2">
               <h4 className="font-bold text-purple-800 text-xs flex items-center gap-1.5">
-                <Clock size={14} /> {isNoContact ? 'Next Call / Follow-up Date' : (isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Remeeting' : `Next ${visitWord} / Follow-up Schedule`))}
+                <Clock size={14} /> {isNoContact ? 'Next Call / Follow-up Date' : (isMeetingLead && isFuturePlan ? 'Followup Date & Time' : (isMeetingLead && isRevisit ? 'Remeeting' : `Next ${visitWord} / Follow-up Schedule`))}
               </h4>
-              <div>
-                <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
-                  {isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Meeting Date' : 'Next Scheduled Date')} <span className="text-red-500">*</span>
-                </label>
-                <div className="relative max-w-xs">
-                  <input
-                    type="date"
-                    value={formData.nextVisitDate}
-                    min={minNextDate}
-                    onChange={(e) => handleChange('nextVisitDate', e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-                    required
-                  />
-                  <Calendar size={14} className="absolute left-3 top-2 text-gray-400 pointer-events-none" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
+                    {isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Meeting Date' : 'Next Scheduled Date')} <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={formData.nextVisitDate}
+                      min={minNextDate}
+                      onChange={(e) => handleChange('nextVisitDate', e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 cursor-pointer"
+                      required
+                    />
+                    <Calendar size={14} className="absolute left-3 top-2 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
+                    {isMeetingLead ? 'Followup Time' : 'Time'} <span className="text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="time"
+                      value={formData.nextVisitTime || ''}
+                      onChange={(e) => handleChange('nextVisitTime', e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 cursor-pointer [color-scheme:light]"
+                    />
+                    <Clock size={14} className="absolute left-3 top-2 text-gray-400 pointer-events-none" />
+                  </div>
                 </div>
               </div>
               {/* Insurance / Mutual Fund Remeeting: Online or Offline meeting */}

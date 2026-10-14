@@ -188,7 +188,7 @@ export const nonInterestedApi = {
         leadNo: lead.leadNo || '',
         leadType: lead.leadType || '',
         leadSource: lead.leadSource || '',
-        referencerName: lead.referencerName || '',
+        referencerName: lead.referencerName || lead.referenceName || '',
         productType: lead.productType || '',
         requirement: lead.requirement || '',
         insuranceSubType: lead.insuranceSubType || '',

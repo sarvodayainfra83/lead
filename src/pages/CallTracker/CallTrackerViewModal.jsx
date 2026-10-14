@@ -215,10 +215,11 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
     });
   }
 
-  if (isValid(lead.referencerName)) {
+  const refName = lead.referencerName || lead.referenceName;
+  if (isValid(refName) || (lead.leadSource && String(lead.leadSource).toLowerCase().includes('reference'))) {
     fields.push({
-      label: 'Referencer Name',
-      value: formatVal(lead.referencerName),
+      label: 'Reference Name',
+      value: formatVal(refName),
       icon: User
     });
   }

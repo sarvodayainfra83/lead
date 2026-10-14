@@ -48,6 +48,7 @@ const initialFormData = {
   customerStatus: '',
   customerSaid: '',
   nextCallDate: '',
+  nextCallTime: '',
   siteVisited: false,
   meeting: true,
   dealStatus: 'Pending',
@@ -1198,6 +1199,20 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                 <DateInput
                   value={formData.nextCallDate}
                   onChange={(e) => handleChange('nextCallDate', e.target.value)}
+                  className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
+                />
+              </div>
+            )}
+
+            {formData.status === 'Future Plan Date' && (
+              <div className="space-y-1 col-span-1 animate-in fade-in duration-200">
+                <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
+                  Time (Optional)
+                </label>
+                <input
+                  type="time"
+                  value={formData.nextCallTime || ''}
+                  onChange={(e) => handleChange('nextCallTime', e.target.value)}
                   className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
                 />
               </div>

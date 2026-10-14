@@ -368,14 +368,7 @@ export default function NewVisitorModal({ isOpen, onClose, onSaved }) {
               required
               max={getTodayDateStr()}
               value={formData.checkInDate}
-              onChange={(e) => {
-                const val = e.target.value;
-                handleChange('checkInDate', val);
-                if (val && val < getTodayDateStr()) {
-                  // If previous date selected, set checkOutDate to match it by default
-                  handleChange('checkOutDate', val);
-                }
-              }}
+              onChange={(e) => handleChange('checkInDate', e.target.value)}
               className="w-full bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
             />
             {!isTodayEntry && (
@@ -688,7 +681,7 @@ export default function NewVisitorModal({ isOpen, onClose, onSaved }) {
                 autoFocus
                 value={formData.adminName}
                 onChange={(e) => handleChange('adminName', e.target.value)}
-                placeholder="Enter Admin Name (e.g. Rajesh, Vikram)..."
+                placeholder="Enter Admin Name (e.g. Manish, Kashyap)..."
                 className="w-full border border-indigo-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs font-medium text-gray-800"
               />
               <p className="text-[10px] text-indigo-700/90 mt-1">

@@ -8,11 +8,10 @@ import {
   VISITOR_STATUS_MAP,
   PURPOSE_STYLES,
   formatVisitorDate,
-  formatVisitorTime,
-  getVisitDuration
+  formatVisitorTime
 } from './receptionConstants';
 
-export default function VisitorDetailsModal({ isOpen, onClose, visitor, onCheckOutClick }) {
+export default function VisitorDetailsModal({ isOpen, onClose, visitor }) {
   if (!isOpen || !visitor) return null;
 
   const statusConfig = VISITOR_STATUS_MAP[visitor.status] || {
@@ -22,7 +21,6 @@ export default function VisitorDetailsModal({ isOpen, onClose, visitor, onCheckO
   };
 
   const cleanPhone = String(visitor.mobileNumber || '').replace(/[^0-9]/g, '');
-  const duration = getVisitDuration(visitor.checkInAt, visitor.checkOutAt);
 
   const handleWhatsApp = () => {
     if (!cleanPhone) return;
@@ -52,13 +50,9 @@ export default function VisitorDetailsModal({ isOpen, onClose, visitor, onCheckO
           </div>
 
           <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${statusConfig.color}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dotColor}`} />
-              {statusConfig.label}
-            </span>
             <button
               onClick={onClose}
-              className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition"
+              className="p-1 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
               aria-label="Close"
             >
               <X size={18} />
@@ -151,42 +145,31 @@ export default function VisitorDetailsModal({ isOpen, onClose, visitor, onCheckO
             </div>
           </div>
 
-          {/* Timeline & Durations */}
+          {/* Arrival / Registration Log */}
           <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
             <h4 className="text-[11px] uppercase font-bold text-slate-700 tracking-wider flex items-center gap-1.5">
-              <Clock size={13} className="text-slate-500" />
-              <span>Visit Timeline</span>
+              <Calendar size={13} className="text-slate-500" />
+              <span>Visit Registration Log</span>
             </h4>
 
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="p-2 bg-white rounded-lg border border-gray-200">
-                <span className="text-[10px] text-gray-400 uppercase font-semibold block">Check-In</span>
+            <div className="grid grid-cols-2 gap-2 text-center text-xs">
+              <div className="p-2.5 bg-white rounded-lg border border-gray-200">
+                <span className="text-[10px] text-gray-400 uppercase font-semibold block">Visit Date</span>
+                <span className="font-bold text-gray-800 mt-0.5 block">{formatVisitorDate(visitor.checkInAt)}</span>
+              </div>
+
+              <div className="p-2.5 bg-white rounded-lg border border-gray-200">
+                <span className="text-[10px] text-gray-400 uppercase font-semibold block">Arrival Time</span>
                 <span className="font-bold text-gray-800 mt-0.5 block">{formatVisitorTime(visitor.checkInAt)}</span>
-                <span className="text-[9.5px] text-gray-500 block">{formatVisitorDate(visitor.checkInAt)}</span>
-                {visitor.checkedInBy && (
-                  <span className="text-[9px] text-indigo-600 block truncate" title={`By ${visitor.checkedInBy}`}>by {visitor.checkedInBy}</span>
-                )}
-              </div>
-
-              <div className="p-2 bg-white rounded-lg border border-gray-200">
-                <span className="text-[10px] text-gray-400 uppercase font-semibold block">Check-Out</span>
-                <span className="font-bold text-gray-800 mt-0.5 block">
-                  {visitor.checkOutAt ? formatVisitorTime(visitor.checkOutAt) : 'Still Inside'}
-                </span>
-                <span className="text-[9.5px] text-gray-500 block">
-                  {visitor.checkOutAt ? formatVisitorDate(visitor.checkOutAt) : '-'}
-                </span>
-                {visitor.checkedOutBy && (
-                  <span className="text-[9px] text-emerald-600 block truncate" title={`By ${visitor.checkedOutBy}`}>by {visitor.checkedOutBy}</span>
-                )}
-              </div>
-
-              <div className="p-2 bg-white rounded-lg border border-gray-200">
-                <span className="text-[10px] text-gray-400 uppercase font-semibold block">Total Duration</span>
-                <span className="font-extrabold text-indigo-700 mt-1 text-sm block">{duration}</span>
-                <span className="text-[9.5px] text-gray-400 block">{visitor.status === 'CHECKED_IN' ? 'In progress' : 'Completed'}</span>
               </div>
             </div>
+
+            {visitor.checkedInBy && (
+              <div className="pt-1 text-center">
+                <span className="text-[10px] text-gray-500">Registered by receptionist: </span>
+                <span className="text-[10px] font-bold text-indigo-700">{visitor.checkedInBy}</span>
+              </div>
+            )}
           </div>
 
           {/* Remarks */}
@@ -199,28 +182,14 @@ export default function VisitorDetailsModal({ isOpen, onClose, visitor, onCheckO
         </div>
 
         {/* Footer Actions */}
-        <div className="flex-shrink-0 px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+        <div className="flex-shrink-0 px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg transition"
+            className="px-4 py-1.5 text-xs font-semibold text-gray-600 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg transition cursor-pointer"
           >
             Close
           </button>
-
-          {visitor.status === 'CHECKED_IN' && onCheckOutClick && (
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onCheckOutClick(visitor);
-              }}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition active:scale-95"
-            >
-              <LogOut size={13} />
-              <span>Check Out Visitor</span>
-            </button>
-          )}
         </div>
       </div>
     </div>,

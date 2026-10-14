@@ -93,12 +93,22 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     !(item.adminOnly && !isUserAdmin(user))
   );
 
-  // For Receptionist users, keep Reception Dashboard at the top of the menu
+  // For Receptionist users, keep Reception Dashboard at the top and Reception above Attendance
   if (isUserReceptionist(user)) {
     const receptionDashIndex = menuItems.findIndex(i => i.pageKey === 'receptionDashboard');
-    if (receptionDashIndex > 0) {
+    if (receptionDashIndex >= 0) {
       const [receptionDashItem] = menuItems.splice(receptionDashIndex, 1);
       menuItems.unshift(receptionDashItem);
+    }
+    const receptionIndex = menuItems.findIndex(i => i.pageKey === 'reception');
+    if (receptionIndex >= 0) {
+      const [receptionItem] = menuItems.splice(receptionIndex, 1);
+      const dashIndex = menuItems.findIndex(i => i.pageKey === 'receptionDashboard');
+      if (dashIndex >= 0) {
+        menuItems.splice(dashIndex + 1, 0, receptionItem);
+      } else {
+        menuItems.unshift(receptionItem);
+      }
     }
   } else if (isUserAdmin(user)) {
     // For Admin role: keep Reception Dashboard beneath Dashboard

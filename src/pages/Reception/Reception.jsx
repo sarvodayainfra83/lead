@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import NewVisitorModal from './NewVisitorModal';
-import CheckOutModal from './CheckOutModal';
 import VisitorDetailsModal from './VisitorDetailsModal';
 import EditVisitorModal from './EditVisitorModal';
 import ReceptionReportsModal from './ReceptionReportsModal';
@@ -52,7 +51,6 @@ export default function Reception() {
 
   // Modals
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [checkoutVisitor, setCheckoutVisitor] = useState(null);
   const [detailsVisitor, setDetailsVisitor] = useState(null);
   const [editVisitor, setEditVisitor] = useState(null);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
@@ -256,14 +254,10 @@ export default function Reception() {
       'Person to Meet': item.personToMeetName || '-',
       'Department': item.department || '-',
       'Person Actually Met': item.personActuallyMetName || item.personToMeetName || '-',
-      'Check-In Date': formatVisitorDate(item.checkInAt),
-      'Check-In Time': formatVisitorTime(item.checkInAt),
-      'Check-Out Date': item.checkOutAt ? formatVisitorDate(item.checkOutAt) : '-',
-      'Check-Out Time': item.checkOutAt ? formatVisitorTime(item.checkOutAt) : 'Inside',
-      'Duration': getVisitDuration(item.checkInAt, item.checkOutAt),
-      'Status': item.status === 'CHECKED_IN' ? 'Checked In' : (item.status === 'CHECKED_OUT' ? 'Checked Out' : 'Cancelled'),
+      'Visit Date': formatVisitorDate(item.checkInAt),
+      'Arrival Time': formatVisitorTime(item.checkInAt),
+      'Status': item.status === 'CANCELLED' ? 'Cancelled' : 'Registered',
       'Checked-In By': item.checkedInBy || '-',
-      'Checked-Out By': item.checkedOutBy || '-',
       'Remarks': item.remarks || '-'
     }));
 
@@ -273,12 +267,6 @@ export default function Reception() {
     const filename = `Visitor_Register_${new Date().toISOString().split('T')[0]}.xlsx`;
     XLSX.writeFile(workbook, filename);
     toast.success('Visitor register exported to Excel');
-  };
-
-  // Check-out handler
-  const handleConfirmCheckout = async (visitorId, payload) => {
-    await visitorApi.checkOutVisitor(visitorId, payload, user);
-    loadData();
   };
 
   // Edit save handler
@@ -332,7 +320,7 @@ export default function Reception() {
       >
         {/* Action column */}
         <td className="px-2 py-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-center gap-1">
+          <div className="flex items-center justify-center">
             {/* View Details */}
             <button
               onClick={() => setDetailsVisitor(item)}
@@ -342,18 +330,6 @@ export default function Reception() {
             >
               <Eye size={13} />
             </button>
-
-            {/* Edit button */}
-            {canEdit && (
-              <button
-                onClick={() => setEditVisitor(item)}
-                title="Edit visitor details"
-                aria-label="Edit"
-                className="w-7 h-7 inline-flex items-center justify-center rounded-md bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-600 hover:text-white transition active:scale-95 cursor-pointer"
-              >
-                <Pencil size={12} />
-              </button>
-            )}
           </div>
         </td>
 
@@ -595,24 +571,6 @@ export default function Reception() {
             >
               View
             </button>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => setEditVisitor(item)}
-                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition active:scale-95 cursor-pointer"
-              >
-                Edit
-              </button>
-            )}
-            {canEdit && isInside && (
-              <button
-                type="button"
-                onClick={() => setCheckoutVisitor(item)}
-                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition active:scale-95 cursor-pointer shadow-2xs"
-              >
-                Check Out
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -867,7 +825,14 @@ export default function Reception() {
           {/* Date Filter Dropdown */}
           <select
             value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
+            onChange={(e) => {
+              setDateFilter(e.target.value);
+              setPurposeFilter('all');
+              setLocationFilter('all');
+              setStatusFilter('all');
+              setSearchQuery('');
+              setCurrentPage(1);
+            }}
             className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
           >
             {DATE_FILTER_OPTIONS.map(opt => (
@@ -977,21 +942,11 @@ export default function Reception() {
         />
       )}
 
-      {checkoutVisitor && (
-        <CheckOutModal
-          isOpen={Boolean(checkoutVisitor)}
-          onClose={() => setCheckoutVisitor(null)}
-          visitor={checkoutVisitor}
-          onConfirm={handleConfirmCheckout}
-        />
-      )}
-
       {detailsVisitor && (
         <VisitorDetailsModal
           isOpen={Boolean(detailsVisitor)}
           onClose={() => setDetailsVisitor(null)}
           visitor={detailsVisitor}
-          onCheckOutClick={(v) => setCheckoutVisitor(v)}
         />
       )}
 

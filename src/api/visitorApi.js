@@ -109,10 +109,11 @@ export const visitorApi = {
   },
 
   /**
-   * Register a new visitor with status 'CHECKED_IN'.
+   * Register a new visitor with status 'CHECKED_IN' (or 'CHECKED_OUT' if already departed).
    */
   async registerVisitor(formData, currentUser) {
     const nowIso = new Date().toISOString();
+    const isCheckedOut = formData.status === 'CHECKED_OUT' || Boolean(formData.checkOutAt);
     const newVisitorObj = {
       visitorName: formData.visitorName?.trim(),
       mobileNumber: formData.mobileNumber?.trim(),
@@ -125,16 +126,16 @@ export const visitorApi = {
       personToMeetId: formData.personToMeetId || null,
       personToMeetName: formData.personToMeetName?.trim() || '',
       department: formData.department?.trim() || '',
-      personActuallyMetId: null,
-      personActuallyMetName: '',
+      personActuallyMetId: formData.personActuallyMetId || null,
+      personActuallyMetName: formData.personActuallyMetName?.trim() || (isCheckedOut ? (formData.personToMeetName?.trim() || '') : ''),
       remarks: formData.remarks?.trim() || '',
       checkInAt: formData.checkInAt || nowIso,
-      checkOutAt: null,
+      checkOutAt: formData.checkOutAt || null,
       checkedInBy: currentUser?.name || currentUser?.username || 'Receptionist',
       checkedInById: currentUser?.dbId || null,
-      checkedOutBy: null,
-      checkedOutById: null,
-      status: 'CHECKED_IN',
+      checkedOutBy: isCheckedOut ? (formData.checkedOutBy || currentUser?.name || currentUser?.username || 'Receptionist') : null,
+      checkedOutById: isCheckedOut ? (formData.checkedOutById || currentUser?.dbId || null) : null,
+      status: isCheckedOut ? 'CHECKED_OUT' : (formData.status || 'CHECKED_IN'),
       createdAt: nowIso,
       updatedAt: nowIso
     };

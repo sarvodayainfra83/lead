@@ -20,7 +20,6 @@ import {
   LabelList
 } from 'recharts';
 import NewVisitorModal from './NewVisitorModal';
-import CheckOutModal from './CheckOutModal';
 import VisitorDetailsModal from './VisitorDetailsModal';
 import EditVisitorModal from './EditVisitorModal';
 import { visitorApi } from '../../api/visitorApi';
@@ -48,6 +47,20 @@ const isDateToday = (dateVal) => {
   );
 };
 
+// Helper: Check if a date falls on yesterday in local time
+const isDateYesterday = (dateVal) => {
+  if (!dateVal) return false;
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return false;
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return (
+    d.getDate() === yesterday.getDate() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getFullYear() === yesterday.getFullYear()
+  );
+};
+
 // Helper: Format YYYY-MM-DD from Date in local time
 const getLocalDateKey = (dateVal) => {
   if (!dateVal) return null;
@@ -60,7 +73,7 @@ const getLocalDateKey = (dateVal) => {
 };
 
 // Helper: Check if a timestamp falls within the selected date range
-const isTimestampInDateRange = (dateVal, filterType, customFrom, customTo) => {
+const isTimestampInDateRange = (dateVal, filterType, customFrom, customTo, specificDate) => {
   if (!dateVal) return false;
   const d = new Date(dateVal);
   if (isNaN(d.getTime())) return false;
@@ -71,7 +84,16 @@ const isTimestampInDateRange = (dateVal, filterType, customFrom, customTo) => {
     return isDateToday(d);
   }
 
-  if (filterType === 'custom') {
+  if (filterType === 'yesterday') {
+    return isDateYesterday(d);
+  }
+
+  if (filterType === 'single' || filterType === 'specific') {
+    if (!specificDate) return true;
+    return getLocalDateKey(d) === specificDate;
+  }
+
+  if (filterType === 'range' || filterType === 'custom') {
     if (!customFrom && !customTo) return true;
     const time = d.getTime();
     if (customFrom) {
@@ -128,7 +150,8 @@ export default function ReceptionistDashboard() {
   const [error, setError] = useState(null);
 
   // Filter states
-  const [dateFilter, setDateFilter] = useState('today'); // 'today' | 'all' | 'custom'
+  const [dateFilter, setDateFilter] = useState('today'); // 'today' | 'yesterday' | 'specific' | 'range' | 'all'
+  const [specificDate, setSpecificDate] = useState('');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -145,7 +168,6 @@ export default function ReceptionistDashboard() {
 
   // Modals
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [checkoutVisitor, setCheckoutVisitor] = useState(null);
   const [detailsVisitor, setDetailsVisitor] = useState(null);
   const [editVisitor, setEditVisitor] = useState(null);
 
@@ -194,7 +216,7 @@ export default function ReceptionistDashboard() {
     (visitors || []).forEach((v) => {
       if (v.status === 'CANCELLED') return;
 
-      const checkInMatches = isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo);
+      const checkInMatches = isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo, specificDate);
       if (checkInMatches) {
         totalVisitors++;
         if (v.visitPurpose === 'Meeting') meetings++;
@@ -212,7 +234,7 @@ export default function ReceptionistDashboard() {
       siteCount,
       allTimeTotal: (visitors || []).length
     };
-  }, [visitors, dateFilter, customFrom, customTo]);
+  }, [visitors, dateFilter, customFrom, customTo, specificDate]);
 
   // 2. Numeric Breakdown by Purpose & Location for the Selected Date Filter
   const dateFilteredStats = useMemo(() => {
@@ -233,7 +255,7 @@ export default function ReceptionistDashboard() {
 
     (visitors || []).forEach((v) => {
       if (v.status === 'CANCELLED') return;
-      if (!isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo)) return;
+      if (!isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo, specificDate)) return;
 
       total++;
       const p = v.visitPurpose || 'Other';
@@ -248,14 +270,14 @@ export default function ReceptionistDashboard() {
     });
 
     return { purposeCounts, locationCounts, total };
-  }, [visitors, dateFilter, customFrom, customTo]);
+  }, [visitors, dateFilter, customFrom, customTo, specificDate]);
 
   // 3. Filtered Visitors List (Filtered by Date, Status, Purpose, Location, and Search)
   const filteredVisitors = useMemo(() => {
     let list = visitors || [];
 
     // Date Filter
-    list = list.filter((v) => isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo));
+    list = list.filter((v) => isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo, specificDate));
 
     // Status Filter
     if (statusFilter !== 'all') {
@@ -288,7 +310,7 @@ export default function ReceptionistDashboard() {
     }
 
     return list;
-  }, [visitors, dateFilter, customFrom, customTo, statusFilter, purposeFilter, locationFilter, searchQuery]);
+  }, [visitors, dateFilter, customFrom, customTo, specificDate, statusFilter, purposeFilter, locationFilter, searchQuery]);
 
   // 4. Grouped Visitors for the 4 Dashboard Columns
   const columnData = useMemo(() => {
@@ -319,7 +341,7 @@ export default function ReceptionistDashboard() {
   // Reset pagination on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, customFrom, customTo, statusFilter, purposeFilter, locationFilter, searchQuery, pageSize]);
+  }, [dateFilter, specificDate, customFrom, customTo, statusFilter, purposeFilter, locationFilter, searchQuery, pageSize]);
 
   // Table pagination
   const totalRecords = filteredVisitors.length;
@@ -340,6 +362,7 @@ export default function ReceptionistDashboard() {
   // Clear / Reset All Filters
   const handleResetFilters = () => {
     setDateFilter('today');
+    setSpecificDate('');
     setCustomFrom('');
     setCustomTo('');
     setSearchQuery('');
@@ -348,6 +371,41 @@ export default function ReceptionistDashboard() {
     setLocationFilter('all');
     setCurrentPage(1);
     toast.success('Filters reset to Today');
+  };
+
+  // Date Filter Change Handler: automatically resets other filters (Purpose, Location, Status, Search)
+  const handleDateFilterSelect = (mode) => {
+    setDateFilter(mode);
+    setPurposeFilter('all');
+    setLocationFilter('all');
+    setStatusFilter('all');
+    setSearchQuery('');
+    setCurrentPage(1);
+
+    if (mode === 'single') {
+      if (!specificDate) {
+        setSpecificDate(getLocalDateKey(new Date()));
+      }
+    }
+  };
+
+  const handleSpecificDateChange = (val) => {
+    setSpecificDate(val);
+    setPurposeFilter('all');
+    setLocationFilter('all');
+    setStatusFilter('all');
+    setSearchQuery('');
+    setCurrentPage(1);
+  };
+
+  const handleCustomRangeChange = (field, val) => {
+    if (field === 'from') setCustomFrom(val);
+    if (field === 'to') setCustomTo(val);
+    setPurposeFilter('all');
+    setLocationFilter('all');
+    setStatusFilter('all');
+    setSearchQuery('');
+    setCurrentPage(1);
   };
 
   // KPI Card Click Handler
@@ -408,19 +466,6 @@ export default function ReceptionistDashboard() {
     window.location.href = `tel:${phone}`;
   };
 
-  // Check-Out Confirmation Handler
-  const handleConfirmCheckout = async (visitorId, payload) => {
-    try {
-      await visitorApi.checkOutVisitor(visitorId, payload, user);
-      toast.success('Visitor checked out successfully');
-      await loadData();
-    } catch (err) {
-      console.error('Failed to check out visitor:', err);
-      toast.error('Failed to check out visitor');
-      throw err;
-    }
-  };
-
   // New Visitor Registration Handler
   const handleCreateVisitor = async (payload) => {
     try {
@@ -464,14 +509,10 @@ export default function ReceptionistDashboard() {
       'Person to Meet': item.personToMeetName || '—',
       'Department': item.department || '—',
       'Actual Person Met': item.personActuallyMetName || item.personToMeetName || '—',
-      'Check-In Date': formatVisitorDate(item.checkInAt),
-      'Check-In Time': formatVisitorTime(item.checkInAt),
-      'Check-Out Date': item.checkOutAt ? formatVisitorDate(item.checkOutAt) : '—',
-      'Check-Out Time': item.checkOutAt ? formatVisitorTime(item.checkOutAt) : (item.status === 'CHECKED_IN' ? 'Inside' : '—'),
-      'Duration': getVisitDuration(item.checkInAt, item.checkOutAt),
-      'Status': item.status === 'CHECKED_IN' ? 'Checked In' : (item.status === 'CHECKED_OUT' ? 'Checked Out' : 'Cancelled'),
-      'Checked-In By': item.checkedInBy || '—',
-      'Checked-Out By': item.checkedOutBy || '—',
+      'Visit Date': formatVisitorDate(item.checkInAt),
+      'Arrival Time': formatVisitorTime(item.checkInAt),
+      'Status': item.status === 'CANCELLED' ? 'Cancelled' : 'Registered',
+      'Registered By': item.checkedInBy || '—',
       'Remarks': item.remarks || '—'
     }));
 
@@ -652,22 +693,11 @@ export default function ReceptionistDashboard() {
             <button
               type="button"
               onClick={() => setDetailsVisitor(item)}
-              className="w-6 h-6 rounded-md bg-gray-100 hover:bg-slate-700 hover:text-white text-gray-600 flex items-center justify-center transition"
+              className="w-6 h-6 rounded-md bg-gray-100 hover:bg-slate-700 hover:text-white text-gray-600 flex items-center justify-center transition cursor-pointer"
               title="View Details"
             >
               <Eye size={11} />
             </button>
-
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => setEditVisitor(item)}
-                className="w-6 h-6 rounded-md bg-gray-100 hover:bg-indigo-600 hover:text-white text-gray-600 flex items-center justify-center transition"
-                title="Edit"
-              >
-                <Pencil size={11} />
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -755,7 +785,7 @@ export default function ReceptionistDashboard() {
             <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
               <button
                 type="button"
-                onClick={() => setDateFilter('today')}
+                onClick={() => handleDateFilterSelect('today')}
                 className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                   dateFilter === 'today'
                     ? 'bg-white text-indigo-700 shadow-2xs font-bold'
@@ -766,7 +796,40 @@ export default function ReceptionistDashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => setDateFilter('all')}
+                onClick={() => handleDateFilterSelect('yesterday')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+                  dateFilter === 'yesterday'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
+                }`}
+              >
+                Yesterday
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDateFilterSelect('single')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+                  dateFilter === 'single' || dateFilter === 'specific'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
+                }`}
+              >
+                Single Date
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDateFilterSelect('range')}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+                  dateFilter === 'range' || dateFilter === 'custom'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
+                }`}
+              >
+                Date Range
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDateFilterSelect('all')}
                 className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
                   dateFilter === 'all'
                     ? 'bg-white text-indigo-700 shadow-2xs font-bold'
@@ -775,41 +838,61 @@ export default function ReceptionistDashboard() {
               >
                 All Dates
               </button>
-              <button
-                type="button"
-                onClick={() => setDateFilter('custom')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  dateFilter === 'custom'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-                }`}
-              >
-                Custom Date Range
-              </button>
             </div>
 
-            {/* Inline Custom Date Inputs (Displayed directly, no modal) */}
-            {dateFilter === 'custom' && (
+            {/* Inline Single Date Picker */}
+            {(dateFilter === 'single' || dateFilter === 'specific') && (
+              <div className="flex items-center gap-1.5 bg-indigo-50/60 px-2.5 py-1 rounded-lg border border-indigo-100">
+                <span className="text-[11px] font-semibold text-indigo-900">Date:</span>
+                <input
+                  type="date"
+                  value={specificDate}
+                  onChange={(e) => handleSpecificDateChange(e.target.value)}
+                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                />
+                {specificDate && (
+                  <button
+                    type="button"
+                    onClick={() => handleSpecificDateChange('')}
+                    className="text-gray-400 hover:text-gray-700 p-0.5 cursor-pointer"
+                    title="Clear date"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Inline Date Range Inputs */}
+            {(dateFilter === 'range' || dateFilter === 'custom') && (
               <div className="flex items-center gap-1.5 flex-wrap bg-indigo-50/60 px-2.5 py-1 rounded-lg border border-indigo-100">
                 <span className="text-[11px] font-semibold text-indigo-900">From:</span>
                 <input
                   type="date"
                   value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  onChange={(e) => handleCustomRangeChange('from', e.target.value)}
+                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                 />
                 <span className="text-[11px] font-semibold text-indigo-900">To:</span>
                 <input
                   type="date"
                   value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  onChange={(e) => handleCustomRangeChange('to', e.target.value)}
+                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
                 />
                 {(customFrom || customTo) && (
                   <button
                     type="button"
-                    onClick={() => { setCustomFrom(''); setCustomTo(''); }}
-                    className="text-gray-400 hover:text-gray-700 p-0.5"
+                    onClick={() => {
+                      setCustomFrom('');
+                      setCustomTo('');
+                      setPurposeFilter('all');
+                      setLocationFilter('all');
+                      setStatusFilter('all');
+                      setSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                    className="text-gray-400 hover:text-gray-700 p-0.5 cursor-pointer"
                     title="Clear date range"
                   >
                     <X size={13} />
@@ -834,36 +917,18 @@ export default function ReceptionistDashboard() {
 
         </div>
 
-        {/* Filter Controls Row (Search, Status, Purpose, Location) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 pt-1 border-t border-gray-100">
-          
-          {/* Search Input */}
-          <div className="relative lg:col-span-2">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search visitor, phone, company, host, project..."
-              className="w-full text-xs h-[34px] pl-8 pr-7 bg-white border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
+        {/* Filter Controls Row (Purpose, Location) */}
+        <div className="flex items-center gap-2 pt-1.5 border-t border-gray-100 flex-wrap">
+          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
+            Filter:
+          </span>
 
           {/* Purpose Filter */}
-          <div>
+          <div className="w-48 sm:w-56">
             <select
               value={purposeFilter}
               onChange={(e) => setPurposeFilter(e.target.value)}
-              className="w-full text-xs h-[34px] px-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs"
+              className="w-full text-xs h-[32px] px-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs"
             >
               <option value="all">All Purposes</option>
               {VISIT_PURPOSE_OPTIONS.map((opt) => (
@@ -875,11 +940,11 @@ export default function ReceptionistDashboard() {
           </div>
 
           {/* Location Filter */}
-          <div>
+          <div className="w-48 sm:w-56">
             <select
               value={locationFilter}
               onChange={(e) => setLocationFilter(e.target.value)}
-              className="w-full text-xs h-[34px] px-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs"
+              className="w-full text-xs h-[32px] px-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs"
             >
               <option value="all">All Locations</option>
               <option value="Office">Corporate Office</option>
@@ -915,7 +980,15 @@ export default function ReceptionistDashboard() {
             </span>
           </div>
           <span className="text-[10px] text-gray-400 mt-1 font-medium truncate">
-            {dateFilter === 'today' ? 'Today’s registrations' : dateFilter === 'all' ? 'All dates' : 'Selected range'}
+            {dateFilter === 'today'
+              ? 'Today’s registrations'
+              : dateFilter === 'yesterday'
+              ? 'Yesterday’s registrations'
+              : (dateFilter === 'single' || dateFilter === 'specific')
+              ? (specificDate ? `Date: ${specificDate}` : 'Single date')
+              : dateFilter === 'all'
+              ? 'All dates'
+              : 'Selected range'}
           </span>
         </div>
 
@@ -1284,8 +1357,8 @@ export default function ReceptionistDashboard() {
       {/* 5. Primary Visitor Data Section: Columns View (Normal Dashboard) OR Table View */}
       <div className="flex flex-col gap-3">
         
-        {/* Section Header with View Mode Switcher */}
-        <div className="flex items-center justify-between flex-wrap gap-2 bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-2xs">
+        {/* Section Header with Search Bar and View Mode Switcher */}
+        <div className="flex items-center justify-between flex-wrap gap-3 bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-2xs">
           <div>
             <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
               <span>Visitor Records</span>
@@ -1298,6 +1371,28 @@ export default function ReceptionistDashboard() {
                 ? 'Multi-column dashboard feeds organized by visitor category.'
                 : 'Detailed tabular visitor register with full column details.'}
             </p>
+          </div>
+
+          {/* Search Bar shifted into Visitor Records panel bar */}
+          <div className="relative flex-1 max-w-md min-w-[240px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search visitor, phone, company, host, project..."
+              className="w-full text-xs h-[34px] pl-8 pr-7 bg-white border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 cursor-pointer"
+                title="Clear search"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
 
           {/* Toggle between Columns View and Table View */}
@@ -1547,7 +1642,7 @@ export default function ReceptionistDashboard() {
                             className="px-2 py-2 text-center whitespace-nowrap sticky left-0 bg-white group-hover:bg-indigo-50/40 z-10 shadow-2xs"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="flex items-center justify-center gap-1">
+                            <div className="flex items-center justify-center">
                               <button
                                 type="button"
                                 onClick={() => setDetailsVisitor(item)}
@@ -1557,18 +1652,6 @@ export default function ReceptionistDashboard() {
                               >
                                 <Eye size={13} />
                               </button>
-
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  onClick={() => setEditVisitor(item)}
-                                  title="Edit Visitor"
-                                  aria-label="Edit"
-                                  className="w-7 h-7 inline-flex items-center justify-center rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white transition active:scale-95 cursor-pointer"
-                                >
-                                  <Pencil size={12} />
-                                </button>
-                              )}
                             </div>
                           </td>
 
@@ -1756,24 +1839,11 @@ export default function ReceptionistDashboard() {
         />
       )}
 
-      {checkoutVisitor && (
-        <CheckOutModal
-          isOpen={Boolean(checkoutVisitor)}
-          visitor={checkoutVisitor}
-          onClose={() => setCheckoutVisitor(null)}
-          onConfirm={handleConfirmCheckout}
-        />
-      )}
-
       {detailsVisitor && (
         <VisitorDetailsModal
           isOpen={Boolean(detailsVisitor)}
           visitor={detailsVisitor}
           onClose={() => setDetailsVisitor(null)}
-          onCheckOutClick={(v) => {
-            setDetailsVisitor(null);
-            setCheckoutVisitor(v);
-          }}
         />
       )}
 

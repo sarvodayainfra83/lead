@@ -27,7 +27,8 @@ const SearchableDropdown = ({
   triggerClassName = "",
   height = "h-[30px] md:h-[34px]",
   searchable = true,
-  icon: Icon = null
+  icon: Icon = null,
+  promptOnAdd = true
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -190,16 +191,30 @@ const SearchableDropdown = ({
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            onAdd(searchTerm);
-            setIsOpen(false);
-            setSearchTerm("");
+            let term = searchTerm.trim();
+            if (!term && promptOnAdd !== false) {
+              const cleanPrompt = placeholder ? placeholder.replace(/^Select (or enter )?/i, '') : 'item';
+              term = (window.prompt(`Enter new ${cleanPrompt}:`) || '').trim();
+            }
+            if (term || promptOnAdd === false) {
+              onAdd(term);
+              setIsOpen(false);
+              setSearchTerm("");
+            }
           }}
           onTouchStart={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            onAdd(searchTerm);
-            setIsOpen(false);
-            setSearchTerm("");
+            let term = searchTerm.trim();
+            if (!term && promptOnAdd !== false) {
+              const cleanPrompt = placeholder ? placeholder.replace(/^Select (or enter )?/i, '') : 'item';
+              term = (window.prompt(`Enter new ${cleanPrompt}:`) || '').trim();
+            }
+            if (term || promptOnAdd === false) {
+              onAdd(term);
+              setIsOpen(false);
+              setSearchTerm("");
+            }
           }}
           className="w-full border-t border-gray-100 px-3 py-2 text-indigo-600 hover:bg-indigo-50 transition-all flex items-center justify-center gap-1.5 bg-white active:bg-indigo-100 cursor-pointer select-none"
         >

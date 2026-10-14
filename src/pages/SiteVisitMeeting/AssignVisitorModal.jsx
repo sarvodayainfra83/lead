@@ -174,6 +174,14 @@ export default function AssignVisitorModal({ isOpen, onClose, lead, onSaved }) {
             <span className="text-gray-400 font-medium">Contact:</span>{' '}
             <span className="font-semibold text-gray-800">{lead.customerNumber || lead.number || '-'}</span>
           </div>
+          {(lead.referencerName || lead.referenceName) && (
+            <div>
+              <span className="text-gray-400 font-medium">Reference:</span>{' '}
+              <span className="font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                {lead.referencerName || lead.referenceName}
+              </span>
+            </div>
+          )}
           {lead.callTrackerRemarks && (
             <div className="w-full text-[11px] text-gray-500 italic mt-0.5 truncate">
               "{lead.callTrackerRemarks}"

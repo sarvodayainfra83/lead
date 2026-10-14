@@ -50,7 +50,13 @@ const leadFields = [
 export default function CallerReportDetailModal({ isOpen, onClose, lead, onCallNow }) {
   if (!isOpen || !lead) return null;
 
-  const trackers = lead.trackers || [];
+  const refName = lead.referencerName || lead.referenceName;
+  const fieldsToShow = [
+    ...leadFields,
+    ...((refName || (lead.leadSource && String(lead.leadSource).toLowerCase().includes('reference')))
+      ? [{ label: 'Reference Name', key: 'referencerName', customValue: refName || '-' }]
+      : [])
+  ];
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[100] p-3.5 sm:p-5 md:p-6 animate-in fade-in duration-200">
@@ -79,7 +85,7 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead, onCallN
         >
           {/* Pre-filled Lead Reference Info */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 border border-gray-200 rounded-lg p-2.5">
-            {leadFields.map(({ label, key }) => (
+            {fieldsToShow.map(({ label, key, customValue }) => (
               <div key={key} className="min-w-0">
                 <p className="text-[8px] text-gray-400 uppercase tracking-tighter truncate">{label}</p>
                 {key === 'number' ? (
@@ -99,8 +105,8 @@ export default function CallerReportDetailModal({ isOpen, onClose, lead, onCallN
                     {lead.leadType || '-'}
                   </p>
                 ) : (
-                  <p className="text-[11px] md:text-[12px] text-gray-800 font-medium truncate" title={lead[key]}>
-                    {lead[key] || '-'}
+                  <p className="text-[11px] md:text-[12px] text-gray-800 font-medium truncate" title={customValue || lead[key]}>
+                    {customValue || lead[key] || '-'}
                   </p>
                 )}
               </div>

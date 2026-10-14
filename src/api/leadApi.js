@@ -58,7 +58,7 @@ export const leadApi = {
       leadSource: row.lead_source || row.master_lead_sources?.lead_source || '',
       callerAssignedId: row.caller_assigned_id || null,
       callerAssigned: row.caller_assigned || row.callerAssigned || row.master_caller_names?.person_name || '',
-      referencerName: row.referencer_name || '',
+      referencerName: row.referencer_name || row.referencerName || row.reference_name || row.referenceName || '',
       // Customer details with aliases for backward compatibility
       customerName: row.customer_name || row.person_name || '',
       personName: row.customer_name || row.person_name || '',
@@ -647,7 +647,7 @@ export const leadApi = {
       lead_receiver_id: fkIds.lead_receiver_id,
       lead_source_id: fkIds.lead_source_id,
       caller_assigned_id: fkIds.caller_assigned_id,
-      referencer_name: leadData.referencerName ? String(leadData.referencerName).trim() : null,
+      referencer_name: (leadData.referencerName || leadData.referenceName) ? String(leadData.referencerName || leadData.referenceName).trim() : null,
       customer_name: leadData.customerName || leadData.personName || '',
       customer_number: leadData.customerNumber || leadData.number || '',
       customer_email: (leadData.customerEmail || leadData.email) ? String(leadData.customerEmail || leadData.email).trim() : null,
@@ -767,7 +767,8 @@ export const leadApi = {
     if (updatedFields.callerAssignedId !== undefined || updatedFields.callerAssigned !== undefined) {
       detailPayload.caller_assigned_id = resolvedFks.caller_assigned_id;
     }
-    if (updatedFields.referencerName !== undefined) detailPayload.referencer_name = updatedFields.referencerName ? String(updatedFields.referencerName).trim() : null;
+    const refVal = updatedFields.referencerName !== undefined ? updatedFields.referencerName : updatedFields.referenceName;
+    if (refVal !== undefined) detailPayload.referencer_name = refVal ? String(refVal).trim() : null;
     if (updatedFields.customerName !== undefined || updatedFields.personName !== undefined) {
       detailPayload.customer_name = updatedFields.customerName || updatedFields.personName;
     }

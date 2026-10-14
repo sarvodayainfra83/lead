@@ -165,12 +165,14 @@ export const useBadgeCountStore = create((set) => ({
         .filter(l => (isStrictAdmin || matchesAuthorizedUserForNonInterested(l, user)) && isVisible(l))
         .length;
 
-      // Deal Closed badge: leads that have a closed deal (Deal Lock outcome or closed status)
+      // Deal Closed badge: leads whose LAST status is Deal Closed / Deal Lock
       const dealClosedCount = siteVisitMeetingLeads
         .filter(l => {
           const followUps = l.followUps || [];
-          const hasLockedFollowUp = followUps.some(f => isLockedStatus(f.status));
-          if (!hasLockedFollowUp && !isLockedStatus(l.status)) return false;
+          const lastStatus = followUps.length > 0
+            ? followUps[followUps.length - 1]?.status
+            : (l.latestTracker?.status || l.status);
+          if (!isLockedStatus(lastStatus)) return false;
           return (isAdmin || matchesUserConnection(l, user)) && isVisible(l);
         })
         .length;

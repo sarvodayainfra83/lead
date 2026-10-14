@@ -216,7 +216,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
       <td className="px-4 py-3 text-left text-[13px] text-gray-700 font-medium whitespace-nowrap max-w-[200px] truncate" title={item.visitorRemarks || ''}>{item.visitorRemarks || '-'}</td>
       <td className={`px-4 py-3 text-center text-[13px] font-semibold whitespace-nowrap ${getLeadTypeTextClass(item.leadType)}`}>{item.leadType || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.leadSource || '-'}</td>
-      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.referencerName || '-'}</td>
+      <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.referencerName || item.referenceName || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.productType || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.requirement || '-'}</td>
       <td className="px-4 py-3 text-center text-[13px] text-gray-600 whitespace-nowrap">{item.insuranceSubType || '-'}</td>
@@ -275,7 +275,7 @@ export default function HistoryAssignVisitor({ tabBar, onRefresh }) {
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Reference Name</p>
-          <p className="text-gray-700 truncate leading-tight">{item.referencerName || '-'}</p>
+          <p className="text-gray-700 truncate leading-tight">{item.referencerName || item.referenceName || '-'}</p>
         </div>
         <div>
           <p className="text-gray-400 uppercase tracking-tighter text-[8px]">Product Type</p>

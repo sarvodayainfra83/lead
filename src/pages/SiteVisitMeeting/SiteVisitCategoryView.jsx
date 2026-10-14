@@ -28,8 +28,12 @@ const isLockedStatus = (status) => {
 };
 export const isDealClosed = (item) => {
   if (!item) return false;
-  if (isLockedStatus(item.status)) return true;
-  return Array.isArray(item.followUps) && item.followUps.some(f => isLockedStatus(f.status));
+  const followUps = item.followUps || [];
+  if (Array.isArray(followUps) && followUps.length > 0) {
+    const latestFollowUp = followUps[followUps.length - 1];
+    return isLockedStatus(latestFollowUp?.status);
+  }
+  return isLockedStatus(item.status);
 };
 
 const hasSiteVisitFlag = (vm) => Boolean(vm?.['site-visit'] || vm?.siteVisit || vm?.site_visit);
@@ -891,6 +895,8 @@ export default function SiteVisitCategoryView({
     const details = [];
     if (isValid(item.email || item.customerEmail)) details.push({ label: 'Email', value: item.email || item.customerEmail, icon: Mail, isEmail: true });
     if (showVisitCols && isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
+    if (isValid(item.leadSource)) details.push({ label: 'Lead Source', value: item.leadSource, icon: FileText });
+    if (isValid(item.referencerName || item.referenceName)) details.push({ label: 'Reference Name', value: item.referencerName || item.referenceName, icon: UserCheck });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget || item.budget)) details.push({ label: 'Budget', value: item.investmentBudget || item.budget, icon: IndianRupee });
     if (showVisitCols && !isNoContact && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });

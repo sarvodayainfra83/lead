@@ -147,7 +147,7 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
         {/* Content */}
         <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-4 overflow-y-auto">
           {/* Quick Info Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
             <div>
               <p className="text-gray-400 text-[10px] uppercase tracking-wider font-medium">Lead Date</p>
               <p className="font-semibold text-gray-800 flex items-center gap-1 mt-0.5">
@@ -177,6 +177,14 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
                 {lead.leadSource || '-'}
               </p>
             </div>
+            {(lead.referencerName || lead.referenceName || (lead.leadSource && String(lead.leadSource).toLowerCase().includes('reference'))) && (
+              <div>
+                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-medium">Reference Name</p>
+                <p className="font-bold text-indigo-700 mt-0.5 truncate" title={lead.referencerName || lead.referenceName || '-'}>
+                  {lead.referencerName || lead.referenceName || '-'}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Customer Details */}
@@ -278,10 +286,10 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
                 <p className="text-gray-500 text-[11px]">Investment Budget</p>
                 <p className="text-emerald-700 font-bold">{lead.investmentBudget || '-'}</p>
               </div>
-              {lead.referencerName && (
+              {(lead.referencerName || lead.referenceName) && (
                 <div>
-                  <p className="text-gray-500 text-[11px]">Referencer Name</p>
-                  <p className="text-gray-800 font-medium">{lead.referencerName}</p>
+                  <p className="text-gray-500 text-[11px]">Reference Name</p>
+                  <p className="text-gray-800 font-medium">{lead.referencerName || lead.referenceName}</p>
                 </div>
               )}
             </div>

@@ -7,7 +7,7 @@ import {
 import {
   Users, UserPlus, PhoneCall, Clock, CheckCircle2, Handshake, XCircle, PhoneOff, Flame, Thermometer,
   Building2, ShieldCheck, TrendingUp, ArrowRight, UserCheck, CalendarClock,
-  LayoutGrid, Layers, Phone, CalendarDays, ChevronDown, UserCircle2, Package, FileBarChart, Target, Sparkles
+  LayoutGrid, Layers, Phone, CalendarDays, ChevronDown, UserCircle2, Package, FileBarChart, Target, Sparkles, RefreshCw
 } from 'lucide-react';
 import { dashboardApi } from '../../api/dashboardApi';
 import { useAuthStore } from '../../store/authStore';
@@ -81,7 +81,7 @@ const LEAD_TYPE_THEMES = {
 };
 
 const EMPTY_TOTALS = {
-  assigned: 0, newLeads: 0, calls: 0, todayCalls: 0, interested: 0, futurePlan: 0,
+  assigned: 0, newLeads: 0, calls: 0, todayCalls: 0, interested: 0, dealsClosed: 0, futurePlan: 0,
   siteVisit: 0, notInterested: 0, notCalled: 0, hot: 0, warm: 0, cold: 0
 };
 
@@ -413,6 +413,9 @@ export default function Dashboard() {
   const range = useMemo(() => getPeriodRange(period, customFrom, customTo), [period, customFrom, customTo]);
   const [loadedOnce, setLoadedOnce] = useState(false);
 
+  // Admin Employee Performance chart view mode: 'team' | 'trend'
+  const [adminChartMode, setAdminChartMode] = useState('team');
+
   // Tab for Admin Row 4 (Recent Activity): 'calling' | 'leads' | 'hotWarm' | 'deals'
   const [activityTab, setActivityTab] = useState('calling');
 
@@ -541,19 +544,22 @@ export default function Dashboard() {
 
     const summarize = (list, callList) => {
       const byStatus = (s) => list.filter(l => l.followUpListStatus === s).length;
-      const converted = byStatus('Interested');
+      const converted = list.filter(l => l.isDealClosed).length;
+      const interested = byStatus('Interested');
       const todayFollowUpsCount = list.filter(isTodayFollowUpLead).length;
       return {
         total: list.length,
         todayLeads: todayFollowUpsCount,
         todayCalls: callList.filter(c => c.timestampMs >= todayMs && c.timestampMs < todayMs + 86400000).length,
         futurePlan: byStatus('Future Plan Date'),
+        interested,
         converted,
-        siteVisit: list.filter(l => l.inSiteVisitList).length,
+        dealsClosed: converted,
+        siteVisit: list.filter(l => l.inSiteVisitList && !l.isDealClosed).length,
         notInterested: byStatus('Not Interested'),
         notCalled: list.filter(l => l.followUpListStatus === 'Pending' || l.followUpListStatus === 'Unassigned').length,
-        hot: list.filter(l => l.hotCustomerStatus === 'Hot').length,
-        warm: list.filter(l => l.hotCustomerStatus === 'Warm').length,
+        hot: list.filter(l => l.hotCustomerStatus === 'Hot' && !l.isDealClosed).length,
+        warm: list.filter(l => l.hotCustomerStatus === 'Warm' && !l.isDealClosed).length,
         conversionRate: list.length ? Math.round((converted / list.length) * 100) : 0
       };
     };
@@ -601,10 +607,17 @@ export default function Dashboard() {
       if (l.createdDate && inRange(l.createdDate.getTime())) row.newLeads += 1;
       if (l.followUpListStatus === 'Pending' || l.followUpListStatus === 'Unassigned') row.notCalled += 1;
       if (inRange(l.lastActivityMs) && (l.trackers.length > 0 || l.followUps?.length > 0)) {
-        if (l.status === 'Interested' || l.status === 'Deal Lock') row.interested += 1;
-        if (l.status === 'Future Plan Date') row.futurePlan += 1;
-        if (l.isSiteVisit || l.status === 'Site Visit/Meeting' || l.status === 'Meeting') row.siteVisit += 1;
-        if (l.status === 'Not Interested') row.notInterested += 1;
+        if (l.isDealClosed) {
+          row.dealsClosed = (row.dealsClosed || 0) + 1;
+        } else if (l.status === 'Interested') {
+          row.interested += 1;
+        } else if (l.status === 'Future Plan Date' || l.status === 'Future Plan') {
+          row.futurePlan += 1;
+        } else if (l.isSiteVisit || l.status === 'Site Visit/Meeting' || l.status === 'Meeting' || l.status === 'Revisit') {
+          row.siteVisit += 1;
+        } else if (l.status === 'Not Interested' || l.status === 'Rejected (Lost)') {
+          row.notInterested += 1;
+        }
         if (l.customerStatus === 'Hot' && !l.isDealClosed) row.hot += 1;
         if (l.customerStatus === 'Warm' && !l.isDealClosed) row.warm += 1;
         if (l.customerStatus === 'Cold') row.cold += 1;
@@ -618,7 +631,7 @@ export default function Dashboard() {
     });
 
     const mis = Array.from(rows.values())
-      .map(r => ({ ...r, conversion: r.assigned ? Math.round((r.interested / r.assigned) * 100) : 0 }))
+      .map(r => ({ ...r, conversion: r.assigned ? Math.round(((r.dealsClosed || 0) / r.assigned) * 100) : 0 }))
       .sort((a, b) => b.calls - a.calls || b.assigned - a.assigned || a.name.localeCompare(b.name));
 
     const totals = mis.reduce((acc, r) => {
@@ -641,114 +654,167 @@ export default function Dashboard() {
       .sort((a, b) => String(a.inTime || '').localeCompare(String(a.inTime || '')));
     const teamSize = tabEmployees.filter(e => !isAdminRole(e)).length;
 
-    // Personal user intraday / daily breakdown
+    // Intraday & daily activity trend breakdown (for both Admin and User views)
     const DAY_MS = 24 * 60 * 60 * 1000;
     const endMs = Math.min(range.toMs, todayMs + DAY_MS);
     const daily = [];
-    if (!isAdmin) {
-      const isSingleDay = period === 'today' || (range.toMs - range.fromMs <= DAY_MS);
-      if (isSingleDay) {
-        const hourBuckets = [];
-        let minH = 9;
-        let maxH = 19;
-        calls.forEach(c => {
-          const cMs = Number(c.timestampMs) || 0;
-          if (cMs >= range.fromMs && cMs < range.toMs) {
-            const h = new Date(cMs).getHours();
-            if (h < minH && h >= 6) minH = h;
-            if (h > maxH && h <= 23) maxH = h;
-          }
-        });
-        for (let h = minH; h <= maxH; h++) {
-          const ampm = h >= 12 ? 'PM' : 'AM';
-          const displayH = h % 12 || 12;
-          hourBuckets.push({
-            hour: h,
-            name: `${displayH} ${ampm}`,
-            Calls: 0,
-            Converted: 0,
-            'New Leads': 0
-          });
+    const isSingleDay = period === 'today' || (range.toMs - range.fromMs <= DAY_MS);
+    if (isSingleDay) {
+      const hourBuckets = [];
+      let minH = 9;
+      let maxH = 19;
+      calls.forEach(c => {
+        const cMs = Number(c.timestampMs) || 0;
+        if (cMs >= range.fromMs && cMs < range.toMs) {
+          const h = new Date(cMs).getHours();
+          if (h < minH && h >= 6) minH = h;
+          if (h > maxH && h <= 23) maxH = h;
         }
-        calls.forEach(c => {
-          const cMs = Number(c.timestampMs) || 0;
-          if (cMs >= range.fromMs && cMs < range.toMs) {
-            const h = new Date(cMs).getHours();
-            let b = hourBuckets.find(x => x.hour === h);
-            if (!b) {
-              const ampm = h >= 12 ? 'PM' : 'AM';
-              const displayH = h % 12 || 12;
-              b = { hour: h, name: `${displayH} ${ampm}`, Calls: 0, Converted: 0, 'New Leads': 0 };
-              hourBuckets.push(b);
-              hourBuckets.sort((x, y) => x.hour - y.hour);
-            }
-            b.Calls += 1;
-            if (c.status === 'Interested') b.Converted += 1;
-          }
+      });
+      for (let h = minH; h <= maxH; h++) {
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const displayH = h % 12 || 12;
+        hourBuckets.push({
+          hour: h,
+          name: `${displayH} ${ampm}`,
+          Calls: 0,
+          Converted: 0,
+          'New Leads': 0
         });
-        leads.forEach(l => {
-          const lDate = l.createdDate;
-          const lMs = lDate ? lDate.getTime() : 0;
-          if (lMs >= range.fromMs && lMs < range.toMs) {
-            const rawTime = l.timestamp || l.created_at || l.createdAt;
-            let h = 10;
-            if (rawTime && String(rawTime).includes(':')) {
-              const parsed = new Date(rawTime);
-              if (!isNaN(parsed.getTime())) h = parsed.getHours();
-            }
-            let b = hourBuckets.find(x => x.hour === h);
-            if (b) b['New Leads'] += 1;
-            else if (hourBuckets.length > 0) hourBuckets[0]['New Leads'] += 1;
+      }
+      calls.forEach(c => {
+        const cMs = Number(c.timestampMs) || 0;
+        if (cMs >= range.fromMs && cMs < range.toMs) {
+          const h = new Date(cMs).getHours();
+          let b = hourBuckets.find(x => x.hour === h);
+          if (!b) {
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const displayH = h % 12 || 12;
+            b = { hour: h, name: `${displayH} ${ampm}`, Calls: 0, Converted: 0, 'New Leads': 0 };
+            hourBuckets.push(b);
+            hourBuckets.sort((x, y) => x.hour - y.hour);
           }
-        });
-        daily.push(...hourBuckets);
-      } else {
-        const byDay = {};
-        for (let t = range.fromMs; t < endMs; t += DAY_MS) {
-          const d = new Date(t);
-          const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-          if (!byDay[key]) {
-            const item = { dayMs: key, name: formatDay(key), Calls: 0, Converted: 0, 'New Leads': 0 };
-            byDay[key] = item;
-            daily.push(item);
-          }
+          b.Calls += 1;
+          if (c.status === 'Interested' || c.status === 'Deal Lock') b.Converted += 1;
         }
-        if (daily.length === 0) {
-          const key = new Date(range.fromMs).getTime();
+      });
+      leads.forEach(l => {
+        const lDate = l.createdDate;
+        const lMs = lDate ? lDate.getTime() : 0;
+        if (lMs >= range.fromMs && lMs < range.toMs) {
+          const rawTime = l.timestamp || l.created_at || l.createdAt;
+          let h = 10;
+          if (rawTime && String(rawTime).includes(':')) {
+            const parsed = new Date(rawTime);
+            if (!isNaN(parsed.getTime())) h = parsed.getHours();
+          }
+          let b = hourBuckets.find(x => x.hour === h);
+          if (b) b['New Leads'] += 1;
+          else if (hourBuckets.length > 0) hourBuckets[0]['New Leads'] += 1;
+        }
+      });
+      daily.push(...hourBuckets);
+    } else {
+      const byDay = {};
+      for (let t = range.fromMs; t < endMs; t += DAY_MS) {
+        const d = new Date(t);
+        const key = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        if (!byDay[key]) {
           const item = { dayMs: key, name: formatDay(key), Calls: 0, Converted: 0, 'New Leads': 0 };
           byDay[key] = item;
           daily.push(item);
         }
-        const dayOf = (ms) => {
-          const d = new Date(ms);
-          return byDay[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()];
-        };
-        calls.forEach(c => {
-          const day = dayOf(c.timestampMs);
-          if (!day) return;
-          day.Calls += 1;
-          if (c.status === 'Interested') day.Converted += 1;
-        });
-        leads.forEach(l => {
-          const day = l.createdDate && byDay[l.createdDate.getTime()];
-          if (day) day['New Leads'] += 1;
-        });
       }
+      if (daily.length === 0) {
+        const key = new Date(range.fromMs).getTime();
+        const item = { dayMs: key, name: formatDay(key), Calls: 0, Converted: 0, 'New Leads': 0 };
+        byDay[key] = item;
+        daily.push(item);
+      }
+      const dayOf = (ms) => {
+        const d = new Date(ms);
+        return byDay[new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()];
+      };
+      calls.forEach(c => {
+        const day = dayOf(c.timestampMs);
+        if (!day) return;
+        day.Calls += 1;
+        if (c.status === 'Interested' || c.status === 'Deal Lock') day.Converted += 1;
+      });
+      leads.forEach(l => {
+        const day = l.createdDate && byDay[l.createdDate.getTime()];
+        if (day) day['New Leads'] += 1;
+      });
     }
 
+    const periodTotals = {
+      calls: calls.filter(c => inRange(c.timestampMs)).length,
+      newLeads: leads.filter(l => l.createdDate && inRange(l.createdDate.getTime())).length,
+      converted: leads.filter(l => l.isDealClosed && inRange(l.dealClosedMs || l.lastActivityMs)).length
+    };
+
+    // Personal user/admin attendance
     const myName = normName(user?.name);
-    const myAttendance = isAdmin ? [] : data.attendance
+    const myAttendance = data.attendance
       .filter(a => normName(a.userName) === myName)
       .map(a => ({ ...a, dayMs: parseAttendanceDate(a.date)?.getTime() || 0 }))
       .filter(a => a.dayMs >= range.fromMs && a.dayMs < range.toMs)
       .sort((a, b) => b.dayMs - a.dayMs);
-    const myToday = isAdmin ? null : data.attendance.find(a => normName(a.userName) === myName && a.date === todayStr) || null;
-    const myWorkingDays = isAdmin ? 0 : countWorkingDays(range.fromMs, range.toMs);
 
-    return { kpis, byType, todayLeads, todayCalls, hotWarm, dealsClosed, mis, totals, present, teamSize, daily, myAttendance, myToday, myWorkingDays };
+    const myToday = data.attendance.find(a => normName(a.userName) === myName && a.date === todayStr) || null;
+    const myWorkingDays = countWorkingDays(range.fromMs, range.toMs);
+
+    // Month attendance specifically for the "Present X of Y working days this month" summary
+    const now = new Date();
+    const monthStartMs = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const monthEndMs = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+
+    const myMonthAttendance = data.attendance
+      .filter(a => normName(a.userName) === myName)
+      .map(a => ({ ...a, dayMs: parseAttendanceDate(a.date)?.getTime() || 0 }))
+      .filter(a => a.dayMs >= monthStartMs && a.dayMs <= monthEndMs)
+      .sort((a, b) => b.dayMs - a.dayMs);
+    const myMonthWorkingDays = countWorkingDays(monthStartMs, monthEndMs);
+
+    return {
+      kpis,
+      byType,
+      todayLeads,
+      todayCalls,
+      hotWarm,
+      dealsClosed,
+      mis,
+      totals,
+      present,
+      teamSize,
+      daily,
+      periodTotals,
+      myAttendance,
+      myToday,
+      myWorkingDays,
+      myMonthAttendance,
+      myMonthWorkingDays
+    };
   }, [data, tab, isAll, inTab, range, employeeKey, isAdmin, user, period]);
 
-  const { kpis, byType, todayLeads, todayCalls, hotWarm, dealsClosed, mis, present, teamSize, daily, myAttendance, myToday, myWorkingDays } = view;
+  const {
+    kpis,
+    byType,
+    todayLeads,
+    todayCalls,
+    hotWarm,
+    dealsClosed,
+    mis,
+    present,
+    teamSize,
+    daily,
+    periodTotals,
+    myAttendance,
+    myToday,
+    myWorkingDays,
+    myMonthAttendance,
+    myMonthWorkingDays
+  } = view;
 
   const hotByType = useMemo(
     () => byType.filter(t => userCategories.some(u => u.key === t.key)),
@@ -766,7 +832,7 @@ export default function Dashboard() {
   // Chart lists employees for team performance view
   const chartData = mis
     .filter(r => r.name && r.name !== 'Unassigned')
-    .map(r => ({ name: r.name, Assigned: r.assigned, Calls: r.calls, Converted: r.interested }));
+    .map(r => ({ name: r.name, Assigned: r.assigned, Calls: r.calls, Converted: r.dealsClosed || 0 }));
 
   // Permissions and navigation
   const canOpen = (path) => canViewPage(user, PATH_PAGE_KEYS[path]);
@@ -814,6 +880,14 @@ export default function Dashboard() {
         pct: Math.round((kpis.converted / total) * 100),
         dotClass: 'bg-emerald-500',
         badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+        onClick: () => go('/deal-closed')
+      },
+      {
+        label: 'Interested',
+        value: kpis.interested,
+        pct: Math.round((kpis.interested / total) * 100),
+        dotClass: 'bg-teal-500',
+        badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
         onClick: () => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })
       },
       {
@@ -875,7 +949,7 @@ export default function Dashboard() {
       <div className="h-full min-h-0 overflow-y-auto bg-gray-50/50">
         <div className="p-3 sm:p-5 space-y-4 max-w-[1600px] mx-auto pb-8">
 
-          {/* HEADER: Business Vertical Tabs (Left) · All Employees / Employee Filter (Right) */}
+          {/* HEADER: Business Vertical Tabs (Left) · All Employees / Filter & Refresh (Right) */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <PageTabs
               tabs={visibleTabs.map(t => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
@@ -893,6 +967,16 @@ export default function Dashboard() {
                   height="h-[34px]"
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={loadData}
+                disabled={loading}
+                title="Refresh Dashboard Data"
+                className="h-[34px] w-[34px] rounded-lg border border-gray-200/90 bg-white hover:bg-gray-50 flex items-center justify-center text-gray-600 hover:text-indigo-600 transition shadow-2xs cursor-pointer shrink-0"
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin text-indigo-600' : ''} />
+              </button>
             </div>
           </div>
 
@@ -903,7 +987,7 @@ export default function Dashboard() {
             </AdminCard>
           ) : (<>
 
-            {/* ROW 1: Six Consistent KPI Cards */}
+            {/* ROW 1: Six Primary KPI Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <KpiCard
                 title="Total Leads"
@@ -930,12 +1014,20 @@ export default function Dashboard() {
                 onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })}
               />
               <KpiCard
+                title="Future Plan"
+                value={kpis.futurePlan}
+                icon={Clock}
+                iconBg="bg-amber-50"
+                iconColor="text-amber-600"
+                onClick={() => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })}
+              />
+              <KpiCard
                 title="Converted"
                 value={kpis.converted}
-                icon={TrendingUp}
+                icon={CheckCircle2}
                 iconBg="bg-emerald-50"
                 iconColor="text-emerald-600"
-                onClick={() => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })}
+                onClick={() => go('/deal-closed')}
               />
               <KpiCard
                 title={isMeetingOnly ? 'Meetings' : 'Site Visits'}
@@ -945,26 +1037,48 @@ export default function Dashboard() {
                 iconColor="text-cyan-600"
                 onClick={() => go('/site-visit-meeting', { dateFilter: 'all' })}
               />
-              <KpiCard
-                title="Deal Closed"
-                value={dealsClosed.length}
-                icon={CheckCircle2}
-                iconBg="bg-violet-50"
-                iconColor="text-violet-600"
-                onClick={() => go('/deal-closed')}
-              />
             </div>
 
-            {/* ROW 2: Employee Performance Chart (Left) + Lead Status Summary (Right) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            {/* ROW 2: Employee Performance / Activity Trend (Left) + Lead Status Summary & Pipeline (Right) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
               <AdminCard className="lg:col-span-8 flex flex-col">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-gray-100">
-                  <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5 truncate">
                       <TrendingUp size={16} className="text-indigo-600 flex-shrink-0" />
-                      <span>Employee Performance</span>
+                      <span>{adminChartMode === 'team' ? 'Employee Performance' : 'Activity Trend'}</span>
                       <span className="text-xs font-normal text-gray-400 truncate">· {tabLabel}</span>
                     </h3>
+
+                    {/* Mode Toggle: Team Breakdown | Activity Trend */}
+                    <div className="inline-flex items-center p-0.5 rounded-lg bg-gray-100 border border-gray-200/80 gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setAdminChartMode('team')}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] transition cursor-pointer ${
+                          adminChartMode === 'team'
+                            ? 'bg-white text-indigo-700 font-bold shadow-2xs'
+                            : 'text-gray-600 hover:text-gray-900 font-medium'
+                        }`}
+                        title="View team-wide employee performance"
+                      >
+                        <Users size={11} className={adminChartMode === 'team' ? 'text-indigo-600' : 'text-gray-400'} />
+                        <span>Team</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdminChartMode('trend')}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] transition cursor-pointer ${
+                          adminChartMode === 'trend'
+                            ? 'bg-white text-indigo-700 font-bold shadow-2xs'
+                            : 'text-gray-600 hover:text-gray-900 font-medium'
+                        }`}
+                        title="View New Leads, Calls, and Converted trend"
+                      >
+                        <Sparkles size={11} className={adminChartMode === 'trend' ? 'text-indigo-600' : 'text-gray-400'} />
+                        <span>Trend</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Date Filter: Today | This Month | Custom */}
@@ -1035,64 +1149,125 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Legend & Period indicator */}
-                <div className="flex items-center justify-between px-4 pt-2.5 pb-1 text-xs text-gray-500">
+                {/* Legend & Period Summary Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-2.5 pb-1 text-xs text-gray-500">
                   <div className="flex items-center gap-3">
-                    {[
-                      ['Assigned', CHART_COLORS.assigned],
-                      ['Calls', CHART_COLORS.calls],
-                      ['Converted', CHART_COLORS.converted]
-                    ].map(([lbl, clr]) => (
-                      <span key={lbl} className="inline-flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: clr }} />
-                        <span>{lbl}</span>
-                      </span>
-                    ))}
+                    {adminChartMode === 'team' ? (
+                      [
+                        ['Assigned', CHART_COLORS.assigned],
+                        ['Calls', CHART_COLORS.calls],
+                        ['Converted', CHART_COLORS.converted]
+                      ].map(([lbl, clr]) => (
+                        <span key={lbl} className="inline-flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: clr }} />
+                          <span>{lbl}</span>
+                        </span>
+                      ))
+                    ) : (
+                      [
+                        ['Calls', CHART_COLORS.calls],
+                        ['Converted', CHART_COLORS.converted],
+                        ['New Leads', CHART_COLORS.newLeads]
+                      ].map(([lbl, clr]) => (
+                        <span key={lbl} className="inline-flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-xs" style={{ backgroundColor: clr }} />
+                          <span>{lbl}</span>
+                        </span>
+                      ))
+                    )}
                   </div>
-                  <span className="text-[11px] text-gray-400 font-medium">{periodLabel}</span>
+
+                  <div className="flex items-center gap-2">
+                    {adminChartMode === 'trend' && (
+                      <span className="text-[11px] text-gray-500 font-medium mr-2">
+                        Calls: <strong className="text-indigo-600">{periodTotals.calls}</strong> · Leads: <strong className="text-gray-900">{periodTotals.newLeads}</strong> · Converted: <strong className="text-emerald-600">{periodTotals.converted}</strong>
+                      </span>
+                    )}
+                    <span className="text-[11px] text-gray-400 font-medium">{periodLabel}</span>
+                  </div>
                 </div>
 
                 {/* Chart Render */}
-                {chartData.length > 0 ? (
-                  <div className="flex-1 px-3 pb-3 overflow-x-auto">
-                    <div style={{ minWidth: `${Math.max(chartData.length * 80, 280)}px` }}>
-                      <ResponsiveContainer width="100%" height={250}>
-                        <BarChart
-                          data={chartData}
-                          margin={{ top: 16, right: 8, left: -20, bottom: 0 }}
-                          barGap={3}
-                          barCategoryGap="22%"
-                        >
-                          <CartesianGrid vertical={false} stroke="#f3f4f6" />
-                          <XAxis
-                            dataKey="name"
-                            interval={0}
-                            height={chartData.length > 5 ? 44 : 26}
-                            angle={chartData.length > 5 ? -25 : 0}
-                            textAnchor={chartData.length > 5 ? 'end' : 'middle'}
-                            tick={{ fontSize: 10, fill: '#6b7280' }}
-                            axisLine={false}
-                            tickLine={false}
-                          />
-                          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                          <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(79,70,229,0.04)', radius: 6 }} />
-                          <Bar dataKey="Assigned" fill={CHART_COLORS.assigned} radius={[4, 4, 0, 0]} maxBarSize={18} />
-                          <Bar dataKey="Calls" fill={CHART_COLORS.calls} radius={[4, 4, 0, 0]} maxBarSize={18}>
-                            <LabelList dataKey="Calls" position="top" style={{ fontSize: 9, fill: '#4f46e5', fontWeight: 700 }} />
-                          </Bar>
-                          <Bar dataKey="Converted" fill={CHART_COLORS.converted} radius={[4, 4, 0, 0]} maxBarSize={18} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                {adminChartMode === 'team' ? (
+                  chartData.length > 0 ? (
+                    <div className="flex-1 px-3 pb-3 overflow-x-auto">
+                      <div style={{ minWidth: `${Math.max(chartData.length * 80, 280)}px` }}>
+                        <ResponsiveContainer width="100%" height={260}>
+                          <BarChart
+                            data={chartData}
+                            margin={{ top: 16, right: 8, left: -20, bottom: 0 }}
+                            barGap={3}
+                            barCategoryGap="22%"
+                          >
+                            <CartesianGrid vertical={false} stroke="#f3f4f6" />
+                            <XAxis
+                              dataKey="name"
+                              interval={0}
+                              height={chartData.length > 5 ? 44 : 26}
+                              angle={chartData.length > 5 ? -25 : 0}
+                              textAnchor={chartData.length > 5 ? 'end' : 'middle'}
+                              tick={{ fontSize: 10, fill: '#6b7280' }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(79,70,229,0.04)', radius: 6 }} />
+                            <Bar dataKey="Assigned" fill={CHART_COLORS.assigned} radius={[4, 4, 0, 0]} maxBarSize={18} />
+                            <Bar dataKey="Calls" fill={CHART_COLORS.calls} radius={[4, 4, 0, 0]} maxBarSize={18}>
+                              <LabelList dataKey="Calls" position="top" style={{ fontSize: 9, fill: '#4f46e5', fontWeight: 700 }} />
+                            </Bar>
+                            <Bar dataKey="Converted" fill={CHART_COLORS.converted} radius={[4, 4, 0, 0]} maxBarSize={18} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center py-12">
+                      <Empty text={loadingOr(`No activity recorded for ${tabLabel} in this period.`)} />
+                    </div>
+                  )
                 ) : (
-                  <div className="flex-1 flex items-center justify-center py-12">
-                    <Empty text={loadingOr(`No activity recorded for ${tabLabel} in this period.`)} />
-                  </div>
+                  daily.length > 0 ? (
+                    <div className="flex-1 px-3 pb-3 overflow-x-auto">
+                      <div style={{ minWidth: `${Math.max(daily.length * (period === 'today' ? 36 : 48), 280)}px` }}>
+                        <ResponsiveContainer width="100%" height={260}>
+                          <BarChart
+                            data={daily.map(d => ({ ...d, name: d.name || formatDay(d.dayMs) }))}
+                            margin={{ top: 16, right: 8, left: -20, bottom: 0 }}
+                            barGap={period === 'today' ? 2 : 3}
+                            barCategoryGap={period === 'today' ? '18%' : '22%'}
+                          >
+                            <CartesianGrid vertical={false} stroke="#f3f4f6" />
+                            <XAxis
+                              dataKey="name"
+                              interval={0}
+                              height={26}
+                              angle={0}
+                              textAnchor="middle"
+                              tick={{ fontSize: 10, fill: '#6b7280' }}
+                              axisLine={false}
+                              tickLine={false}
+                            />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(79,70,229,0.04)', radius: 6 }} />
+                            <Bar dataKey="Calls" fill={CHART_COLORS.calls} radius={[4, 4, 0, 0]} maxBarSize={18}>
+                              <LabelList dataKey="Calls" position="top" style={{ fontSize: 9, fill: '#4f46e5', fontWeight: 700 }} />
+                            </Bar>
+                            <Bar dataKey="Converted" fill={CHART_COLORS.converted} radius={[4, 4, 0, 0]} maxBarSize={18} />
+                            <Bar dataKey="New Leads" fill={CHART_COLORS.newLeads} radius={[4, 4, 0, 0]} maxBarSize={18} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center py-12">
+                      <Empty text={loadingOr(`No ${tabLabel} activity trend recorded in this period.`)} />
+                    </div>
+                  )
                 )}
               </AdminCard>
 
-              {/* Combined Lead Status & Conversion Summary */}
+              {/* Combined Lead Status, Pipeline & Follow-up Tracker */}
               <AdminCard className="lg:col-span-4 flex flex-col justify-between">
                 <div>
                   <AdminCardHeader
@@ -1102,7 +1277,7 @@ export default function Dashboard() {
                   />
 
                   {/* Conversion Rate Highlight */}
-                  <div className="p-4 bg-gray-50/60 border-b border-gray-100 flex items-center justify-between">
+                  <div className="p-3.5 bg-gray-50/60 border-b border-gray-100 flex items-center justify-between">
                     <div>
                       <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide block">
                         Conversion Rate
@@ -1115,8 +1290,8 @@ export default function Dashboard() {
                       </span>
                     </div>
 
-                    <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600">
-                      <Target size={22} />
+                    <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600">
+                      <Target size={20} />
                     </div>
                   </div>
 
@@ -1135,13 +1310,13 @@ export default function Dashboard() {
                   </div>
 
                   {/* Status Items List */}
-                  <div className="p-4 space-y-1">
+                  <div className="px-3 py-1 space-y-0.5">
                     {statusSegments.map(s => (
                       <button
                         key={s.label}
                         type="button"
                         onClick={s.onClick}
-                        className="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded-lg hover:bg-gray-50 transition cursor-pointer text-left"
+                        className="w-full flex items-center justify-between text-xs py-1 px-2 rounded-lg hover:bg-gray-50 transition cursor-pointer text-left"
                       >
                         <span className="flex items-center gap-2 text-gray-700 min-w-0">
                           <span className={`w-2 h-2 rounded-full shrink-0 ${s.dotClass}`} />
@@ -1154,18 +1329,177 @@ export default function Dashboard() {
                       </button>
                     ))}
                   </div>
+
+                  {/* Compact Follow-up Tracker */}
+                  <div className="pt-2.5 pb-2 px-3.5 border-t border-gray-100 space-y-2 bg-gray-50/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                        <Sparkles size={11} className="text-indigo-600" /> Follow-up Tracker
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-medium">Progress of open leads</span>
+                    </div>
+
+                    {[
+                      {
+                        label: 'Future Plan',
+                        icon: Clock,
+                        count: kpis.futurePlan,
+                        hint: 'Awaiting next call',
+                        barColor: 'from-amber-400 to-amber-500',
+                        textColor: 'text-amber-700',
+                        onClick: () => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })
+                      },
+                      {
+                        label: isMeetingOnly ? 'Meeting' : 'Site Visit',
+                        icon: Handshake,
+                        count: kpis.siteVisit,
+                        hint: isMeetingOnly ? 'Meetings scheduled' : 'Visits scheduled',
+                        barColor: 'from-cyan-400 to-cyan-500',
+                        textColor: 'text-cyan-700',
+                        onClick: () => go('/site-visit-meeting', { dateFilter: 'all' })
+                      },
+                      {
+                        label: 'Not Called',
+                        icon: PhoneOff,
+                        count: kpis.notCalled,
+                        hint: 'Still to be called',
+                        barColor: 'from-slate-400 to-indigo-400',
+                        textColor: 'text-slate-700',
+                        onClick: () => go('/call-tracker', { statusFilter: 'Pending', dateFilter: 'all' })
+                      }
+                    ].map(item => {
+                      const Icon = item.icon;
+                      const total = Math.max(1, kpis.total);
+                      const pct = kpis.total ? Math.round((item.count / total) * 100) : 0;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={item.onClick}
+                          className="w-full text-left group cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between text-xs mb-0.5">
+                            <span className="flex items-center gap-1.5 font-semibold text-gray-700 truncate">
+                              <Icon size={12} className={`${item.textColor} shrink-0`} />
+                              <span className="truncate">{item.label}</span>
+                            </span>
+                            <span className="text-gray-500 text-[11px] shrink-0">
+                              <strong className="text-gray-900">{item.count}</strong> / {kpis.total}
+                              <span className="text-gray-400 ml-1">({pct}%)</span>
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full bg-gradient-to-r ${item.barColor} transition-all duration-300`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] text-gray-400 mt-0.5">
+                            <span className="truncate">{item.hint}</span>
+                            <span className="group-hover:text-indigo-600 transition flex items-center gap-0.5">
+                              View <ArrowRight size={9} />
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="px-4 py-2.5 bg-gray-50/50 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500">
-                  <span>Click any status to filter Lead Tracker</span>
-                  <ArrowRight size={12} className="text-gray-400" />
+                {/* Customer Temperature snapshot */}
+                <div className="px-4 py-2 bg-gray-50/70 border-t border-gray-100 flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-gray-500 uppercase tracking-wide text-[10px]">Temperature:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => go('/customer-master', { customerStatus: 'Hot' })}
+                      className="text-rose-700 hover:text-rose-900 font-bold flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Flame size={11} className="text-rose-500 fill-rose-500" /> {kpis.hot} Hot
+                    </button>
+                    <span className="text-gray-300">·</span>
+                    <button
+                      type="button"
+                      onClick={() => go('/customer-master', { customerStatus: 'Warm' })}
+                      className="text-amber-700 hover:text-amber-900 font-bold flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Thermometer size={11} className="text-amber-500" /> {kpis.warm} Warm
+                    </button>
+                    <span className="text-gray-300">·</span>
+                    <button
+                      type="button"
+                      onClick={() => go('/site-visit-meeting', { dateFilter: 'all' })}
+                      className="text-cyan-700 hover:text-cyan-900 font-bold flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Handshake size={11} className="text-cyan-600" /> {kpis.siteVisit} {isMeetingOnly ? 'Meet' : 'Visit'}
+                    </button>
+                  </div>
                 </div>
               </AdminCard>
             </div>
 
-            {/* ROW 3: Compact Business Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* 1. Lead Counts by Business Vertical */}
+            {/* ROW 3: Conversion Health & Business Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5">
+              {/* 1. Conversion Health Gauge */}
+              <AdminCard className="flex flex-col justify-between">
+                <AdminCardHeader
+                  title="Conversion Health"
+                  subtitle={`${tabLabel} · current status`}
+                  icon={Target}
+                  action={
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {kpis.conversionRate}%
+                    </span>
+                  }
+                />
+                <div className="px-4 pt-3 flex-1 flex flex-col justify-between">
+                  <div>
+                    <p className="text-2xl font-bold text-gray-900 leading-tight">
+                      {kpis.converted}
+                      <span className="text-xs font-medium text-gray-400 ml-1.5">
+                        of {kpis.total} converted
+                      </span>
+                    </p>
+                    <div className="mt-1">
+                      <Gauge value={kpis.conversionRate} />
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 px-4 pb-3.5 pt-2">
+                  {[
+                    {
+                      label: 'Hot',
+                      value: kpis.hot,
+                      cls: 'text-rose-600',
+                      onClick: () => go('/customer-master', { customerStatus: 'Hot' })
+                    },
+                    {
+                      label: 'Warm',
+                      value: kpis.warm,
+                      cls: 'text-amber-600',
+                      onClick: () => go('/customer-master', { customerStatus: 'Warm' })
+                    },
+                    {
+                      label: isMeetingOnly ? 'Meetings' : 'Visits',
+                      value: kpis.siteVisit,
+                      cls: 'text-cyan-600',
+                      onClick: () => go('/site-visit-meeting', { dateFilter: 'all' })
+                    }
+                  ].map(x => (
+                    <button
+                      key={x.label}
+                      type="button"
+                      onClick={x.onClick}
+                      className="rounded-xl bg-gray-50 hover:bg-gray-100/80 py-2 text-center transition cursor-pointer border border-gray-100"
+                    >
+                      <p className={`text-base font-bold ${x.cls}`}>{x.value}</p>
+                      <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">{x.label}</p>
+                    </button>
+                  ))}
+                </div>
+              </AdminCard>
+
+              {/* 2. Lead Counts by Business Vertical */}
               <AdminCard className="flex flex-col">
                 <AdminCardHeader
                   title="Business Verticals"
@@ -1263,12 +1597,17 @@ export default function Dashboard() {
                       </p>
                       <div className="grid grid-cols-3 gap-1.5 text-center">
                         {byType.map(t => (
-                          <div key={t.key} className="bg-gray-50 rounded-lg p-1.5 border border-gray-100">
+                          <button
+                            key={t.key}
+                            type="button"
+                            onClick={() => go('/customer-master', { customerStatus: 'all' }, t.key)}
+                            className="bg-gray-50 hover:bg-indigo-50/50 rounded-lg p-1.5 border border-gray-100 transition cursor-pointer text-left"
+                          >
                             <p className="text-[10px] font-semibold text-gray-600 truncate">{t.label}</p>
                             <p className="text-xs font-bold text-gray-800 mt-0.5">
                               <span className="text-rose-600">{t.hot}H</span> · <span className="text-amber-600">{t.warm}W</span>
                             </p>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1276,107 +1615,128 @@ export default function Dashboard() {
                 </div>
               </AdminCard>
 
-              {/* 3. Team Attendance / Presence */}
-              <AdminCard className="flex flex-col">
+              {/* 3. Team Presence, My Attendance & Quick Actions */}
+              <AdminCard className="flex flex-col justify-between">
                 <AdminCardHeader
-                  title="Team Presence Today"
-                  subtitle={`${present.length} of ${teamSize || present.length} present`}
+                  title="Presence & Quick Actions"
+                  subtitle={`${present.length} of ${teamSize || present.length} present today`}
                   icon={UserCheck}
                   action={canOpen('/attendance-report') && (
                     <ViewAll onClick={() => openPage('/attendance-report')} label="Report" />
                   )}
                 />
-                <div className="p-4 flex-1 flex flex-col justify-between">
-                  {present.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-                        <span className="font-semibold text-gray-700">Currently Clocked In</span>
-                        <span className="text-[11px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          {present.filter(a => !a.outTime).length} Active
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+
+                <div className="p-3.5 space-y-3 flex-1 flex flex-col justify-between">
+                  {/* Compact My Attendance Today */}
+                  <button
+                    type="button"
+                    onClick={() => openPage('/attendance')}
+                    className={`w-full text-left rounded-lg border p-2.5 transition hover:shadow-xs cursor-pointer ${
+                      myToday
+                        ? 'border-emerald-200/90 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-900'
+                        : 'border-gray-200/90 bg-gray-50/60 hover:bg-gray-100/60 text-gray-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 text-emerald-700">
+                        <UserCircle2 size={12} /> My Attendance Today
+                      </span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
+                        myToday ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-gray-100 text-gray-600 border-gray-300'
+                      }`}>
+                        {myToday ? (myToday.outTime ? 'Checked Out' : 'Working') : 'Not Marked'}
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold mt-1 truncate">
+                      {myToday
+                        ? `Checked in at ${myToday.inTime || '-'}${myToday.outTime ? ` · Checked out at ${myToday.outTime}` : ' · Working'}`
+                        : 'Not marked yet today'}
+                    </p>
+                    <p className="text-[10px] text-gray-500 mt-0.5 truncate">
+                      Present {myMonthAttendance.length} of {myMonthWorkingDays} working days this month
+                    </p>
+                  </button>
+
+                  {/* Team Presence Today (Clocked-in list) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs text-gray-600">
+                      <span className="font-semibold text-gray-700 text-[11px]">Clocked-in Team</span>
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        {present.filter(a => !a.outTime).length} Active
+                      </span>
+                    </div>
+                    {present.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-1.5 max-h-[100px] overflow-y-auto pr-0.5">
                         {present.map((a, idx) => (
                           <div
                             key={a.id || idx}
-                            className="flex items-center gap-2 p-1.5 rounded-lg border border-gray-100 bg-gray-50/70 text-left min-w-0"
+                            className="flex items-center gap-1.5 p-1 rounded-md border border-gray-100 bg-gray-50/70 text-left min-w-0"
                           >
-                            <Avatar name={a.userName} size="w-7 h-7 text-[10px]" />
+                            <Avatar name={a.userName} size="w-6 h-6 text-[9px]" />
                             <div className="min-w-0 flex-1">
-                              <p className="text-[11px] font-bold text-gray-800 truncate">{String(a.userName || '').split(' ')[0]}</p>
-                              <p className="text-[9px] text-gray-400 truncate">
-                                {a.inTime ? `In: ${a.inTime}` : '-'}
-                              </p>
+                              <p className="text-[10px] font-bold text-gray-800 truncate">{String(a.userName || '').split(' ')[0]}</p>
+                              <p className="text-[9px] text-gray-400 truncate">{a.inTime ? `In: ${a.inTime}` : '-'}</p>
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  ) : (
-                    <Empty text="No attendance marked yet today." />
-                  )}
+                    ) : (
+                      <p className="text-[11px] text-gray-400 italic py-2 text-center">No attendance marked yet today.</p>
+                    )}
+                  </div>
 
-                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-[11px] text-gray-500 mt-2">
-                    <span>Total Employees: <strong>{teamSize}</strong></span>
-                    <button
-                      type="button"
-                      onClick={() => openPage('/attendance-report')}
-                      className="text-indigo-600 font-semibold hover:underline cursor-pointer"
-                    >
-                      View Full Log
-                    </button>
+                  {/* Quick Actions Navigation */}
+                  <div className="pt-2 border-t border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                      Quick Actions
+                    </p>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[
+                        { label: 'Leads', icon: UserPlus, path: '/lead', onClick: () => go('/lead', { dateFilter: 'all' }) },
+                        { label: 'Calls', icon: PhoneCall, path: '/call-tracker', onClick: () => go('/call-tracker') },
+                        { label: isMeetingOnly ? 'Meetings' : 'Visits', icon: Handshake, path: '/site-visit-meeting', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
+                        { label: 'Products', icon: Package, path: '/products', onClick: () => openPage('/products') },
+                        { label: 'MIS', icon: FileBarChart, path: '/mis-report', onClick: () => openPage('/mis-report') }
+                      ].filter(a => canOpen(a.path)).map(({ label, icon: Icon, onClick }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={onClick}
+                          className="flex flex-col items-center gap-1 py-1.5 px-0.5 rounded-lg border border-gray-100 bg-gray-50/70 hover:bg-indigo-50/60 hover:border-indigo-200 transition text-gray-700 hover:text-indigo-600 cursor-pointer group"
+                        >
+                          <span className="w-7 h-7 rounded-md bg-white border border-gray-200 group-hover:border-indigo-300 flex items-center justify-center text-gray-600 group-hover:text-indigo-600 transition shadow-2xs">
+                            <Icon size={13} />
+                          </span>
+                          <span className="text-[9px] font-semibold truncate max-w-full">{label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </AdminCard>
             </div>
 
-            {/* ROW 4: Single Tabbed Recent Activity Section */}
-            <AdminCard className="flex flex-col">
-              {/* Tabbed Activity Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-100">
-                <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide py-1">
-                  {[
-                    { key: 'calling', label: "Today's Calling", count: todayCalls.length, icon: PhoneCall },
-                    { key: 'leads', label: "Today's Leads", count: todayLeads.length, icon: UserPlus },
-                    { key: 'hotWarm', label: "Recent Hot & Warm", count: hotWarm.length, icon: Flame },
-                    { key: 'deals', label: "Deal Closed", count: dealsClosed.length, icon: CheckCircle2 }
-                  ].map(item => {
-                    const Icon = item.icon;
-                    const isActive = activityTab === item.key;
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        onClick={() => setActivityTab(item.key)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap cursor-pointer ${
-                          isActive
-                            ? 'bg-indigo-600 text-white shadow-2xs'
-                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                        }`}
-                      >
-                        <Icon size={13} className={isActive ? 'text-white' : 'text-gray-400'} />
-                        <span>{item.label}</span>
-                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                          isActive ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'
-                        }`}>
-                          {item.count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {activityViewAll && (
-                  <div className="shrink-0 flex items-center justify-end">
-                    <ViewAll onClick={activityViewAll.onClick} label={activityViewAll.label} />
-                  </div>
-                )}
-              </div>
-
-              {/* Tabbed Activity Content */}
-              <div className="min-h-[260px] max-h-[460px] overflow-y-auto">
-                {activityTab === 'calling' && (
-                  todayCalls.length > 0 ? (
+            {/* ROW 4: Four Activity Lists Accessible Simultaneously */}
+            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-3.5">
+              {/* List 1: Today's Calling */}
+              <AdminCard className="flex flex-col">
+                <AdminCardHeader
+                  title="Today's Calling"
+                  subtitle={`${todayCalls.length} calls logged today`}
+                  icon={PhoneCall}
+                  action={
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                        {todayCalls.length}
+                      </span>
+                      {canDrillInto('/call-tracker') && (
+                        <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })} />
+                      )}
+                    </div>
+                  }
+                />
+                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                  {todayCalls.length > 0 ? (
                     <>
                       {todayCalls.slice(0, listLimit.calls).map((c, idx) => {
                         const lead = leadById[String(c.leadId)];
@@ -1406,46 +1766,88 @@ export default function Dashboard() {
                     </>
                   ) : (
                     <Empty text={loadingOr('No calls logged today yet.')} />
-                  )
-                )}
+                  )}
+                </div>
+              </AdminCard>
 
-                {activityTab === 'leads' && (
-                  todayLeads.length > 0 ? (
+              {/* List 2: Today's Leads */}
+              <AdminCard className="flex flex-col">
+                <AdminCardHeader
+                  title="Today's Leads"
+                  subtitle={`${todayLeads.length} leads scheduled today`}
+                  icon={UserPlus}
+                  action={
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                        {todayLeads.length}
+                      </span>
+                      {canDrillInto('/call-tracker') && (
+                        <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today' })} />
+                      )}
+                    </div>
+                  }
+                />
+                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                  {todayLeads.length > 0 ? (
                     <>
-                      {todayLeads.slice(0, listLimit.leads).map((l, idx) => (
-                        <AdminPersonRow
-                          key={l.id || idx}
-                          onClick={() => setDetailsLead(l)}
-                          highlight={l.isDealClosed}
-                          name={l.personName}
-                          sub={`${l.leadNo || ''}${l.leadSource ? ` · Source: ${l.leadSource}` : ''} · Assigned: ${l.callerAssigned || l.assignedVisitor || 'Unassigned'}`}
-                          right={<>
-                            <StatusPill
-                              status={l.isDealClosed ? 'Deal Lock' : l.status}
-                              meetingOnly={MEETING_ONLY_CATEGORIES.includes(l.category || tab)}
-                            />
-                            {isAll && <TypePill type={l.leadType} />}
-                          </>}
-                        />
-                      ))}
+                      {todayLeads.slice(0, listLimit.leads).map((l, idx) => {
+                        const leadTime = l.createdDate ? formatTime(l.createdDate.getTime()) : (l.timestamp ? formatTime(parseTrackerDateStr(l.timestamp)?.getTime()) : '');
+                        return (
+                          <AdminPersonRow
+                            key={l.id || idx}
+                            onClick={() => setDetailsLead(l)}
+                            highlight={l.isDealClosed}
+                            name={l.personName}
+                            sub={`${l.leadNo ? `${l.leadNo} · ` : ''}${l.leadSource ? `Source: ${l.leadSource} · ` : ''}${leadTime ? `${leadTime} · ` : ''}Assigned: ${l.callerAssigned || l.assignedVisitor || 'Unassigned'}`}
+                            right={<>
+                              <StatusPill
+                                status={l.isDealClosed ? 'Deal Lock' : l.status}
+                                meetingOnly={MEETING_ONLY_CATEGORIES.includes(l.category || tab)}
+                              />
+                              <div className="flex items-center gap-1">
+                                {isAll && <TypePill type={l.leadType} />}
+                                <TempPill value={l.customerStatus} />
+                              </div>
+                            </>}
+                          />
+                        );
+                      })}
                       {todayLeads.length > listLimit.leads && (
                         <MoreButton remaining={todayLeads.length - listLimit.leads} onClick={() => showMore('leads')} />
                       )}
                     </>
                   ) : (
                     <Empty text={loadingOr('No leads scheduled for follow-up today.')} />
-                  )
-                )}
+                  )}
+                </div>
+              </AdminCard>
 
-                {activityTab === 'hotWarm' && (
-                  hotWarm.length > 0 ? (
+              {/* List 3: Recent Hot & Warm */}
+              <AdminCard className="flex flex-col">
+                <AdminCardHeader
+                  title="Recent Hot & Warm"
+                  subtitle={`${hotWarm.length} high-intent clients`}
+                  icon={Flame}
+                  action={
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                        {hotWarm.length}
+                      </span>
+                      {canDrillInto('/customer-master') && (
+                        <ViewAll onClick={() => go('/customer-master', { customerStatus: 'all' })} />
+                      )}
+                    </div>
+                  }
+                />
+                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                  {hotWarm.length > 0 ? (
                     <>
                       {hotWarm.slice(0, listLimit.hot).map((l, idx) => (
                         <AdminPersonRow
                           key={l.id || idx}
                           onClick={() => setDetailsLead(l)}
                           name={l.personName}
-                          sub={`Last Call: ${formatDay(l.lastActivityMs)}${l.latestTracker?.nextDate ? ` · Next: ${formatIsoDate(l.latestTracker.nextDate)}` : ''} · ${l.callerAssigned || 'Unassigned'}`}
+                          sub={`Last Call: ${formatDay(l.lastActivityMs)}${l.latestTracker?.nextDate ? ` · Next: ${formatIsoDate(l.latestTracker.nextDate)}` : (l.nextCallDate ? ` · Next: ${formatIsoDate(l.nextCallDate)}` : '')} · Assigned: ${l.callerAssigned || l.assignedVisitor || 'Unassigned'}`}
                           right={<>
                             <TempPill value={l.customerStatus} />
                             {isAll && <TypePill type={l.leadType} />}
@@ -1458,11 +1860,29 @@ export default function Dashboard() {
                     </>
                   ) : (
                     <Empty text={loadingOr('No Hot or Warm clients available.')} />
-                  )
-                )}
+                  )}
+                </div>
+              </AdminCard>
 
-                {activityTab === 'deals' && (
-                  dealsClosed.length > 0 ? (
+              {/* List 4: Deal Closed */}
+              <AdminCard className="flex flex-col">
+                <AdminCardHeader
+                  title="Deal Closed"
+                  subtitle={`${dealsClosed.length} closed deals`}
+                  icon={CheckCircle2}
+                  action={
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        {dealsClosed.length}
+                      </span>
+                      {canDrillInto('/deal-closed') && (
+                        <ViewAll onClick={() => go('/deal-closed')} />
+                      )}
+                    </div>
+                  }
+                />
+                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                  {dealsClosed.length > 0 ? (
                     <>
                       {dealsClosed.slice(0, listLimit.deals).map((l, idx) => {
                         const deal = l.dealFollowUp || {};
@@ -1488,10 +1908,10 @@ export default function Dashboard() {
                     </>
                   ) : (
                     <Empty text={loadingOr('No deals closed yet in this category.')} />
-                  )
-                )}
-              </div>
-            </AdminCard>
+                  )}
+                </div>
+              </AdminCard>
+            </div>
 
           </>)}
         </div>
@@ -1710,9 +2130,14 @@ export default function Dashboard() {
                 onClick={() => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })}
               />
               <MetricBlock
-                label="Converted"
-                value={kpis.converted}
+                label="Interested"
+                value={kpis.interested}
                 onClick={() => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })}
+              />
+              <MetricBlock
+                label="Deal Closed"
+                value={kpis.converted}
+                onClick={() => go('/deal-closed')}
               />
               <MetricBlock
                 label={isMeetingOnly ? 'Meetings' : 'Site Visits'}
@@ -1894,7 +2319,8 @@ export default function Dashboard() {
               <UserCardHeader title="Lead Pipeline" subtitle="Where every lead stands now" icon={Layers} />
               {(() => {
                 const segments = [
-                  { label: 'Converted', value: kpis.converted, color: 'bg-emerald-500', status: 'Interested' },
+                  { label: 'Converted', value: kpis.converted, color: 'bg-emerald-500', path: '/deal-closed' },
+                  { label: 'Interested', value: kpis.interested, color: 'bg-teal-500', status: 'Interested' },
                   { label: 'Future Plan', value: kpis.futurePlan, color: 'bg-amber-400', status: 'Future Plan Date' },
                   { label: isMeetingOnly ? 'Meeting' : 'Site Visit', value: kpis.siteVisit, color: 'bg-cyan-500', path: '/site-visit-meeting' },
                   { label: 'Not Interested', value: kpis.notInterested, color: 'bg-rose-400', status: 'Not Interested' },

@@ -159,6 +159,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         customerStatus: lead.customerStatus || '',
         customerSaid: '',
         nextDate: '',
+        nextTime: '',
         requirement: reqValue,
         requirementOption: reqValue,
         customRequirement: '',
@@ -325,14 +326,13 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
 
   const statusOptions = useMemo(() => {
     const isNonRealEstate = isInsurance || isMutualFund;
-    // Real Estate: "Interested" isn't offered when logging a follow-up call (older calls keep it)
-    return FOLLOW_UP_CALL_STATUSES.filter(v => !(isRealEstate && v === 'Interested')).map(v => {
+    return FOLLOW_UP_CALL_STATUSES.map(v => {
       if (v === 'Site Visit/Meeting' && isNonRealEstate) {
         return { value: 'Meeting', label: 'Meeting' };
       }
       return { value: v, label: v };
     });
-  }, [isRealEstate, isInsurance, isMutualFund]);
+  }, [isInsurance, isMutualFund]);
 
   // Default assignedVisitor if status is Site Visit/Meeting or Meeting
   useEffect(() => {
@@ -655,7 +655,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
           <div key={f.key} className="space-y-0.5">
             <span className="text-[9.5px] sm:text-[10px] text-gray-500 uppercase tracking-tight font-semibold">{f.label}</span>
             <p className={`font-semibold truncate text-[11px] md:text-[12px] ${f.key === 'leadType' ? getLeadTypeTextClass(lead[f.key]) : 'text-gray-900'}`}>
-              {lead[f.key] || '-'}
+              {f.key === 'referencerName' ? (lead.referencerName || lead.referenceName || '-') : (lead[f.key] || '-')}
             </p>
           </div>
         ))}
@@ -870,6 +870,20 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
                   type="date"
                   value={formData.nextDate}
                   onChange={(e) => handleChange('nextDate', e.target.value)}
+                  className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
+                />
+              </div>
+            )}
+
+            {formData.status === 'Future Plan Date' && (
+              <div className="space-y-1 col-span-1 animate-in fade-in duration-200">
+                <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
+                  Time (Optional)
+                </label>
+                <input
+                  type="time"
+                  value={formData.nextTime || ''}
+                  onChange={(e) => handleChange('nextTime', e.target.value)}
                   className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"
                 />
               </div>

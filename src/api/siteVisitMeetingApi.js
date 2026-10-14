@@ -259,6 +259,7 @@ export const siteVisitMeetingApi = {
       interestLevel: customerStatus || '',
       whatHappened: row.what_happened || '',
       nextVisitDate: row.next_visit_date || '',
+      nextVisitTime: row.next_visit_time || row.nextVisitTime || '',
       dealOutcome: row.deal_outcome || '',
       rejectionReason: row.rejection_reason || row.reason || '',
       salesExecutive: row.sales_executive || '',
@@ -321,6 +322,7 @@ export const siteVisitMeetingApi = {
       interest_level: legacyInterestLevel,
       what_happened: entry.whatHappened || entry.what_happened || '',
       next_visit_date: formatDateForDb(entry.nextVisitDate || entry.next_visit_date),
+      next_visit_time: entry.nextVisitTime || entry.next_visit_time || null,
       deal_outcome: entry.dealOutcome || entry.deal_outcome || null,
       rejection_reason: entry.rejectionReason || entry.reason || entry.rejection_reason || null,
       sales_executive: entry.salesExecutive || entry.sales_executive || entry.visitorName || null,
@@ -531,6 +533,9 @@ export const siteVisitMeetingApi = {
       }
       if (error.message?.includes('visit_meet') || error.message?.includes('schema cache')) {
         delete retryPayload.visit_meet;
+      }
+      if (error.message?.includes('next_visit_time')) {
+        delete retryPayload.next_visit_time;
       }
       if (error.message?.includes('customer_status')) {
         delete retryPayload.customer_status;
@@ -922,7 +927,7 @@ export const siteVisitMeetingApi = {
         leadNo: lead.leadNo || '',
         leadType: lead.leadType || '',
         leadSource: lead.leadSource || '',
-        referencerName: lead.referencerName || '',
+        referencerName: lead.referencerName || lead.referenceName || '',
         productType: lead.productType || '',
         requirement: lead.requirement || '',
         insuranceSubType: lead.insuranceSubType || '',

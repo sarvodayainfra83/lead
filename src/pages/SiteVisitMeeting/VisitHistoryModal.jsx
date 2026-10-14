@@ -22,6 +22,11 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
   // Latest Online / Offline meeting type (Insurance)
   const latestMeetingMode = [...followUps].reverse().find(f => f.visitMeet?.meetingMode)?.visitMeet?.meetingMode || '';
   const nextDate = lead.nextMeetingDate || lead.nextVisitDate || '';
+  const refName = lead.referencerName || lead.referenceName || '';
+  const isReferenceSource = Boolean(
+    (lead.leadSource && String(lead.leadSource).trim().toLowerCase().includes('reference')) ||
+    refName
+  );
   const cleanPhone = String(lead.customerNumber || lead.number || '').replace(/[^0-9+]/g, '');
 
   const handleWhatsApp = () => {
@@ -129,7 +134,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
 
         {/* Client & Visit Overview Bar */}
         <div className="flex-shrink-0 p-3 sm:p-4 bg-slate-50 border-b border-gray-200 text-xs">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${(isReferenceSource || refName) ? 'md:grid-cols-6' : 'md:grid-cols-5'} gap-3`}>
             <div>
               <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">Customer</span>
               <span className="font-bold text-gray-900 truncate block text-sm">
@@ -153,6 +158,22 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                 </div>
               )}
             </div>
+
+            <div>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">Lead Source</span>
+              <span className="font-bold text-gray-800 mt-1 block truncate text-sm">
+                {lead.leadSource || '-'}
+              </span>
+            </div>
+
+            {(isReferenceSource || refName) && (
+              <div>
+                <span className="text-[10px] text-indigo-500 uppercase tracking-wider font-bold block">Reference Name</span>
+                <span className="font-bold text-indigo-700 mt-1 block truncate text-sm" title={refName || '-'}>
+                  {refName || '-'}
+                </span>
+              </div>
+            )}
 
             <div>
               <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold block">Current Status</span>
@@ -326,7 +347,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                       {fu.nextVisitDate && (
                         <div className="flex items-center gap-1.5 text-[11px] text-purple-700 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-200 font-semibold">
                           <Clock size={12} />
-                          Next Scheduled Visit: {formatDisplayDate(fu.nextVisitDate)}
+                          Next Scheduled Visit: {formatDisplayDate(fu.nextVisitDate)}{(fu.nextVisitTime || fu.next_visit_time) ? ` at ${fu.nextVisitTime || fu.next_visit_time}` : ''}
                         </div>
                       )}
 

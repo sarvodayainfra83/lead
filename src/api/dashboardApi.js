@@ -188,20 +188,46 @@ export const dashboardApi = {
       // Customer status considering both trackers and visitor follow-ups
       const customerStatus = getEffectiveCustomerStatus(leadTrackers, leadFollowUps, lead.id, lead.leadNo);
 
-      // Current active status
-      // Real Estate walk-ins go straight to Site Visit / Meeting, so they start in that status (not "Not Called")
-      let currentStatus = latestTracker?.status || lead.status || (isDirectSiteVisitLead(lead) ? 'Site Visit/Meeting' : null);
-      if (latestFollowUpMs >= latestTrackerMs && latestFollowUp?.status) {
+      // Page depend and counts depends only on the last follow up status in site visit page
+      // or if there is no site visit then followup status from Leads&Followups or calls only
+      let currentStatus = null;
+      if (latestFollowUp?.status) {
         currentStatus = isFollowUpRejected(latestFollowUp) ? 'Rejected (Lost)' : latestFollowUp.status;
+      } else if (latestTracker?.status) {
+        currentStatus = latestTracker.status;
+      } else {
+        currentStatus = lead.status || (isDirectSiteVisitLead(lead) ? 'Site Visit/Meeting' : null);
       }
 
-      // Status as the Lead & Followup list shows it — matching CallTrackerCategoryView logic
+      // Deal Closed: ONLY counted or shown when the LAST status is Deal Closed / Deal Lock
+      const isDealClosed = isDealLockStatus(currentStatus);
+      const dealFollowUp = isDealClosed ? (latestFollowUp || null) : null;
+      const dealClosedMs = isDealClosed
+        ? (dealFollowUp ? (Number(dealFollowUp.timestampMs) || (dealFollowUp.createdAt ? new Date(dealFollowUp.createdAt).getTime() : 0)) : (lead.lastUpdated ? new Date(lead.lastUpdated).getTime() : 0))
+        : 0;
+
+      // Status as the Lead & Followup list shows it — matching active status precedence
       const inSiteVisitList = Boolean(siteVisitListIds.has(String(lead.id)) || isDirectSiteVisitLead(lead));
       const inCallList = !isDirectSiteVisitLead(lead) && isInFollowUpQueue(lead, calledLeadKeys) &&
         (isAdmin || matchesUserConnection(lead, user));
       const latestListTracker = getTrackersForLead(allTrackers, lead.id, lead.leadNo, lead.number || lead.customerNumber).pop();
-      const followUpListStatus = latestListTracker?.status ||
-        (!inCallList && inSiteVisitList ? 'Site Visit/Meeting' : (lead.callerAssigned ? 'Pending' : 'Unassigned'));
+
+      let followUpListStatus = null;
+      if (isDealClosed) {
+        followUpListStatus = 'Deal Closed';
+      } else if (currentStatus === 'Future Plan' || currentStatus === 'Future Plan Date') {
+        followUpListStatus = 'Future Plan Date';
+      } else if (currentStatus === 'Not Interested' || currentStatus === 'Rejected (Lost)') {
+        followUpListStatus = 'Not Interested';
+      } else if (currentStatus === 'Interested') {
+        followUpListStatus = 'Interested';
+      } else if (currentStatus === 'Site Visit/Meeting' || currentStatus === 'Meeting' || currentStatus === 'Revisit' || currentStatus === 'Under Negotiation' || currentStatus === 'Did Not Show') {
+        followUpListStatus = 'Site Visit/Meeting';
+      } else if (latestListTracker?.status) {
+        followUpListStatus = latestListTracker.status;
+      } else {
+        followUpListStatus = (!inCallList && inSiteVisitList ? 'Site Visit/Meeting' : (lead.callerAssigned ? 'Pending' : 'Unassigned'));
+      }
 
       // Site Visit detection: assigned visitor, follow ups, direct site visit, or visit tracker status
       const isSiteVisit = Boolean(
@@ -213,9 +239,6 @@ export const dashboardApi = {
         (lead.status && String(lead.status).toLowerCase().includes('meeting')) ||
         (lead.visitMeet?.['site-visit'] || lead.visitMeet?.meeting)
       );
-
-      // Closed deal: the latest visit follow-up marked Deal Lock (same rule as the Site Visit page's Closed Deals)
-      const dealFollowUp = [...leadFollowUps].reverse().find(f => isDealLockStatus(f.status)) || null;
 
       return {
         ...lead,
@@ -238,9 +261,9 @@ export const dashboardApi = {
         customerStatus,
         // Deal marked lost in a Site Visit follow-up — not a Hot/Warm client (same rule as Hot Customers page)
         isLost: isFollowUpRejected(latestFollowUp),
-        isDealClosed: Boolean(dealFollowUp) || isDealLockStatus(lead.status),
+        isDealClosed,
         dealFollowUp,
-        dealClosedMs: dealFollowUp ? (Number(dealFollowUp.timestampMs) || (dealFollowUp.createdAt ? new Date(dealFollowUp.createdAt).getTime() : 0)) : 0,
+        dealClosedMs,
         lastActivityMs,
         nextCallDate: latestTracker?.nextDate || lead.nextCallDate || '',
         dateOfCallRaw: latestTracker?.dateOfCall || latestTracker?.date_of_call || latestTracker?.timestamp || latestTracker?.created_at || '',
@@ -342,7 +365,8 @@ export const dashboardApi = {
     const totalLeads = leads.length;
     const neverContactedCount = leadsWithStatus.filter(l => l._status === null).length;
     const futurePlanCount = leadsWithStatus.filter(l => l._status === 'Future Plan Date').length;
-    const convertedCount = leadsWithStatus.filter(l => CONVERTED_STATUSES.includes(l._status)).length;
+    const convertedCount = enrichedLeads.filter(l => l.isDealClosed).length;
+    const interestedCount = leadsWithStatus.filter(l => l._status === 'Interested').length;
     const notInterestedCount = leadsWithStatus.filter(l => l._status === 'Not Interested').length;
     const pendingCount = leads.filter(l => isLeadPending(trackers, l)).length;
     const conversionRate = totalLeads > 0 ? Math.round((convertedCount / totalLeads) * 100) : 0;
@@ -418,12 +442,12 @@ export const dashboardApi = {
         const callerName = u.name.trim();
         if (!seenCallerNames.has(callerName.toLowerCase())) {
           seenCallerNames.add(callerName.toLowerCase());
-          const assignedLeads = leadsWithStatus.filter(l => 
+          const assignedLeads = enrichedLeads.filter(l => 
             (l.callerAssigned && l.callerAssigned.trim().toLowerCase() === callerName.toLowerCase()) ||
             l.callerAssignedId === u.id
           );
           const total = assignedLeads.length;
-          const converted = assignedLeads.filter(l => CONVERTED_STATUSES.includes(l._status)).length;
+          const converted = assignedLeads.filter(l => l.isDealClosed).length;
           const pending = assignedLeads.filter(l => isLeadPending(trackers, l)).length;
           const rate = total > 0 ? Math.round((converted / total) * 100) : 0;
           if (total > 0) {

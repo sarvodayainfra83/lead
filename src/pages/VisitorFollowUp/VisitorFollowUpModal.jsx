@@ -24,7 +24,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     status: '',
     customerStatus: 'Warm',
     whatHappened: '',
-    nextVisitDate: ''
+    nextVisitDate: '',
+    nextVisitTime: ''
   });
 
   const wasOpenRef = useRef(false);
@@ -48,7 +49,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         status: '',
         customerStatus: resolveInitialCustomerStatus(lead),
         whatHappened: '',
-        nextVisitDate: ''
+        nextVisitDate: '',
+        nextVisitTime: ''
       });
     }
   }, [lead, isOpen]);
@@ -96,6 +98,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         interestLevel: formData.customerStatus || 'Warm',
         whatHappened: formData.whatHappened.trim(),
         nextVisitDate: (formData.status === 'Future Plan' || formData.status === 'Did Not Show') ? formData.nextVisitDate : null,
+        nextVisitTime: (formData.status === 'Future Plan' || formData.status === 'Did Not Show') ? (formData.nextVisitTime || null) : null,
         dealOutcome: formData.status === 'Not Interested' ? 'Rejected (Lost)' : null,
         rejectionReason: formData.status === 'Not Interested' ? 'Not Interested' : null,
         salesExecutive: null,
@@ -234,20 +237,38 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
               </div>
             )}
 
-            {/* 3. Next Visit Date */}
+            {/* 3. Next Visit Date & Optional Time */}
             {(formData.status === 'Future Plan' || formData.status === 'Did Not Show') && (
               <div className="space-y-1 animate-in fade-in duration-150">
-                <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
-                  NEXT VISIT DATE *
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    required
-                    value={formData.nextVisitDate}
-                    onChange={(e) => handleChange('nextVisitDate', e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[34px] sm:h-[38px]"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+                      NEXT VISIT DATE *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        required
+                        value={formData.nextVisitDate}
+                        min={formData.status === 'Future Plan' ? new Date().toISOString().split('T')[0] : undefined}
+                        onChange={(e) => handleChange('nextVisitDate', e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[34px] sm:h-[38px] cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] sm:text-[13px] font-medium text-gray-700 uppercase tracking-tight">
+                      TIME (OPTIONAL)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="time"
+                        value={formData.nextVisitTime || ''}
+                        onChange={(e) => handleChange('nextVisitTime', e.target.value)}
+                        className="w-full px-3 py-1.5 text-xs sm:text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 h-[34px] sm:h-[38px] cursor-pointer [color-scheme:light]"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

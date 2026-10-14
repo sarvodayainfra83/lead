@@ -164,7 +164,7 @@ const DataTable = ({
               onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
               className="border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:border-indigo-500 bg-white font-medium text-xs shadow-xs"
             >
-              {[50, 100, 200, 300].map(val => (
+              {[10, 25, 50, 100, 200, 300].map(val => (
                 <option key={val} value={val}>{val}</option>
               ))}
             </select>
