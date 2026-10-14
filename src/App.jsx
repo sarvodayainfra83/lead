@@ -26,7 +26,7 @@ import AccessGuard from './components/AccessGuard';
 import { initializeStorage } from './utils/storageManager';
 import { isSupabaseConfigured } from './api/supabaseClient';
 import { useAuthStore } from './store/authStore';
-import { isUserAdmin, isAdminOnlyAttendanceUser } from './utils/authUtils';
+import { isUserAdmin, isAdminOnlyAttendanceUser, isUserReceptionist } from './utils/authUtils';
 
 // On mobile, filling in the Login form scrolls the page up so the field stays visible above the
 // on-screen keyboard. That scroll position is a browser-window property, not part of the Login
@@ -64,6 +64,18 @@ function VisitorRedirectRoute() {
   return <Navigate to={isUserAdmin(user) ? "/call-tracker" : "/site-visit-meeting"} state={isUserAdmin(user) ? { dateFilter: 'all', stageFilter: 'Site Visit' } : undefined} replace />;
 }
 
+function IndexRoute() {
+  const { user } = useAuthStore();
+  if (isUserReceptionist(user)) return <Navigate to="/reception-dashboard" replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
+function DashboardRoute() {
+  const { user } = useAuthStore();
+  if (isUserReceptionist(user)) return <Navigate to="/reception-dashboard" replace />;
+  return <AccessGuard pageKey="dashboard"><Dashboard /></AccessGuard>;
+}
+
 function App() {
   useEffect(() => {
     // Demo data in the browser is only for running without a database — with Supabase everything lives in the DB
@@ -83,8 +95,8 @@ function App() {
               <Layout />
             </ProtectedRoute>
           }>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<AccessGuard pageKey="dashboard"><Dashboard /></AccessGuard>} />
+            <Route index element={<IndexRoute />} />
+            <Route path="dashboard" element={<DashboardRoute />} />
             <Route path="lead" element={<AccessGuard pageKey="lead"><Lead /></AccessGuard>} />
             <Route path="call-tracker" element={<AccessGuard pageKey="callTracker"><FollowUp /></AccessGuard>} />
             <Route path="site-visit-meeting" element={<SiteVisitRoute />} />

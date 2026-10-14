@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
-import { canViewPage, getUserLeadTypeScope, isAdminOnlyAttendanceUser, isUserAdmin } from '../utils/authUtils';
+import { canViewPage, getUserLeadTypeScope, isAdminOnlyAttendanceUser, isUserAdmin, isUserReceptionist } from '../utils/authUtils';
 import companyLogo from '../Assets/Logo.jpeg';
 import sidebarLogo from '../Assets/SidebarLogo.png';
 import companyIcon from '../Assets/TikarihaIcon.png';
@@ -83,13 +83,24 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
   // Admins mark and view attendance from the Attendance Report page only
   // For Admin role: Site Visit / Meeting is merged into Lead & Followup, so hide it from the sidebar
   // For Admin role: Lead page is hidden for now
-  const menuItems = allMenuItems.filter((item) =>
+  // For Receptionist role: regular Dashboard is hidden, Reception Dashboard is kept at the top
+  let menuItems = allMenuItems.filter((item) =>
     canViewPage(user, item.pageKey) &&
+    !(item.pageKey === 'dashboard' && isUserReceptionist(user)) &&
     !(item.pageKey === 'lead' && isUserAdmin(user)) &&
     !(item.pageKey === 'siteVisitMeeting' && isUserAdmin(user)) &&
     !(item.pageKey === 'attendanceReport' && isUserAdmin(user)) &&
     !(item.adminOnly && !isUserAdmin(user))
   );
+
+  // For Receptionist users, keep Reception Dashboard at the top of the menu
+  if (isUserReceptionist(user)) {
+    const receptionDashIndex = menuItems.findIndex(i => i.pageKey === 'receptionDashboard');
+    if (receptionDashIndex > 0) {
+      const [receptionDashItem] = menuItems.splice(receptionDashIndex, 1);
+      menuItems.unshift(receptionDashItem);
+    }
+  }
 
   return (
     <>

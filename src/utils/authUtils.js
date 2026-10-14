@@ -476,6 +476,11 @@ export const getPageAccess = (user, pageKey) => {
     return 'none';
   }
 
+  // Receptionist users use Reception Dashboard instead of standard Dashboard
+  if (isUserReceptionist(user) && pageKey === 'dashboard') {
+    return 'none';
+  }
+
   const pages = (user.accessPages && typeof user.accessPages === 'object' && !Array.isArray(user.accessPages))
     ? user.accessPages
     : {};
