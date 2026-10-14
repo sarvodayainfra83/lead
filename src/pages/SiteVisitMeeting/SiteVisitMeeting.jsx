@@ -3,7 +3,7 @@ import { Building2, ShieldCheck, TrendingUp } from 'lucide-react';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
-import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, matchesUserConnection } from '../../utils/authUtils';
+import { hasFullAccess, getUserLeadTypeScope, isUserAdmin, isUserReceptionist, matchesUserConnection } from '../../utils/authUtils';
 import SiteVisitCategoryView from './SiteVisitCategoryView';
 import AssignVisitorModal from './AssignVisitorModal';
 import VisitorFollowUpModal from './VisitorFollowUpModal';
@@ -83,7 +83,7 @@ export default function SiteVisitMeeting() {
 
   // For USER role (non-admin): show records where user is connected (as assigned visitor, caller, or receiver)
   const displayLeads = useMemo(() => {
-    if (isAdmin) return allLeads;
+    if (isAdmin || isUserReceptionist(user)) return allLeads;
     return allLeads.filter(l => matchesUserConnection(l, user));
   }, [allLeads, isAdmin, user]);
 

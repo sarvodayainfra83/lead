@@ -7,7 +7,7 @@ import { masterApi } from '../../api/masterApi';
 import { siteVisitMeetingApi } from '../../api/siteVisitMeetingApi';
 import { useAuthStore } from '../../store/authStore';
 import { refreshBadgeCounts } from '../../store/badgeCountStore';
-import { isUserAdmin, matchesUserConnection, hasFullAccess, getUserLeadTypeScope } from '../../utils/authUtils';
+import { isUserAdmin, isUserReceptionist, matchesUserConnection, hasFullAccess, getUserLeadTypeScope } from '../../utils/authUtils';
 import { isDirectSiteVisitLead, buildCalledLeadKeys, isInFollowUpQueue } from './callTrackerConstants';
 import CallTrackerCategoryView from './CallTrackerCategoryView';
 import Direct from './Direct';
@@ -89,6 +89,8 @@ export default function FollowUp() {
   // All Dates shows every lead (same total as the Dashboard); the other date filters show the call list only.
   const taggedLeads = useMemo(() => {
     const isAdmin = isUserAdmin(user);
+    const isReceptionist = isUserReceptionist(user);
+    const isGlobal = isAdmin || isReceptionist;
     const calledLeadKeys = buildCalledLeadKeys(allTrackers);
     const siteVisitIds = new Set(
       siteVisitMeetingApi.buildSiteVisitMeetingLeads(allLeads, allTrackers, allAssignedVisitors, allVisitorFollowUps)
@@ -96,7 +98,7 @@ export default function FollowUp() {
     );
     return allLeads.map(lead => ({
       ...lead,
-      inCallList: isAdmin
+      inCallList: isGlobal
         ? true
         : (!isDirectSiteVisitLead(lead) &&
             isInFollowUpQueue(lead, calledLeadKeys) &&

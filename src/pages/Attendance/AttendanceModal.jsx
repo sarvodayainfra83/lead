@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import {
-  Upload, Camera, CheckCircle2, RotateCcw, MapPin, Loader2, Trash2, X, AlertTriangle, ExternalLink
+  Upload, Camera, CheckCircle2, RotateCcw, MapPin, Loader2, Trash2, X, AlertTriangle, ExternalLink, HelpCircle
 } from 'lucide-react';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
@@ -24,6 +24,8 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
   const [geocodingStatus, setGeocodingStatus] = useState('RESOLVED');
   const [locationFallback, setLocationFallback] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [gpsError, setGpsError] = useState(null);
+  const [showInstructions, setShowInstructions] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isWebcamOpen, setIsWebcamOpen] = useState(false);
@@ -244,29 +246,43 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
 
   const fetchCurrentLocation = () => {
     if (!navigator.geolocation) {
+      const errObj = {
+        code: 0,
+        type: 'UNSUPPORTED',
+        title: 'Geolocation Not Supported',
+        message: 'Geolocation is not supported by your browser.',
+        instructions: 'Please use a modern browser such as Google Chrome, Microsoft Edge, Safari, or Firefox.'
+      };
+      setGpsError(errObj);
       toast.error('Geolocation is not supported by your browser');
       return;
     }
 
     setLoadingLocation(true);
+    setGpsError(null);
+    setShowInstructions(false);
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const accuracy = pos.coords.accuracy != null ? Number(pos.coords.accuracy) : null;
-        setLocation({ latitude: lat, longitude: lng, accuracy });
+        const timestamp = pos.timestamp || Date.now();
+        setLocation({ latitude: lat, longitude: lng, accuracy, timestamp });
 
         try {
-          const res = await attendanceApi.resolveLocationAddress(lat, lng, accuracy);
+          const res = await attendanceApi.resolveLocationAddress(lat, lng, accuracy, 150);
           setAddress(res.address || '');
           setGeocodingStatus(res.geocodingStatus || 'RESOLVED');
           setLocationFallback(!!res.isFallback);
         } catch (e) {
+          console.warn('Location address resolution failed:', e);
           setAddress('');
           setGeocodingStatus('PENDING');
           setLocationFallback(true);
         } finally {
           setLoadingLocation(false);
+          setGpsError(null);
           toast.success('Image and location captured');
         }
       },
@@ -274,20 +290,41 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
         console.warn('Geolocation error:', err);
         setLoadingLocation(false);
         setLocation(null);
-        setAddress('Location unavailable');
+        setAddress('');
         setGeocodingStatus('RESOLVED');
         setLocationFallback(false);
-        if (err.code === 1) {   
-          toast.error('Location permission denied (HTTPS required on mobile IP)');
-        } else if (err.code === 2) {
-          toast.error('Device GPS position unavailable. Please turn on Location.');
-        } else if (err.code === 3) {
-          toast.error('Location request timed out. Please try again.');
-        } else {
-          toast.error('Location unavailable');
+
+        let errorType = 'UNKNOWN';
+        let title = 'Location Required';
+        let message = "We couldn't capture your current location. Please check your device location settings and browser permissions, then try again.";
+        let instructions = '';
+
+        if (err.code === 1) { // PERMISSION_DENIED
+          errorType = 'PERMISSION_DENIED';
+          title = 'Location Permission Denied';
+          message = 'Location permission was denied. Attendance verification requires access to your current GPS location.';
+          instructions = '1. Click the lock or settings icon next to the URL in your browser address bar.\n2. In Site settings, set Location to "Allow".\n3. Ensure device GPS / Location is enabled in system settings.\n4. Click "Try Again" below.';
+        } else if (err.code === 2) { // POSITION_UNAVAILABLE
+          errorType = 'POSITION_UNAVAILABLE';
+          title = 'Device Location Unavailable';
+          message = 'Your device or browser could not determine your current position.';
+          instructions = '1. Turn on Location / GPS in your device settings or quick toggles.\n2. If you are indoors, move closer to a window or connect to Wi-Fi to improve location signal.\n3. Click "Try Again" below.';
+        } else if (err.code === 3) { // TIMEOUT
+          errorType = 'TIMEOUT';
+          title = 'Location Request Timed Out';
+          message = 'GPS location acquisition took longer than 15 seconds.';
+          instructions = '1. Verify your device has an active GPS and internet connection.\n2. Click "Try Again" to retry location capture.';
         }
+
+        setGpsError({
+          code: err.code,
+          type: errorType,
+          title,
+          message,
+          instructions
+        });
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -298,6 +335,8 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
     setAddress('');
     setGeocodingStatus('RESOLVED');
     setLocationFallback(false);
+    setGpsError(null);
+    setShowInstructions(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -344,6 +383,17 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
     }
     if (!photoData) {
       toast.error(isMobile ? 'Please click a photo to verify attendance' : 'Please upload an image to verify attendance');
+      return;
+    }
+
+    if (loadingLocation) {
+      toast.error('Fetching GPS location, please wait...');
+      return;
+    }
+
+    if (!location) {
+      toast.error('Verified GPS location is required to submit attendance. Please try again.');
+      fetchCurrentLocation();
       return;
     }
 
@@ -572,7 +622,7 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
                   </div>
                 ) : (
                   <>
-                    {location && (
+                    {location ? (
                       <div className="mt-0.5">
                         {address && !isRawCoordinatesOrEmpty(address) ? (
                           <div className="flex items-center gap-1">
@@ -607,6 +657,18 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
                             </a>
                           </div>
                         )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-rose-600 mt-1">
+                        <AlertTriangle size={12} className="flex-shrink-0" />
+                        <span className="text-[11px] font-medium">Location not captured</span>
+                        <button
+                          type="button"
+                          onClick={fetchCurrentLocation}
+                          className="text-indigo-600 hover:text-indigo-800 underline font-semibold text-[11px] cursor-pointer"
+                        >
+                          Retry GPS
+                        </button>
                       </div>
                     )}
                   </>
@@ -685,6 +747,70 @@ export default function AttendanceModal({ isOpen, onClose, onSaved, existingLogs
           )}
         </div>
       </div>
+
+      {/* Location Required / Permission Error Dialog */}
+      {gpsError && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-gray-100 p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-full bg-amber-50 border border-amber-200 text-amber-600 flex-shrink-0">
+                <AlertTriangle size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-sm font-bold text-gray-900 leading-snug">
+                  {gpsError.title}
+                </h4>
+                <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                  {gpsError.message}
+                </p>
+              </div>
+            </div>
+
+            {gpsError.instructions && (
+              <div className="text-xs pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowInstructions(!showInstructions)}
+                  className="text-indigo-600 hover:text-indigo-800 font-semibold inline-flex items-center gap-1 cursor-pointer transition"
+                >
+                  <HelpCircle size={13} />
+                  <span>{showInstructions ? 'Hide Instructions' : 'How to Enable Location'}</span>
+                </button>
+                {showInstructions && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-gray-50 border border-gray-200/80 text-[11px] text-gray-700 whitespace-pre-line leading-relaxed font-sans">
+                    {gpsError.instructions}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setGpsError(null);
+                  setShowInstructions(false);
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGpsError(null);
+                  setShowInstructions(false);
+                  fetchCurrentLocation();
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition cursor-pointer"
+              >
+                <RotateCcw size={13} />
+                <span>Try Again</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ModalForm>
   );
 }

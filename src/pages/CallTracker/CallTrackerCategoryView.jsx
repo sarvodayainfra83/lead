@@ -16,7 +16,7 @@ import CallTrackerViewModal from './CallTrackerViewModal';
 import RemarkThreadModal from './RemarkThreadModal';
 import { formatIST, leadApi } from '../../api/leadApi';
 import { useAuthStore } from '../../store/authStore';
-import { isUserAdmin, matchesUserConnection } from '../../utils/authUtils';
+import { isUserAdmin, isUserReceptionist, matchesUserConnection } from '../../utils/authUtils';
 import { TERMINAL_STATUSES, getTrackersForLead, CUSTOMER_STATUS_STYLES, formatDateTime } from './callTrackerConstants';
 import { NEXT_DATE_CLASS } from '../../utils/leadTypeColors';
 import { getVisitMeetCounts } from '../SiteVisitMeeting/SiteVisitCategoryView';
@@ -150,6 +150,8 @@ export default function CallTrackerCategoryView({
 }) {
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
+  const isReceptionist = isUserReceptionist(user);
+  const isGlobalView = isAdmin || isReceptionist;
   // Insurance / Mutual Fund have meetings only — 'Site Visit/Meeting' reads 'Meeting' and the 'Site Visit' stage reads 'Meeting'
   const isMeetingOnly = category === 'Insurance' || category === 'Mutual Fund';
   const statusText = (status) => (isMeetingOnly && status === 'Site Visit/Meeting' ? 'Meeting' : status);
@@ -553,16 +555,16 @@ export default function CallTrackerCategoryView({
   // Base accessible leads for the current user in this category
   const accessibleEnrichedLeads = useMemo(() => {
     return enrichedLeads.filter(item => {
-      if (!isAdmin && !matchesUserConnection(item, user)) return false;
+      if (!isGlobalView && !matchesUserConnection(item, user)) return false;
       return true;
     });
-  }, [enrichedLeads, isAdmin, user]);
+  }, [enrichedLeads, isGlobalView, user]);
 
   // The Lead & Followup list — what every date filter except All Dates works on.
-  // For Admin: Site Visit / Meeting is merged into this page, so all accessible leads are included.
+  // For Admin & Receptionist: all accessible leads are included.
   const callListLeads = useMemo(
-    () => accessibleEnrichedLeads.filter(item => isAdmin || item.inCallList),
-    [accessibleEnrichedLeads, isAdmin]
+    () => accessibleEnrichedLeads.filter(item => isGlobalView || item.inCallList),
+    [accessibleEnrichedLeads, isGlobalView]
   );
 
   // Lead counts for the Leads / Calling and Site Visit stage buttons (all dates)

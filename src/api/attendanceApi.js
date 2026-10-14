@@ -4,7 +4,11 @@ import {
   saveAttendanceLogs as saveLocalAttendanceLogs,
   saveAttendanceLog as saveLocalAttendanceLog,
   deleteAttendanceLog as deleteLocalAttendanceLog,
-  getLeaveRequests as getLocalLeaveRequests
+  getLeaveRequests as getLocalLeaveRequests,
+  getLocalLocationCache,
+  addLocalLocationCacheEntry,
+  getLastResolvedAddress,
+  saveLastResolvedAddress
 } from '../utils/storageManager';
 
 // Haversine distance calculator between two coordinates in meters
@@ -27,7 +31,17 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
 export const isRawCoordinatesOrEmpty = (str) => {
   if (!str) return true;
   const s = String(str).trim().toLowerCase();
-  if (!s || s === '-' || s === 'location unavailable' || s === 'current location') return true;
+  if (
+    !s ||
+    s === '-' ||
+    s === 'null' ||
+    s === 'undefined' ||
+    s === 'location unavailable' ||
+    s === 'current location' ||
+    s.includes('current location')
+  ) {
+    return true;
+  }
   // Matches patterns like "21.251431, 81.629805" or "21.251431,81.629805"
   return /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(s);
 };
@@ -486,16 +500,16 @@ export const attendanceApi = {
       outPhotoUrl: isMarkingOut ? finalPhotoUrl : (existingTodayLog?.outPhotoUrl || null),
       inTime: isMarkingOut ? (existingTodayLog?.inTime || entry.inTime || '') : (entry.inTime || entry.timestamp?.split(' ')[1] || ''),
       outTime: isMarkingOut ? (entry.outTime || entry.timestamp?.split(' ')[1] || '') : (existingTodayLog?.outTime || null),
-      latitude: !isMarkingOut ? (entry.latitude != null ? entry.latitude : existingTodayLog?.latitude) : (existingTodayLog?.latitude || entry.latitude),
-      longitude: !isMarkingOut ? (entry.longitude != null ? entry.longitude : existingTodayLog?.longitude) : (existingTodayLog?.longitude || entry.longitude),
-      accuracy: !isMarkingOut ? (entry.accuracy != null ? entry.accuracy : existingTodayLog?.accuracy) : (existingTodayLog?.accuracy || entry.accuracy),
-      locationName: isMarkingOut ? (existingTodayLog?.locationName || entry.locationName) : entry.locationName,
+      latitude: !isMarkingOut ? (entry.latitude != null ? entry.latitude : (existingTodayLog?.latitude ?? null)) : (existingTodayLog?.latitude ?? null),
+      longitude: !isMarkingOut ? (entry.longitude != null ? entry.longitude : (existingTodayLog?.longitude ?? null)) : (existingTodayLog?.longitude ?? null),
+      accuracy: !isMarkingOut ? (entry.accuracy != null ? entry.accuracy : (existingTodayLog?.accuracy ?? null)) : (existingTodayLog?.accuracy ?? null),
+      locationName: isMarkingOut ? (existingTodayLog?.locationName || '') : (entry.locationName || ''),
       geocodingStatus: !isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.geocodingStatus || 'RESOLVED'),
-      outLatitude: isMarkingOut ? (entry.latitude != null ? entry.latitude : (existingTodayLog?.outLatitude || null)) : (existingTodayLog?.outLatitude || null),
-      outLongitude: isMarkingOut ? (entry.longitude != null ? entry.longitude : (existingTodayLog?.outLongitude || null)) : (existingTodayLog?.outLongitude || null),
-      outAccuracy: isMarkingOut ? (entry.accuracy != null ? entry.accuracy : null) : (existingTodayLog?.outAccuracy || null),
-      outLocationName: isMarkingOut ? entry.locationName : (existingTodayLog?.outLocationName || null),
-      outGeocodingStatus: isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.outGeocodingStatus || 'RESOLVED')
+      outLatitude: isMarkingOut ? (entry.latitude != null ? entry.latitude : (existingTodayLog?.outLatitude ?? null)) : (existingTodayLog?.outLatitude ?? null),
+      outLongitude: isMarkingOut ? (entry.longitude != null ? entry.longitude : (existingTodayLog?.outLongitude ?? null)) : (existingTodayLog?.outLongitude ?? null),
+      outAccuracy: isMarkingOut ? (entry.accuracy != null ? entry.accuracy : (existingTodayLog?.outAccuracy ?? null)) : (existingTodayLog?.outAccuracy ?? null),
+      outLocationName: isMarkingOut ? (entry.locationName || '') : (existingTodayLog?.outLocationName ?? null),
+      outGeocodingStatus: isMarkingOut ? (entry.geocodingStatus || 'RESOLVED') : (existingTodayLog?.outGeocodingStatus ?? 'RESOLVED')
     };
 
     console.groupCollapsed(`📝 [Attendance Log Saved] ${entry.userName || 'User'} marked ${entry.status || 'In'}`);
@@ -544,15 +558,16 @@ export const attendanceApi = {
           if (entry.latitude != null) updatePayload.out_latitude = Number(entry.latitude);
           if (entry.longitude != null) updatePayload.out_longitude = Number(entry.longitude);
           if (entry.accuracy != null) updatePayload.out_accuracy = Number(entry.accuracy);
-          if (entry.geocodingStatus) updatePayload.out_geocoding_status = entry.geocodingStatus;
+          updatePayload.out_location_name = entry.locationName || '';
+          updatePayload.out_geocoding_status = entry.geocodingStatus || 'RESOLVED';
         } else {
           // If re-marking IN / Half Day, update primary photo & location
           if (finalPhotoUrl) updatePayload.photo_url = finalPhotoUrl;
-          if (entry.locationName) updatePayload.location_name = entry.locationName;
           if (entry.latitude != null) updatePayload.latitude = Number(entry.latitude);
           if (entry.longitude != null) updatePayload.longitude = Number(entry.longitude);
           if (entry.accuracy != null) updatePayload.accuracy = Number(entry.accuracy);
-          if (entry.geocodingStatus) updatePayload.geocoding_status = entry.geocodingStatus;
+          updatePayload.location_name = entry.locationName || '';
+          updatePayload.geocoding_status = entry.geocodingStatus || 'RESOLVED';
         }
 
         const { data, error } = await supabase
@@ -710,141 +725,164 @@ async updateAttendanceLog(id, updatedFields) {
     return true;
   },
 
-  // 1. Search for nearby cached location (BLOCKED FOR TESTING - ALWAYS CALLS EXTERNAL API)
-  async findNearbyLocationInCache(lat, lng, radiusMeters = 100) {
-    console.log('🚫 [Location Cache BYPASSED] Location cache lookup disabled for testing. Query will go directly to OpenStreetMap API.');
+  // 1. Search for nearby cached location (localStorage first, then Supabase location_cache within configurable 100-150m radius)
+  async findNearbyLocationInCache(lat, lng, radiusMeters = 150) {
+    if (lat == null || lng == null || isNaN(Number(lat)) || isNaN(Number(lng))) return null;
+    const numLat = Number(lat);
+    const numLng = Number(lng);
+
+    // Step A: Check localStorage cache first
+    try {
+      const localCache = getLocalLocationCache();
+      if (Array.isArray(localCache) && localCache.length > 0) {
+        let closest = null;
+        let minDistance = Infinity;
+
+        for (const item of localCache) {
+          if (
+            item &&
+            item.latitude != null &&
+            item.longitude != null &&
+            !isNaN(Number(item.latitude)) &&
+            !isNaN(Number(item.longitude)) &&
+            !isRawCoordinatesOrEmpty(item.address)
+          ) {
+            const dist = calculateDistanceMeters(numLat, numLng, Number(item.latitude), Number(item.longitude));
+            if (dist <= radiusMeters && dist < minDistance) {
+              minDistance = dist;
+              closest = {
+                latitude: Number(item.latitude),
+                longitude: Number(item.longitude),
+                address: String(item.address).trim(),
+                accuracy: item.accuracy != null ? Number(item.accuracy) : null,
+                distance: dist,
+                source: 'local_cache'
+              };
+            }
+          }
+        }
+
+        if (closest) {
+          console.log(`🎯 [Cache HIT - LocalStorage] Found address within ${Math.round(closest.distance)}m (${radiusMeters}m limit):`, closest.address);
+          return closest;
+        }
+      }
+    } catch (err) {
+      console.warn('Error reading localStorage location cache:', err);
+    }
+
+    // Step B: Check Supabase location_cache table if configured
+    if (isSupabaseConfigured) {
+      try {
+        // Bounding box pre-filter (~330m) to reduce data fetched
+        const latDelta = 0.003;
+        const lngDelta = 0.003;
+
+        const { data, error } = await supabase
+          .from('location_cache')
+          .select('id, latitude, longitude, address, accuracy')
+          .gte('latitude', numLat - latDelta)
+          .lte('latitude', numLat + latDelta)
+          .gte('longitude', numLng - lngDelta)
+          .lte('longitude', numLng + lngDelta)
+          .limit(30);
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          let closest = null;
+          let minDistance = Infinity;
+
+          for (const item of data) {
+            if (
+              item &&
+              item.latitude != null &&
+              item.longitude != null &&
+              !isNaN(Number(item.latitude)) &&
+              !isNaN(Number(item.longitude)) &&
+              !isRawCoordinatesOrEmpty(item.address)
+            ) {
+              const dist = calculateDistanceMeters(numLat, numLng, Number(item.latitude), Number(item.longitude));
+              if (dist <= radiusMeters && dist < minDistance) {
+                minDistance = dist;
+                closest = {
+                  latitude: Number(item.latitude),
+                  longitude: Number(item.longitude),
+                  address: String(item.address).trim(),
+                  accuracy: item.accuracy != null ? Number(item.accuracy) : null,
+                  distance: dist,
+                  source: 'supabase_cache'
+                };
+              }
+            }
+          }
+
+          if (closest) {
+            console.log(`🎯 [Cache HIT - Supabase] Found address within ${Math.round(closest.distance)}m (${radiusMeters}m limit):`, closest.address);
+            // Populate localStorage cache as well for offline/faster future lookups
+            try {
+              addLocalLocationCacheEntry({
+                latitude: closest.latitude,
+                longitude: closest.longitude,
+                address: closest.address,
+                accuracy: closest.accuracy
+              });
+            } catch (e) {}
+            return closest;
+          }
+        }
+      } catch (err) {
+        console.warn('Error reading Supabase location_cache table:', err);
+      }
+    }
+
     return null;
   },
 
-  // 2. Save resolved location to cache (BLOCKED FOR TESTING)
+  // 2. Save resolved location to cache (both Supabase and localStorage)
   async saveLocationToCache(lat, lng, address, accuracy = null) {
-    console.log('🚫 [Location Cache BYPASSED] Saving to cache is currently disabled for testing.');
-  },
+    if (lat == null || lng == null || isNaN(Number(lat)) || isNaN(Number(lng))) return;
+    if (isRawCoordinatesOrEmpty(address)) return;
 
-  // 3. Direct LocationIQ reverse geocode call (Primary External Service)
-  async reverseGeocodeLocationIQ(lat, lng) {
-    if (lat == null || lng == null) return null;
-    const startTime = Date.now();
-    const apiKey = import.meta.env.VITE_LOCATIONIQ_API_KEY || 'pk.1adde45db2f5ae1b33dd981425f6db1a';
-    const url = `https://us1.locationiq.com/v1/reverse?key=${apiKey}&lat=${lat}&lon=${lng}&format=json&addressdetails=1&normalizeaddress=1`;
+    const numLat = Number(lat);
+    const numLng = Number(lng);
+    const numAcc = accuracy != null && !isNaN(Number(accuracy)) ? Number(accuracy) : null;
+    const cleanAddress = String(address).trim();
 
-    console.group(`🌐 [LocationIQ API Request] Fetching exact address for Coordinates: (${lat}, ${lng})`);
-    console.log('📡 Endpoint URL:', url);
-    console.log('🎯 Parameters:', { latitude: lat, longitude: lng, format: 'json', addressdetails: 1, normalizeaddress: 1 });
-    console.log('🗺️ View exact location on Google Maps:', getGoogleMapsUrl(lat, lng));
-
+    // Save to localStorage
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      const durationMs = Date.now() - startTime;
-      console.log(`⏱️ HTTP Response Status: ${res.status} ${res.statusText} (${durationMs}ms)`);
+      addLocalLocationCacheEntry({
+        latitude: numLat,
+        longitude: numLng,
+        address: cleanAddress,
+        accuracy: numAcc
+      });
+    } catch (e) {
+      console.warn('Error saving to localStorage location cache:', e);
+    }
 
-      if (!res.ok) throw new Error(`LocationIQ HTTP status: ${res.status} ${res.statusText}`);
-      const data = await res.json();
-
-      console.log('📦 Complete Raw Response JSON from LocationIQ:', data);
-
-      // Build structured human-readable address
-      const addr = data.address || {};
-      const specific = addr.name || addr.amenity || addr.shop || addr.building || '';
-      const street = addr.road || addr.street || '';
-      const neighbourhood = addr.neighbourhood || addr.suburb || addr.residential || '';
-      const city = addr.city || addr.town || addr.village || '';
-      const county = addr.county || '';
-      const state = addr.state || '';
-      const postcode = addr.postcode || '';
-      const country = addr.country || '';
-
-      const parts = [];
-      if (specific) parts.push(specific);
-      if (street && !parts.includes(street)) parts.push(street);
-      if (neighbourhood && !parts.includes(neighbourhood)) parts.push(neighbourhood);
-      if (city && !parts.includes(city)) parts.push(city);
-      if (county && !parts.includes(county) && !county.toLowerCase().includes(city.toLowerCase())) parts.push(county);
-      if (state && !parts.includes(state)) parts.push(state);
-      if (postcode) parts.push(postcode);
-      if (country && !parts.includes(country)) parts.push(country);
-
-      const resolvedAddress = parts.length > 0 ? parts.join(', ') : (data.display_name || null);
-
-      console.log('📍 Extracted Full Address:', resolvedAddress);
-      console.log('🏠 Breakdown of Address Components:');
-      if (data?.address) {
-        console.table(data.address);
+    // Save to Supabase location_cache table
+    if (isSupabaseConfigured) {
+      try {
+        await supabase
+          .from('location_cache')
+          .insert({
+            latitude: numLat,
+            longitude: numLng,
+            address: cleanAddress,
+            accuracy: numAcc
+          });
+      } catch (err) {
+        console.warn('Could not save to Supabase location_cache table:', err);
       }
-      console.groupEnd();
-
-      return resolvedAddress;
-    } catch (err) {
-      const durationMs = Date.now() - startTime;
-      console.error(`❌ LocationIQ API call failed after ${durationMs}ms:`, err);
-      console.groupEnd();
-      return null;
     }
   },
 
-  // 4. Direct BigDataCloud reverse geocode call (Secondary External Service)
-  async reverseGeocodeBigDataCloud(lat, lng) {
-    if (lat == null || lng == null) return null;
-    const startTime = Date.now();
-    const apiKey = import.meta.env.VITE_BIGDATACLOUD_API_KEY || 'bdc_9f845c6872ff4c8bbbecaf159f115f5d';
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode?latitude=${lat}&longitude=${lng}&localityLanguage=en&key=${apiKey}`;
-
-    console.group(`🌐 [BigDataCloud API Request] Fetching address for Coordinates: (${lat}, ${lng})`);
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      const durationMs = Date.now() - startTime;
-
-      if (!res.ok) throw new Error(`BigDataCloud HTTP status: ${res.status} ${res.statusText}`);
-      const data = await res.json();
-
-      const parts = [];
-      const locality = data.locality || '';
-      const city = data.city || '';
-      const state = data.principalSubdivision || '';
-      const country = data.countryName || '';
-      const postcode = data.postcode || '';
-
-      const adminNames = (data.localityInfo?.administrative || [])
-        .map(a => a.name)
-        .filter(name => name && name !== country && name !== state && name !== city && name !== locality);
-
-      if (locality) parts.push(locality);
-      if (city && city.toLowerCase() !== locality.toLowerCase()) parts.push(city);
-      if (adminNames.length > 0) {
-        adminNames.forEach(name => {
-          if (!parts.some(p => p.toLowerCase() === name.toLowerCase())) {
-            parts.push(name);
-          }
-        });
-      }
-      if (state && !parts.some(p => p.toLowerCase() === state.toLowerCase())) parts.push(state);
-      if (postcode) parts.push(postcode);
-      if (country && !parts.some(p => p.toLowerCase() === country.toLowerCase())) parts.push(country);
-
-      const resolvedAddress = parts.length > 0 ? parts.join(', ') : (data.locality || data.city || data.principalSubdivision || null);
-      console.log('📍 BigDataCloud Resolved Address:', resolvedAddress);
-      console.groupEnd();
-      return resolvedAddress;
-    } catch (err) {
-      console.error(`❌ BigDataCloud API call failed:`, err);
-      console.groupEnd();
-      return null;
-    }
-  },
-
-  // 5. OpenStreetMap Nominatim reverse geocode call (Tertiary / Fallback)
+  // 3. Direct Nominatim reverse geocode call
   async reverseGeocodeNominatim(lat, lng) {
-    if (lat == null || lng == null) return null;
+    if (lat == null || lng == null || isNaN(Number(lat)) || isNaN(Number(lng))) return null;
     const startTime = Date.now();
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${Number(lat)}&lon=${Number(lng)}&zoom=18&addressdetails=1`;
 
-    console.group(`🌐 [OpenStreetMap API Fallback] Fetching live address for Coordinates: (${lat}, ${lng})`);
+    console.group(`🌐 [Nominatim Reverse Geocoding] Coordinates: (${lat}, ${lng})`);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -858,28 +896,30 @@ async updateAttendanceLog(id, updatedFields) {
       clearTimeout(timeoutId);
       const durationMs = Date.now() - startTime;
 
-      if (!res.ok) throw new Error(`Geocoding HTTP status: ${res.status} ${res.statusText}`);
+      if (!res.ok) throw new Error(`Nominatim HTTP status: ${res.status} ${res.statusText}`);
       const data = await res.json();
-      console.log('📦 OpenStreetMap Response:', data);
+      console.log(`⏱️ Nominatim response received (${durationMs}ms):`, data?.display_name);
       console.groupEnd();
 
-      return data.display_name || null;
+      if (data && data.display_name && !isRawCoordinatesOrEmpty(data.display_name)) {
+        return data.display_name;
+      }
+      return null;
     } catch (err) {
-      console.error(`❌ OpenStreetMap Nominatim API call failed:`, err);
+      console.warn('❌ Nominatim reverse geocode call failed:', err);
       console.groupEnd();
       return null;
     }
   },
 
-  // 6. Location Address Resolution Pipeline (LocationIQ Primary)
-  async resolveLocationAddress(lat, lng, accuracy = null) {
-    console.group(`🎯 [Location Detection Pipeline] Resolving location via LocationIQ for Lat: ${lat}, Lng: ${lng}, Accuracy: ${accuracy}m`);
-    console.log('⏰ Triggered At:', new Date().toISOString());
-    console.log('📶 Online Status:', typeof navigator !== 'undefined' ? navigator.onLine : 'unknown');
-    console.log('🗺️ Google Maps Link:', getGoogleMapsUrl(lat, lng));
+  // 4. Location Address Resolution Pipeline
+  // Order: 1. Cache (150m) -> 2. Nominatim -> 3. Final Cache -> 4. Pending (Coordinates preserved)
+  async resolveLocationAddress(lat, lng, accuracy = null, radiusMeters = 150) {
+    console.group(`🎯 [Location Resolution Pipeline] Lat: ${lat}, Lng: ${lng}, Radius: ${radiusMeters}m`);
+    console.log('🗺️ View exact coordinates on Google Maps:', getGoogleMapsUrl(lat, lng));
 
-    if (lat == null || lng == null) {
-      console.warn('⚠️ Missing coordinates (latitude or longitude is null/undefined)');
+    if (lat == null || lng == null || isNaN(Number(lat)) || isNaN(Number(lng))) {
+      console.warn('⚠️ Missing coordinates');
       console.groupEnd();
       return {
         address: '',
@@ -892,62 +932,79 @@ async updateAttendanceLog(id, updatedFields) {
     const numLat = Number(lat);
     const numLng = Number(lng);
 
-    // Primary: LocationIQ Reverse Geocoding API
-    console.log('🚀 Calling LocationIQ Reverse Geocoding API...');
+    // Step 1: Check existing location cache (localStorage first, then Supabase location_cache within 150m)
     try {
-      const liqAddress = await this.reverseGeocodeLocationIQ(numLat, numLng);
-      if (liqAddress) {
-        console.log('🎉 [LocationIQ SUCCESS] Received exact human-readable address:', liqAddress);
+      const cached = await this.findNearbyLocationInCache(numLat, numLng, radiusMeters);
+      if (cached && cached.address && !isRawCoordinatesOrEmpty(cached.address)) {
+        console.log(`🎉 [Cache HIT] Reusing address from ${cached.source}:`, cached.address);
+        saveLastResolvedAddress({
+          address: cached.address,
+          latitude: numLat,
+          longitude: numLng,
+          accuracy
+        });
         console.groupEnd();
         return {
-          address: liqAddress,
+          address: cached.address,
           geocodingStatus: 'RESOLVED',
-          source: 'locationiq',
-          isFallback: false
-        };
-      } else {
-        console.warn('⚠️ LocationIQ did not return address. Attempting BigDataCloud fallback...');
-      }
-    } catch (liqErr) {
-      console.error('❌ LocationIQ call failed:', liqErr);
-    }
-
-    // Secondary Fallback: BigDataCloud
-    try {
-      const bdcAddress = await this.reverseGeocodeBigDataCloud(numLat, numLng);
-      if (bdcAddress) {
-        console.log('🎉 [BigDataCloud Fallback SUCCESS] Address:', bdcAddress);
-        console.groupEnd();
-        return {
-          address: bdcAddress,
-          geocodingStatus: 'RESOLVED',
-          source: 'bigdatacloud',
+          source: cached.source || 'cache',
           isFallback: false
         };
       }
-    } catch (bdcErr) {
-      console.error('❌ BigDataCloud fallback failed:', bdcErr);
+    } catch (cacheErr) {
+      console.warn('Cache lookup failed:', cacheErr);
     }
 
-    // Tertiary Fallback: OpenStreetMap
+    // Step 2: If neither cache produces a valid nearby address, call Nominatim
+    if (typeof navigator !== 'undefined' && navigator.onLine !== false) {
+      console.log('🚀 Calling Nominatim reverse geocoding API...');
+      try {
+        const nominatimAddress = await this.reverseGeocodeNominatim(numLat, numLng);
+        if (nominatimAddress && !isRawCoordinatesOrEmpty(nominatimAddress)) {
+          console.log('🎉 [Nominatim SUCCESS] Address resolved:', nominatimAddress);
+          // Save to shared cache & local storage
+          await this.saveLocationToCache(numLat, numLng, nominatimAddress, accuracy);
+          saveLastResolvedAddress({
+            address: nominatimAddress,
+            latitude: numLat,
+            longitude: numLng,
+            accuracy
+          });
+          console.groupEnd();
+          return {
+            address: nominatimAddress,
+            geocodingStatus: 'RESOLVED',
+            source: 'nominatim',
+            isFallback: false
+          };
+        } else {
+          console.warn('⚠️ Nominatim did not return a usable address.');
+        }
+      } catch (nomErr) {
+        console.warn('Nominatim resolution failed:', nomErr);
+      }
+    }
+
+    // Step 3: If Nominatim fails, perform a final nearby-cache lookup to handle concurrent updates / race conditions
     try {
-      const osmAddress = await this.reverseGeocodeNominatim(numLat, numLng);
-      if (osmAddress) {
-        console.log('🎉 [OpenStreetMap Fallback SUCCESS] Address:', osmAddress);
+      const finalCheck = await this.findNearbyLocationInCache(numLat, numLng, radiusMeters);
+      if (finalCheck && finalCheck.address && !isRawCoordinatesOrEmpty(finalCheck.address)) {
+        console.log(`🎉 [Final Cache Check HIT]:`, finalCheck.address);
         console.groupEnd();
         return {
-          address: osmAddress,
+          address: finalCheck.address,
           geocodingStatus: 'RESOLVED',
-          source: 'nominatim',
+          source: finalCheck.source || 'cache',
           isFallback: false
         };
       }
-    } catch (osmErr) {
-      console.error('❌ OpenStreetMap fallback failed:', osmErr);
+    } catch (finalCheckErr) {
+      console.warn('Final cache check failed:', finalCheckErr);
     }
 
-    // Final Fallback if all APIs fail
-    console.log('⚠️ [Fallback] Unable to fetch address. Storing coordinates with PENDING status.');
+    // Step 4: No valid human-readable address available.
+    // Preserve current GPS coordinates and keep address resolution pending.
+    console.log('⚠️ [Fallback] Unable to resolve address. Preserving GPS coordinates with PENDING status.');
     console.groupEnd();
     return {
       address: '',
