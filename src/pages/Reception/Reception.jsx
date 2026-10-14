@@ -56,6 +56,7 @@ export default function Reception() {
   const [detailsVisitor, setDetailsVisitor] = useState(null);
   const [editVisitor, setEditVisitor] = useState(null);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
+  const [showKpiCards, setShowKpiCards] = useState(true);
 
   // Mobile accordion expand set
   const [expandedCardIds, setExpandedCardIds] = useState(new Set());
@@ -130,7 +131,7 @@ export default function Reception() {
 
     // Purpose filter
     if (purposeFilter !== 'all') {
-      list = list.filter(v => v.visitPurpose === purposeFilter);
+      list = list.filter(v => v.visitPurpose === purposeFilter || v.visitPurpose?.startsWith(purposeFilter + ' ('));
     }
 
     // Location filter
@@ -210,21 +211,29 @@ export default function Reception() {
     setCurrentPage(1);
     if (type === 'today') {
       setDateFilter('today');
-      setStatusFilter('all');
+      setLocationFilter('all');
       setPurposeFilter('all');
-    } else if (type === 'inside') {
-      setStatusFilter('CHECKED_IN');
-      setDateFilter('all');
-    } else if (type === 'meetings') {
+      setStatusFilter('all');
+    } else if (type === 'office') {
       setDateFilter('today');
-      setPurposeFilter('Meeting');
+      setLocationFilter('Office');
+      setPurposeFilter('all');
       setStatusFilter('all');
     } else if (type === 'siteVisits') {
       setDateFilter('today');
-      setPurposeFilter('Site Visit');
+      setLocationFilter('Construction Site');
+      setPurposeFilter('all');
       setStatusFilter('all');
-    } else if (type === 'awaiting') {
-      setStatusFilter('CHECKED_IN');
+    } else if (type === 'meetings') {
+      setDateFilter('today');
+      setPurposeFilter('Meeting');
+      setLocationFilter('all');
+      setStatusFilter('all');
+    } else if (type === 'all') {
+      setDateFilter('all');
+      setLocationFilter('all');
+      setPurposeFilter('all');
+      setStatusFilter('all');
     }
   };
 
@@ -292,9 +301,7 @@ export default function Reception() {
     "Visit Purpose",
     "Office / Site",
     "Person to Meet",
-    "Check-In Time",
-    "Check-Out Time",
-    "Status"
+    "Visit Date & Time"
   ];
 
   // Pagination calculation
@@ -317,10 +324,6 @@ export default function Reception() {
 
   // Render Table Row (Desktop)
   const renderRow = (item, idx) => {
-    const isInside = item.status === 'CHECKED_IN';
-    const statusCfg = VISITOR_STATUS_MAP[item.status] || VISITOR_STATUS_MAP.CHECKED_IN;
-    const duration = getVisitDuration(item.checkInAt, item.checkOutAt);
-
     return (
       <tr
         key={item.id || idx}
@@ -339,18 +342,6 @@ export default function Reception() {
             >
               <Eye size={13} />
             </button>
-
-            {/* Quick Check Out button (active only if checked in) */}
-            {canEdit && isInside && (
-              <button
-                onClick={() => setCheckoutVisitor(item)}
-                title="Process Check-Out"
-                aria-label="Check Out"
-                className="w-7 h-7 inline-flex items-center justify-center rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-600 hover:text-white transition active:scale-95 cursor-pointer"
-              >
-                <LogOut size={13} />
-              </button>
-            )}
 
             {/* Edit button */}
             {canEdit && (
@@ -443,43 +434,16 @@ export default function Reception() {
           </div>
         </td>
 
-        {/* 6. Check-In Time */}
+        {/* 6. Visit Date & Time */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
           <div className="inline-flex flex-col items-center">
             <span className="font-bold text-gray-800">
-              {formatVisitorTime(item.checkInAt)}
-            </span>
-            <span className="text-[10px] text-gray-400">
               {formatVisitorDate(item.checkInAt)}
             </span>
-          </div>
-        </td>
-
-        {/* 7. Check-Out Time */}
-        <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
-          {item.checkOutAt ? (
-            <div className="inline-flex flex-col items-center">
-              <span className="font-bold text-gray-800">
-                {formatVisitorTime(item.checkOutAt)}
-              </span>
-              <span className="text-[10px] text-emerald-700 font-semibold">
-                ({duration})
-              </span>
-            </div>
-          ) : (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Inside ({duration})
+            <span className="text-[10px] text-gray-500 font-medium">
+              {formatVisitorTime(item.checkInAt)}
             </span>
-          )}
-        </td>
-
-        {/* 8. Status */}
-        <td className="px-3 py-2 text-center whitespace-nowrap">
-          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border ${statusCfg.color}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dotColor}`} />
-            {statusCfg.label}
-          </span>
+          </div>
         </td>
       </tr>
     );
@@ -488,53 +452,60 @@ export default function Reception() {
   // Render Mobile Card View
   const renderCard = (item, idx) => {
     const isExpanded = expandedCardIds.has(item.id || idx);
-    const isInside = item.status === 'CHECKED_IN';
-    const statusCfg = VISITOR_STATUS_MAP[item.status] || VISITOR_STATUS_MAP.CHECKED_IN;
     const duration = getVisitDuration(item.checkInAt, item.checkOutAt);
+    const isInside = item.status === 'CHECKED_IN' || (!item.checkOutAt && item.status !== 'CANCELLED');
+    const statusCfg = VISITOR_STATUS_MAP[item.status] || (isInside ? VISITOR_STATUS_MAP.CHECKED_IN : VISITOR_STATUS_MAP.CHECKED_OUT);
 
     return (
       <div
         key={item.id || idx}
-        className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${
-          isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200'
+        className={`bg-white rounded-xl border transition shadow-2xs p-3.5 space-y-2.5 ${
+          isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200 hover:border-gray-300'
         }`}
       >
-        {/* Card Header */}
-        <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
-          <div className="min-w-0">
+        {/* Card Header: Visitor Name, Company & Status Badge */}
+        <div className="flex items-start justify-between gap-2 border-b border-gray-100 pb-2">
+          <div className="min-w-0 flex-1">
             <h4
               onClick={() => setDetailsVisitor(item)}
-              className="font-bold text-sm text-gray-900 truncate cursor-pointer hover:text-indigo-600"
+              className="font-bold text-sm text-gray-900 truncate cursor-pointer hover:text-indigo-600 leading-tight"
             >
-              {item.visitorName}
+              {item.visitorName || 'Unnamed Visitor'}
             </h4>
             {item.companyName && (
-              <span className="text-[11px] text-gray-500 block truncate">{item.companyName}</span>
+              <span className="text-[11px] text-gray-500 block truncate mt-0.5">{item.companyName}</span>
             )}
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dotColor}`} />
+              <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dotColor} ${isInside ? 'animate-pulse' : ''}`} />
               {statusCfg.label}
+            </span>
+            <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+              {formatVisitorDate(item.checkInAt)}
             </span>
           </div>
         </div>
 
-        {/* Primary Row: Mobile, Purpose, Host */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
+        {/* Primary Info Grid: Contact, Host, Purpose, Duration */}
+        <div className="grid grid-cols-2 gap-2.5 text-xs">
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Contact</span>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <a href={`tel:${cleanPhone(item.mobileNumber)}`} className="font-semibold text-indigo-600 hover:underline">
-                {item.mobileNumber}
+              <a href={`tel:${cleanPhone(item.mobileNumber)}`} className="font-bold text-indigo-600 hover:underline">
+                {item.mobileNumber || '-'}
               </a>
-              <button
-                onClick={(e) => handleWhatsApp(item, e)}
-                className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200"
-              >
-                WA
-              </button>
+              {item.mobileNumber && (
+                <button
+                  type="button"
+                  onClick={(e) => handleWhatsApp(item, e)}
+                  className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100"
+                  title="Open WhatsApp chat"
+                >
+                  WA
+                </button>
+              )}
             </div>
           </div>
 
@@ -547,43 +518,53 @@ export default function Reception() {
 
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Purpose</span>
-            <span className={`inline-block mt-0.5 px-2 py-0.2 rounded-full text-[10px] font-semibold border ${PURPOSE_STYLES[item.visitPurpose] || PURPOSE_STYLES.Other}`}>
-              {item.visitPurpose}
+            <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${PURPOSE_STYLES[item.visitPurpose] || PURPOSE_STYLES.Other}`}>
+              {item.visitPurpose || 'Other'}
             </span>
           </div>
 
           <div>
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Duration</span>
-            <span className="font-bold text-indigo-700 mt-0.5 block">
-              {duration}
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">
+              {isInside ? 'Duration (Live)' : 'Duration'}
             </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="font-bold text-gray-800">
+                {duration}
+              </span>
+              <span className="text-[10px] text-gray-400">
+                ({formatVisitorTime(item.checkInAt)})
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Check-In & Check-Out Timestamps */}
-        <div className="flex items-center justify-between text-[11px] text-gray-600 bg-gray-50 p-2 rounded-lg">
+        {/* Visit Location Banner */}
+        <div className="flex items-center justify-between text-[11px] text-gray-700 bg-gray-50/80 p-2 rounded-lg border border-gray-100">
           <div>
-            <span className="text-gray-400 block text-[9.5px]">Check-In:</span>
-            <span className="font-semibold">{formatVisitorTime(item.checkInAt)}</span>
+            <span className="text-gray-400 block text-[9.5px] uppercase font-semibold">Location:</span>
+            <span className="font-bold text-gray-800">{item.visitLocation || 'Corporate Office'}</span>
           </div>
-          <div className="text-right">
-            <span className="text-gray-400 block text-[9.5px]">Check-Out:</span>
-            <span className="font-semibold">{item.checkOutAt ? formatVisitorTime(item.checkOutAt) : 'Currently Inside'}</span>
-          </div>
+          {item.projectName && (
+            <div className="text-right">
+              <span className="text-gray-400 block text-[9.5px] uppercase font-semibold">Project:</span>
+              <span className="font-bold text-amber-800">{item.projectName}</span>
+            </div>
+          )}
         </div>
 
         {/* Expanded Details */}
         {isExpanded && (
           <div className="pt-2 border-t border-gray-100 text-xs space-y-1.5 animate-in fade-in duration-150">
-            <div>
-              <span className="text-gray-400">Location:</span>{' '}
-              <span className="font-semibold text-gray-800">{item.visitLocation}</span>
-              {item.projectName && <span className="text-amber-800 font-bold ml-1">({item.projectName})</span>}
-            </div>
             {item.personActuallyMetName && item.personActuallyMetName !== item.personToMeetName && (
               <div>
                 <span className="text-gray-400">Actually Met:</span>{' '}
                 <span className="font-bold text-purple-700">{item.personActuallyMetName}</span>
+              </div>
+            )}
+            {item.checkOutAt && (
+              <div>
+                <span className="text-gray-400">Exit Time:</span>{' '}
+                <span className="font-semibold text-gray-700">{formatVisitorTime(item.checkOutAt)}</span>
               </div>
             )}
             {item.remarks && (
@@ -596,7 +577,7 @@ export default function Reception() {
         )}
 
         {/* Card Footer Actions */}
-        <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+        <div className="flex items-center justify-between pt-1.5 border-t border-gray-100">
           <button
             type="button"
             onClick={() => toggleCardExpand(item.id || idx)}
@@ -610,15 +591,24 @@ export default function Reception() {
             <button
               type="button"
               onClick={() => setDetailsVisitor(item)}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition"
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition active:scale-95 cursor-pointer"
             >
               View
             </button>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => setEditVisitor(item)}
+                className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition active:scale-95 cursor-pointer"
+              >
+                Edit
+              </button>
+            )}
             {canEdit && isInside && (
               <button
                 type="button"
                 onClick={() => setCheckoutVisitor(item)}
-                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition active:scale-95 cursor-pointer shadow-2xs"
               >
                 Check Out
               </button>
@@ -630,7 +620,7 @@ export default function Reception() {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-gray-50/50 p-2 sm:p-3 md:p-4 gap-2.5 sm:gap-3">
+    <div className="flex flex-col min-h-full md:h-full md:min-h-0 bg-gray-50/50 p-2 sm:p-3 md:p-4 gap-2.5 sm:gap-3">
       
       {/* Top Banner / Header Bar */}
       <div className="flex items-center justify-between gap-2 flex-wrap flex-shrink-0 bg-white p-3 sm:p-3.5 rounded-xl border border-gray-200 shadow-2xs">
@@ -694,8 +684,79 @@ export default function Reception() {
         </div>
       </div>
 
+      {/* Mobile KPI Summary Toggle Bar */}
+      <div className="flex items-center justify-between md:hidden px-0.5">
+        <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+          <BarChart3 size={13} className="text-indigo-600" />
+          Visitor Summary
+        </span>
+        <button
+          type="button"
+          onClick={() => setShowKpiCards(prev => !prev)}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 active:scale-95 transition cursor-pointer"
+        >
+          {showKpiCards ? (
+            <>
+              <ChevronUp size={12} />
+              <span>Enlarge Records List</span>
+            </>
+          ) : (
+            <>
+              <ChevronDown size={12} />
+              <span>Show Summary Cards</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Compact Quick-Pill Bar (shown when KPI cards are collapsed on mobile) */}
+      {!showKpiCards && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:hidden scrollbar-hide text-xs animate-in fade-in duration-150">
+          <button
+            type="button"
+            onClick={() => applyKpiFilter('today')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0 font-bold active:scale-95"
+          >
+            <span>Today:</span>
+            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-indigo-900 font-extrabold">{stats.totalToday}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyKpiFilter('office')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 shrink-0 font-bold active:scale-95"
+          >
+            <span>Office:</span>
+            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-blue-900 font-extrabold">{stats.todayLocationCounts?.Office || 0}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyKpiFilter('siteVisits')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 shrink-0 font-bold active:scale-95"
+          >
+            <span>Sites:</span>
+            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-amber-900 font-extrabold">{stats.todayLocationCounts?.['Construction Site'] || 0}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyKpiFilter('meetings')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200 shrink-0 font-bold active:scale-95"
+          >
+            <span>Meetings:</span>
+            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-violet-900 font-extrabold">{stats.meetingsToday}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => applyKpiFilter('all')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 shrink-0 font-bold active:scale-95"
+          >
+            <span>All Time:</span>
+            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-slate-900 font-extrabold">{visitors.length}</span>
+          </button>
+        </div>
+      )}
+
       {/* 5 Real-Time Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5 flex-shrink-0">
+      <div className={`${showKpiCards ? 'grid' : 'hidden md:grid'} grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5 flex-shrink-0 animate-in fade-in duration-200`}>
         
         {/* Card 1: Total Visitors Today */}
         <div
@@ -712,25 +773,40 @@ export default function Reception() {
           </div>
         </div>
 
-        {/* Card 2: Currently Inside */}
+        {/* Card 2: Corporate Office */}
         <div
-          onClick={() => applyKpiFilter('inside')}
-          className="p-2.5 sm:p-3 rounded-xl border border-emerald-200/90 bg-emerald-50/50 hover:bg-emerald-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group ring-1 ring-emerald-300/40"
+          onClick={() => applyKpiFilter('office')}
+          className="p-2.5 sm:p-3 rounded-xl border border-blue-200/90 bg-blue-50/50 hover:bg-blue-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between text-emerald-700">
+          <div className="flex items-center justify-between text-blue-700">
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Currently Inside
+              <Building2 size={13} />
+              Corporate Office
             </span>
-            <CheckCircle2 size={14} className="group-hover:scale-110 transition text-emerald-600" />
+            <Building2 size={14} className="group-hover:scale-110 transition text-blue-600" />
           </div>
           <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-emerald-950">{stats.currentlyInside}</span>
-            <span className="text-[10px] font-bold text-emerald-700">On premises</span>
+            <span className="text-xl sm:text-2xl font-black text-blue-950">{stats.todayLocationCounts?.Office || 0}</span>
+            <span className="text-[10px] font-bold text-blue-700">Today</span>
           </div>
         </div>
 
-        {/* Card 3: Meetings Today */}
+        {/* Card 3: Construction Sites */}
+        <div
+          onClick={() => applyKpiFilter('siteVisits')}
+          className="p-2.5 sm:p-3 rounded-xl border border-amber-200/90 bg-amber-50/50 hover:bg-amber-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
+        >
+          <div className="flex items-center justify-between text-amber-700">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Construction Sites</span>
+            <MapPin size={14} className="group-hover:scale-110 transition" />
+          </div>
+          <div className="mt-1 flex items-baseline justify-between">
+            <span className="text-xl sm:text-2xl font-black text-amber-950">{stats.todayLocationCounts?.['Construction Site'] || 0}</span>
+            <span className="text-[10px] font-semibold text-amber-700">Today</span>
+          </div>
+        </div>
+
+        {/* Card 4: Meetings Today */}
         <div
           onClick={() => applyKpiFilter('meetings')}
           className="p-2.5 sm:p-3 rounded-xl border border-violet-200/90 bg-violet-50/50 hover:bg-violet-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
@@ -745,33 +821,18 @@ export default function Reception() {
           </div>
         </div>
 
-        {/* Card 4: Site Visits Today */}
+        {/* Card 5: All Registered Visitors */}
         <div
-          onClick={() => applyKpiFilter('siteVisits')}
-          className="p-2.5 sm:p-3 rounded-xl border border-amber-200/90 bg-amber-50/50 hover:bg-amber-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
+          onClick={() => applyKpiFilter('all')}
+          className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 rounded-xl border border-slate-200/90 bg-slate-50/70 hover:bg-slate-100/70 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between text-amber-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Site Visits Today</span>
-            <MapPin size={14} className="group-hover:scale-110 transition" />
+          <div className="flex items-center justify-between text-slate-700">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Total All Time</span>
+            <UserCheck size={14} className="group-hover:scale-110 transition" />
           </div>
           <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-amber-950">{stats.siteVisitsToday}</span>
-            <span className="text-[10px] font-semibold text-amber-700">Construction</span>
-          </div>
-        </div>
-
-        {/* Card 5: Awaiting Check-Out */}
-        <div
-          onClick={() => applyKpiFilter('awaiting')}
-          className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 rounded-xl border border-rose-200/90 bg-rose-50/50 hover:bg-rose-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between text-rose-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Awaiting Checkout</span>
-            <Clock size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-rose-950">{stats.awaitingCheckout}</span>
-            <span className="text-[10px] font-semibold text-rose-600">Pending Exit</span>
+            <span className="text-xl sm:text-2xl font-black text-slate-950">{visitors.length}</span>
+            <span className="text-[10px] font-semibold text-slate-600">Total Logged</span>
           </div>
         </div>
       </div>
@@ -884,7 +945,9 @@ export default function Reception() {
       </div>
 
       {/* Main Visitor Register Data Table */}
-      <div className="flex-1 min-h-0 bg-white rounded-xl border border-gray-200 shadow-2xs overflow-hidden flex flex-col">
+      <div className={`bg-white rounded-xl border border-gray-200 shadow-2xs overflow-hidden flex flex-col transition-all duration-300 ${
+        showKpiCards ? 'flex-1 min-h-[500px] md:min-h-0' : 'flex-1 min-h-[640px] md:min-h-0'
+      }`}>
         <DataTable
           headers={tableHeaders}
           data={paginatedVisitors}
