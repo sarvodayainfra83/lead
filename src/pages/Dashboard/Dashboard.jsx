@@ -855,7 +855,7 @@ export default function Dashboard() {
   const activityViewAll = useMemo(() => {
     switch (activityTab) {
       case 'calling':
-        return { label: 'View all calls', onClick: () => go('/call-tracker', { dateFilter: 'today' }) };
+        return { label: 'View all calls', onClick: () => go('/call-tracker', { dateFilter: 'today', calledOnly: true }) };
       case 'leads':
         return { label: 'View all leads', onClick: () => go('/call-tracker', { dateFilter: 'today' }) };
       case 'hotWarm':
@@ -2015,7 +2015,7 @@ export default function Dashboard() {
                 title="Today's Calling"
                 subtitle={`${todayCalls.length} calls logged today`}
                 icon={PhoneCall}
-                action={canDrillInto('/call-tracker') && <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today' })} />}
+                action={canDrillInto('/call-tracker') && <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })} />}
               />
               {todayCalls.length > 0 ? (
                 <div className="max-h-[380px] overflow-y-auto pb-1">

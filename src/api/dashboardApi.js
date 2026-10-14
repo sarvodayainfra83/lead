@@ -25,19 +25,26 @@ const parseLeadTimestamp = (ts) => {
 const parseAnyDate = (val) => {
   if (!val) return null;
   const str = String(val).trim();
-  const datePart = str.split('T')[0].split(' ')[0];
+  const [datePart, timePart] = str.split(' ');
+  let hours = 0, minutes = 0, seconds = 0;
+  if (timePart && timePart.includes(':')) {
+    const tParts = timePart.split(':').map(Number);
+    hours = tParts[0] || 0;
+    minutes = tParts[1] || 0;
+    seconds = tParts[2] || 0;
+  }
   if (datePart.includes('-')) {
     const parts = datePart.split('-');
     if (parts.length === 3) {
-      if (parts[0].length === 4) return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-      return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+      if (parts[0].length === 4) return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), hours, minutes, seconds);
+      return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), hours, minutes, seconds);
     }
   }
   if (datePart.includes('/')) {
     const parts = datePart.split('/');
     if (parts.length === 3) {
       const [d, m, y] = parts.map(Number);
-      return new Date(y < 100 ? 2000 + y : y, m - 1, d);
+      return new Date(y < 100 ? 2000 + y : y, m - 1, d, hours, minutes, seconds);
     }
   }
   const d = new Date(str);
@@ -247,9 +254,9 @@ export const dashboardApi = {
 
     // Every call entry, joined to its (visible) lead
     const calls = enrichedLeads.flatMap(lead => lead.trackers.map(t => {
-      let tMs = Number(t.timestampMs) || 0;
+      let tMs = Number(t.timestampMs || t.timestamp_ms) || 0;
       if (!tMs) {
-        const d = parseAnyDate(t.timestamp || t.created_at || t.createdAt);
+        const d = parseAnyDate(t.timestamp || t.created_at || t.createdAt || t.dateOfCall || t.date_of_call);
         if (d) tMs = d.getTime();
       }
       return {

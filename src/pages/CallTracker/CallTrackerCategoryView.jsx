@@ -504,13 +504,22 @@ export default function CallTrackerCategoryView({
 
   const isSameDayAsToday = useCallback((val) => {
     if (!val) return false;
-    const d = new Date(val);
-    return !isNaN(d.getTime()) && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+    let d = null;
+    if (typeof val === 'number') {
+      d = new Date(val);
+    } else {
+      d = parseTrackerDateStr(val);
+    }
+    return Boolean(d && !isNaN(d.getTime()) && d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate());
   }, [today]);
 
   // Calls logged on this lead today (from its call records)
   const getTodayCallCount = useCallback((item) =>
-    (item.trackers || []).filter(t => isSameDayAsToday(Number(t.timestampMs || t.timestamp_ms) || null)).length,
+    (item.trackers || []).filter(t => {
+      const ms = Number(t.timestampMs || t.timestamp_ms);
+      if (ms && !isNaN(ms)) return isSameDayAsToday(ms);
+      return isSameDayAsToday(t.timestamp || t.created_at || t.createdAt || t.dateOfCall || t.date_of_call);
+    }).length,
   [isSameDayAsToday]);
 
   // "Called" — any followup logged on this lead today (Call Not Received / No WhatsApp Reply too, and calls
@@ -734,7 +743,7 @@ export default function CallTrackerCategoryView({
             return Boolean(d) && d.getTime() === todayTime;
           });
 
-          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday || lastVisitToday || hasFollowupToday)) return false;
+          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday || lastVisitToday || hasFollowupToday || isCalledToday(item))) return false;
           if (calledOnly && !isCalledToday(item)) return false;
         } else if (dateFilter === 'yesterday') {
           if (!(nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime)) return false;
@@ -785,7 +794,7 @@ export default function CallTrackerCategoryView({
 
       return true;
     });
-  }, [accessibleEnrichedLeads, callListLeads, stageFilter, category, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin, getFollowUpTimes]);
+  }, [accessibleEnrichedLeads, callListLeads, stageFilter, category, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin, getFollowUpTimes, calledOnly, isCalledToday]);
 
   const filteredLeads = useMemo(
     () => leadsBeforeStatus.filter(item => matchesStatusFilter(item, statusFilter)),
