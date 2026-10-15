@@ -18,7 +18,14 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
   const isMeetingOnly = !isRealEstateLead;
   const statusText = (status) => (isMeetingOnly && status === 'Revisit' ? 'Remeeting' : status);
   const visitWord = isMeetingOnly ? 'Meeting' : 'Visit';
-  const { visits: totalVisits, meetings: totalMeetings, calls: totalCalls } = getVisitMeetCounts(lead);
+  const { visits: totalVisits, meetings: totalMeetings, calls: pageCalls } = getVisitMeetCounts(lead);
+  // Lead & Followup calls (passed by the Non-interested page), shown alongside the visit follow-ups
+  const callHistory = lead.callHistory || [];
+  const totalCalls = pageCalls + callHistory.length;
+  const entryTime = (e) => Number(e.timestampMs) || new Date(e.createdAt || 0).getTime() || 0;
+  const historyEntries = callHistory.length > 0
+    ? [...callHistory, ...followUps].sort((a, b) => entryTime(a) - entryTime(b))
+    : followUps;
   // Latest Online / Offline meeting type (Insurance)
   const latestMeetingMode = [...followUps].reverse().find(f => f.visitMeet?.meetingMode)?.visitMeet?.meetingMode || '';
   const nextDate = lead.nextMeetingDate || lead.nextVisitDate || '';
@@ -228,7 +235,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                 <MessageSquare size={13} className="text-indigo-600" />
                 Follow-Up History
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {followUps.length}
+                  {historyEntries.length}
                 </span>
               </h4>
               <button
@@ -239,13 +246,13 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
               </button>
             </div>
 
-            {followUps.length === 0 ? (
+            {historyEntries.length === 0 ? (
               <div className="py-5 text-center text-xs text-gray-400 italic bg-gray-50 rounded-xl border border-dashed border-gray-200">
                 No follow-ups recorded yet. Click "+ Log Follow-Up" to record what happened during the visit.
               </div>
             ) : (
               <div className="space-y-2.5">
-                {followUps.map((fu, idx) => {
+                {historyEntries.map((fu, idx) => {
                   const statusCfg = STATUS_STYLES[fu.status] || {
                     badge: 'bg-gray-100 text-gray-700 border-gray-200',
                     dot: 'bg-gray-400'
@@ -260,8 +267,13 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-bold text-gray-900 text-xs">
-                            Follow-Up #{fu.followUpNo || idx + 1}
+                            {fu.isCall ? `Call #${fu.followUpNo}` : `Follow-Up #${fu.followUpNo || idx + 1}`}
                           </span>
+                          {fu.isCall && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                              <Phone size={10} /> Lead &amp; Followup
+                            </span>
+                          )}
                           {(fu.parentId || fu.parent_id) && (
                             <span className="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600 border border-slate-200" title={`Parent Follow-up ID: ${fu.parentId || fu.parent_id}`}>
                               ↳ Followup Call
@@ -303,6 +315,11 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
                       {fu.whatHappened && (
                         <p className="text-gray-800 text-xs leading-relaxed">
                           {fu.whatHappened}
+                        </p>
+                      )}
+                      {fu.isCall && fu.adminRemark && (
+                        <p className="text-[11px] text-gray-600">
+                          <span className="font-semibold text-gray-500">Admin Remark:</span> {fu.adminRemark}
                         </p>
                       )}
 

@@ -1716,26 +1716,36 @@ export default function Dashboard() {
               </AdminCard>
             </div>
 
-            {/* ROW 4: Four Activity Lists Accessible Simultaneously */}
-            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-3.5">
-              {/* List 1: Today's Calling */}
-              <AdminCard className="flex flex-col">
-                <AdminCardHeader
-                  title="Today's Calling"
-                  subtitle={`${todayCalls.length} calls logged today`}
-                  icon={PhoneCall}
-                  action={
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        {todayCalls.length}
+            {/* ROW 4: Activity Lists — one card, the admin picks the list by tab */}
+            <AdminCard className="flex flex-col">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2.5 border-b border-gray-100">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { key: 'calling', label: "Today's Calling", icon: PhoneCall, count: todayCalls.length },
+                    { key: 'leads', label: "Today's Leads", icon: UserPlus, count: todayLeads.length },
+                    { key: 'hotWarm', label: 'Recent Hot & Warm', icon: Flame, count: hotWarm.length },
+                    { key: 'deals', label: 'Deal Closed', icon: CheckCircle2, count: dealsClosed.length }
+                  ].map(({ key, label, icon: Icon, count }) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setActivityTab(key)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${activityTab === key ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                    >
+                      <Icon size={13} />
+                      {label}
+                      <span className={`text-[10px] px-1.5 py-0 rounded-full font-bold ${activityTab === key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                        {count}
                       </span>
-                      {canDrillInto('/call-tracker') && (
-                        <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })} />
-                      )}
-                    </div>
-                  }
-                />
-                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                    </button>
+                  ))}
+                </div>
+                {activityViewAll && canDrillInto({ calling: '/call-tracker', leads: '/call-tracker', hotWarm: '/customer-master', deals: '/deal-closed' }[activityTab]) && (
+                  <ViewAll onClick={activityViewAll.onClick} />
+                )}
+              </div>
+                {activityTab === 'calling' && (
+                  <div className="flex-1 max-h-[380px] overflow-y-auto">
                   {todayCalls.length > 0 ? (
                     <>
                       {todayCalls.slice(0, listLimit.calls).map((c, idx) => {
@@ -1768,26 +1778,9 @@ export default function Dashboard() {
                     <Empty text={loadingOr('No calls logged today yet.')} />
                   )}
                 </div>
-              </AdminCard>
-
-              {/* List 2: Today's Leads */}
-              <AdminCard className="flex flex-col">
-                <AdminCardHeader
-                  title="Today's Leads"
-                  subtitle={`${todayLeads.length} leads scheduled today`}
-                  icon={UserPlus}
-                  action={
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-sky-50 text-sky-700 border border-sky-200">
-                        {todayLeads.length}
-                      </span>
-                      {canDrillInto('/call-tracker') && (
-                        <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today' })} />
-                      )}
-                    </div>
-                  }
-                />
-                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                )}
+                {activityTab === 'leads' && (
+                  <div className="flex-1 max-h-[380px] overflow-y-auto">
                   {todayLeads.length > 0 ? (
                     <>
                       {todayLeads.slice(0, listLimit.leads).map((l, idx) => {
@@ -1820,26 +1813,9 @@ export default function Dashboard() {
                     <Empty text={loadingOr('No leads scheduled for follow-up today.')} />
                   )}
                 </div>
-              </AdminCard>
-
-              {/* List 3: Recent Hot & Warm */}
-              <AdminCard className="flex flex-col">
-                <AdminCardHeader
-                  title="Recent Hot & Warm"
-                  subtitle={`${hotWarm.length} high-intent clients`}
-                  icon={Flame}
-                  action={
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                        {hotWarm.length}
-                      </span>
-                      {canDrillInto('/customer-master') && (
-                        <ViewAll onClick={() => go('/customer-master', { customerStatus: 'all' })} />
-                      )}
-                    </div>
-                  }
-                />
-                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                )}
+                {activityTab === 'hotWarm' && (
+                  <div className="flex-1 max-h-[380px] overflow-y-auto">
                   {hotWarm.length > 0 ? (
                     <>
                       {hotWarm.slice(0, listLimit.hot).map((l, idx) => (
@@ -1862,26 +1838,9 @@ export default function Dashboard() {
                     <Empty text={loadingOr('No Hot or Warm clients available.')} />
                   )}
                 </div>
-              </AdminCard>
-
-              {/* List 4: Deal Closed */}
-              <AdminCard className="flex flex-col">
-                <AdminCardHeader
-                  title="Deal Closed"
-                  subtitle={`${dealsClosed.length} closed deals`}
-                  icon={CheckCircle2}
-                  action={
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {dealsClosed.length}
-                      </span>
-                      {canDrillInto('/deal-closed') && (
-                        <ViewAll onClick={() => go('/deal-closed')} />
-                      )}
-                    </div>
-                  }
-                />
-                <div className="flex-1 max-h-[380px] overflow-y-auto">
+                )}
+                {activityTab === 'deals' && (
+                  <div className="flex-1 max-h-[380px] overflow-y-auto">
                   {dealsClosed.length > 0 ? (
                     <>
                       {dealsClosed.slice(0, listLimit.deals).map((l, idx) => {
@@ -1910,8 +1869,8 @@ export default function Dashboard() {
                     <Empty text={loadingOr('No deals closed yet in this category.')} />
                   )}
                 </div>
-              </AdminCard>
-            </div>
+                )}
+            </AdminCard>
 
           </>)}
         </div>
@@ -2319,7 +2278,7 @@ export default function Dashboard() {
               <UserCardHeader title="Lead Pipeline" subtitle="Where every lead stands now" icon={Layers} />
               {(() => {
                 const segments = [
-                  { label: 'Converted', value: kpis.converted, color: 'bg-emerald-500', path: '/deal-closed' },
+                  { label: 'Converted', value: kpis.converted, color: 'bg-emerald-500' },
                   { label: 'Interested', value: kpis.interested, color: 'bg-teal-500', status: 'Interested' },
                   { label: 'Future Plan', value: kpis.futurePlan, color: 'bg-amber-400', status: 'Future Plan Date' },
                   { label: isMeetingOnly ? 'Meeting' : 'Site Visit', value: kpis.siteVisit, color: 'bg-cyan-500', path: '/site-visit-meeting' },

@@ -137,11 +137,35 @@ export const nonInterestedApi = {
       leadFollowUps.sort((a, b) => (Number(a.timestampMs) || new Date(a.createdAt || 0).getTime()) - (Number(b.timestampMs) || new Date(b.createdAt || 0).getTime()));
       const latestFollowUp = leadFollowUps[leadFollowUps.length - 1] || null;
 
-      // All trackers for this lead
-      const leadTrackers = [
+      // All trackers for this lead (a tracker can match by both id and lead no)
+      const seenTrackerIds = new Set();
+      const leadTrackers = [];
+      const trackerCandidates = [
         ...(kId && trackersByLeadId[kId] ? trackersByLeadId[kId] : []),
         ...(kNo && trackersByLeadNo[kNo] ? trackersByLeadNo[kNo] : [])
       ];
+      trackerCandidates.forEach(t => {
+        const tid = t.id || `${t.leadNo}-${t.timestampMs || t.timestamp}`;
+        if (!seenTrackerIds.has(tid)) {
+          seenTrackerIds.add(tid);
+          leadTrackers.push(t);
+        }
+      });
+      leadTrackers.sort((a, b) => (Number(a.timestampMs) || new Date(a.timestamp || 0).getTime()) - (Number(b.timestampMs) || new Date(b.timestamp || 0).getTime()));
+
+      // Lead & Followup calls, shaped like visit follow-ups for the Follow-Up History
+      const callHistory = leadTrackers.map((t, idx) => ({
+        id: `call-${t.id || idx}`,
+        isCall: true,
+        followUpNo: idx + 1,
+        status: t.status || '',
+        customerStatus: t.customerStatus || '',
+        whatHappened: t.customerSaid || '',
+        adminRemark: t.adminRemark || '',
+        createdAt: t.timestamp || '',
+        timestampMs: Number(t.timestampMs) || new Date(t.timestamp || 0).getTime(),
+        nextVisitDate: t.nextDate || ''
+      }));
 
       // Determine if this lead is currently Non-interested based on latest activity
       const latestFollowUpTime = latestFollowUp ? (Number(latestFollowUp.timestampMs) || new Date(latestFollowUp.createdAt || 0).getTime()) : 0;
@@ -160,12 +184,14 @@ export const nonInterestedApi = {
 
       if (!isCandidate) return;
 
-      // Format dates
-      const meetingDate = latestAssignment?.visitDate
-        || latestTracker?.nextDate
+      // Last activity date: the latest call (tracker timestamp) or the latest visit follow-up
+      const trackerIsLatest = latestTracker && latestTrackerTime > latestFollowUpTime;
+      const meetingDate = (trackerIsLatest ? latestTracker.timestamp : '')
+        || latestFollowUp?.visitDate
+        || latestFollowUp?.createdAt
+        || latestAssignment?.visitDate
         || lead.visitDate
-        || (leadFollowUps.length > 0 ? leadFollowUps[0].visitDate : '')
-        || latestTracker?.date
+        || latestTracker?.timestamp
         || '';
 
       const nextMeetingDate = latestFollowUp?.nextVisitDate || latestTracker?.nextDate || '';
@@ -179,7 +205,7 @@ export const nonInterestedApi = {
       const customerStatus = latestFollowUp?.customerStatus
         || latestFollowUp?.customer_status
         || latestTracker?.customerStatus
-        || (isLeadStatusNotInterested ? 'Cold' : 'Cold');
+        || 'Cold';
 
       nonInterestedList.push({
         ...lead,
@@ -211,6 +237,8 @@ export const nonInterestedApi = {
         visitDate: meetingDate,
         // Call Tracker info
         trackers: leadTrackers,
+        callHistory,
+        lastCallDate: latestTracker?.timestamp || '',
         callerAssigned: lead.callerAssigned || latestTracker?.callerAssigned || '',
         caller: lead.caller || latestTracker?.caller || lead.callerAssigned || '',
         callTrackerId: latestTracker?.id || null,
