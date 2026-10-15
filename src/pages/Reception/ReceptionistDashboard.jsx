@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
-  UserCheck, Users, Clock, Briefcase, MapPin, CheckCircle2,
+  UserCheck, Users, Clock, Briefcase, MapPin,
   LogOut, UserPlus, RefreshCw, Eye, Phone, Building2,
   Calendar, ChevronRight, ChevronLeft, TrendingUp, RotateCcw,
   Pencil, Search, X, FileSpreadsheet, AlertCircle,
@@ -26,12 +26,14 @@ import { visitorApi } from '../../api/visitorApi';
 import { useAuthStore } from '../../store/authStore';
 import { hasFullAccess, isUserAdmin } from '../../utils/authUtils';
 import {
-  VISITOR_STATUS_MAP,
   PURPOSE_STYLES,
+  getPurposeKey,
+  getVisitorTypeKey,
+  emptyCounts,
   VISIT_PURPOSE_OPTIONS,
+  VISITOR_TYPE_OPTIONS,
   formatVisitorDate,
-  formatVisitorTime,
-  getVisitDuration
+  formatVisitorTime
 } from './receptionConstants';
 
 // Helper: Check if an ISO date string is today in local time
@@ -155,9 +157,9 @@ export default function ReceptionistDashboard() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED'
   const [purposeFilter, setPurposeFilter] = useState('all');
   const [locationFilter, setLocationFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
 
   // View Mode: 'columns' (Dashboard 4-column cards) vs 'table' (Full tabular register)
   const [viewMode, setViewMode] = useState('columns');
@@ -165,6 +167,10 @@ export default function ReceptionistDashboard() {
   // Pagination states for table view
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+
+  // "Show more" paging for the cards view
+  const CARD_PAGE = 24;
+  const [cardLimit, setCardLimit] = useState(CARD_PAGE);
 
   // Modals
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -208,43 +214,32 @@ export default function ReceptionistDashboard() {
   // 1. KPI Counts Calculation
   const kpiCounts = useMemo(() => {
     let totalVisitors = 0;
-    let meetings = 0;
-    let siteVisits = 0;
-    let officeCount = 0;
-    let siteCount = 0;
 
     (visitors || []).forEach((v) => {
-      if (v.status === 'CANCELLED') return;
 
       const checkInMatches = isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo, specificDate);
       if (checkInMatches) {
         totalVisitors++;
-        if (v.visitPurpose === 'Meeting') meetings++;
-        if (v.visitPurpose === 'Site Visit') siteVisits++;
-        if (v.visitLocation === 'Construction Site') siteCount++;
-        else officeCount++;
       }
     });
 
     return {
-      totalVisitors,
-      meetings,
-      siteVisits,
-      officeCount,
-      siteCount,
-      allTimeTotal: (visitors || []).length
+      totalVisitors
     };
   }, [visitors, dateFilter, customFrom, customTo, specificDate]);
 
+  // Selected period, shown on the Visitors KPI group
+  const kpiPeriodLabel =
+    dateFilter === 'today' ? 'Today'
+      : dateFilter === 'yesterday' ? 'Yesterday'
+      : (dateFilter === 'single' || dateFilter === 'specific') ? (specificDate || 'Single date')
+      : (dateFilter === 'range' || dateFilter === 'custom') ? ([customFrom, customTo].filter(Boolean).join(' – ') || 'Date range')
+      : 'All dates';
+
   // 2. Numeric Breakdown by Purpose & Location for the Selected Date Filter
   const dateFilteredStats = useMemo(() => {
-    const purposeCounts = {
-      Meeting: 0,
-      'Site Visit': 0,
-      'Supply Item': 0,
-      Broking: 0,
-      Other: 0
-    };
+    const purposeCounts = emptyCounts(VISIT_PURPOSE_OPTIONS);
+    const typeCounts = emptyCounts(VISITOR_TYPE_OPTIONS);
 
     const locationCounts = {
       Office: 0,
@@ -254,39 +249,29 @@ export default function ReceptionistDashboard() {
     let total = 0;
 
     (visitors || []).forEach((v) => {
-      if (v.status === 'CANCELLED') return;
       if (!isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo, specificDate)) return;
 
       total++;
-      const p = v.visitPurpose || 'Other';
-      if (purposeCounts[p] !== undefined) {
-        purposeCounts[p]++;
-      } else {
-        purposeCounts.Other++;
-      }
+      purposeCounts[getPurposeKey(v.visitPurpose)]++;
+      typeCounts[getVisitorTypeKey(v.visitorType)]++;
 
       const loc = v.visitLocation === 'Construction Site' ? 'Construction Site' : 'Office';
       locationCounts[loc] = (locationCounts[loc] || 0) + 1;
     });
 
-    return { purposeCounts, locationCounts, total };
+    return { purposeCounts, typeCounts, locationCounts, total };
   }, [visitors, dateFilter, customFrom, customTo, specificDate]);
 
-  // 3. Filtered Visitors List (Filtered by Date, Status, Purpose, Location, and Search)
-  const filteredVisitors = useMemo(() => {
+  // 3. Visitors matching every filter except purpose (date, category, location, search)
+  const baseVisitors = useMemo(() => {
     let list = visitors || [];
 
     // Date Filter
     list = list.filter((v) => isTimestampInDateRange(v.checkInAt, dateFilter, customFrom, customTo, specificDate));
 
-    // Status Filter
-    if (statusFilter !== 'all') {
-      list = list.filter((v) => v.status === statusFilter);
-    }
-
-    // Purpose Filter
-    if (purposeFilter !== 'all') {
-      list = list.filter((v) => v.visitPurpose === purposeFilter || v.visitPurpose?.startsWith(purposeFilter + ' ('));
+    // Visitor Category Filter
+    if (categoryFilter !== 'all') {
+      list = list.filter((v) => getVisitorTypeKey(v.visitorType) === categoryFilter);
     }
 
     // Location Filter
@@ -302,46 +287,33 @@ export default function ReceptionistDashboard() {
         const phoneMatch = v.mobileNumber && v.mobileNumber.includes(q);
         const compMatch = v.companyName && v.companyName.toLowerCase().includes(q);
         const hostMatch = v.personToMeetName && v.personToMeetName.toLowerCase().includes(q);
-        const actualHostMatch = v.personActuallyMetName && v.personActuallyMetName.toLowerCase().includes(q);
         const projectMatch = v.projectName && v.projectName.toLowerCase().includes(q);
         const remarksMatch = v.remarks && v.remarks.toLowerCase().includes(q);
-        return nameMatch || phoneMatch || compMatch || hostMatch || actualHostMatch || projectMatch || remarksMatch;
+        return nameMatch || phoneMatch || compMatch || hostMatch || projectMatch || remarksMatch;
       });
     }
 
     return list;
-  }, [visitors, dateFilter, customFrom, customTo, specificDate, statusFilter, purposeFilter, locationFilter, searchQuery]);
+  }, [visitors, dateFilter, customFrom, customTo, specificDate, categoryFilter, locationFilter, searchQuery]);
 
-  // 4. Grouped Visitors for the 4 Dashboard Columns
-  const columnData = useMemo(() => {
-    // Column 1: All Registered Visitors
-    const allList = filteredVisitors;
+  // Counts for the purpose tabs
+  const purposeTabCounts = useMemo(() => {
+    const counts = emptyCounts(VISIT_PURPOSE_OPTIONS);
+    baseVisitors.forEach((v) => { counts[getPurposeKey(v.visitPurpose)]++; });
+    return counts;
+  }, [baseVisitors]);
 
-    // Column 2: Meetings (from filteredVisitors)
-    const meetingsList = filteredVisitors.filter((v) => v.visitPurpose === 'Meeting');
-
-    // Column 3: Site Visits & Construction (from filteredVisitors)
-    const siteVisitsList = filteredVisitors.filter(
-      (v) => v.visitPurpose === 'Site Visit' || v.visitLocation === 'Construction Site'
-    );
-
-    // Column 4: Supply, Broking & Other
-    const otherList = filteredVisitors.filter(
-      (v) => v.visitPurpose !== 'Meeting' && v.visitPurpose !== 'Site Visit' && v.visitLocation !== 'Construction Site'
-    );
-
-    return {
-      allList,
-      meetingsList,
-      siteVisitsList,
-      otherList
-    };
-  }, [filteredVisitors]);
+  // Visitor list shown below: base list narrowed to the selected purpose
+  const filteredVisitors = useMemo(
+    () => (purposeFilter === 'all' ? baseVisitors : baseVisitors.filter((v) => getPurposeKey(v.visitPurpose) === purposeFilter)),
+    [baseVisitors, purposeFilter]
+  );
 
   // Reset pagination on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateFilter, specificDate, customFrom, customTo, statusFilter, purposeFilter, locationFilter, searchQuery, pageSize]);
+    setCardLimit(CARD_PAGE);
+  }, [dateFilter, specificDate, customFrom, customTo, purposeFilter, categoryFilter, locationFilter, searchQuery, pageSize]);
 
   // Table pagination
   const totalRecords = filteredVisitors.length;
@@ -354,8 +326,8 @@ export default function ReceptionistDashboard() {
   // Active filters count
   const activeFiltersCount =
     (dateFilter !== 'today' ? 1 : 0) +
-    (statusFilter !== 'all' ? 1 : 0) +
     (purposeFilter !== 'all' ? 1 : 0) +
+    (categoryFilter !== 'all' ? 1 : 0) +
     (locationFilter !== 'all' ? 1 : 0) +
     (searchQuery.trim() ? 1 : 0);
 
@@ -366,8 +338,8 @@ export default function ReceptionistDashboard() {
     setCustomFrom('');
     setCustomTo('');
     setSearchQuery('');
-    setStatusFilter('all');
     setPurposeFilter('all');
+    setCategoryFilter('all');
     setLocationFilter('all');
     setCurrentPage(1);
     toast.success('Filters reset to Today');
@@ -377,8 +349,8 @@ export default function ReceptionistDashboard() {
   const handleDateFilterSelect = (mode) => {
     setDateFilter(mode);
     setPurposeFilter('all');
+    setCategoryFilter('all');
     setLocationFilter('all');
-    setStatusFilter('all');
     setSearchQuery('');
     setCurrentPage(1);
 
@@ -392,8 +364,8 @@ export default function ReceptionistDashboard() {
   const handleSpecificDateChange = (val) => {
     setSpecificDate(val);
     setPurposeFilter('all');
+    setCategoryFilter('all');
     setLocationFilter('all');
-    setStatusFilter('all');
     setSearchQuery('');
     setCurrentPage(1);
   };
@@ -402,50 +374,10 @@ export default function ReceptionistDashboard() {
     if (field === 'from') setCustomFrom(val);
     if (field === 'to') setCustomTo(val);
     setPurposeFilter('all');
+    setCategoryFilter('all');
     setLocationFilter('all');
-    setStatusFilter('all');
     setSearchQuery('');
     setCurrentPage(1);
-  };
-
-  // KPI Card Click Handler
-  const handleKpiCardClick = (cardType) => {
-    setCurrentPage(1);
-    switch (cardType) {
-      case 'total':
-        setPurposeFilter('all');
-        setLocationFilter('all');
-        setStatusFilter('all');
-        break;
-      case 'office':
-        setLocationFilter('Office');
-        setPurposeFilter('all');
-        setStatusFilter('all');
-        break;
-      case 'constructionSites':
-        setLocationFilter('Construction Site');
-        setPurposeFilter('all');
-        setStatusFilter('all');
-        break;
-      case 'meetings':
-        setPurposeFilter('Meeting');
-        setLocationFilter('all');
-        setStatusFilter('all');
-        break;
-      case 'siteVisits':
-        setPurposeFilter('Site Visit');
-        setLocationFilter('all');
-        setStatusFilter('all');
-        break;
-      case 'all':
-        setDateFilter('all');
-        setLocationFilter('all');
-        setPurposeFilter('all');
-        setStatusFilter('all');
-        break;
-      default:
-        break;
-    }
   };
 
   // Quick Action: WhatsApp
@@ -508,10 +440,8 @@ export default function ReceptionistDashboard() {
       'Project Name': item.projectName || '—',
       'Person to Meet': item.personToMeetName || '—',
       'Department': item.department || '—',
-      'Actual Person Met': item.personActuallyMetName || item.personToMeetName || '—',
       'Visit Date': formatVisitorDate(item.checkInAt),
       'Arrival Time': formatVisitorTime(item.checkInAt),
-      'Status': item.status === 'CANCELLED' ? 'Cancelled' : 'Registered',
       'Registered By': item.checkedInBy || '—',
       'Remarks': item.remarks || '—'
     }));
@@ -567,7 +497,6 @@ export default function ReceptionistDashboard() {
     }
 
     (visitors || []).forEach((v) => {
-      if (v.status === 'CANCELLED') return;
       if (!v.checkInAt) return;
       const key = getLocalDateKey(v.checkInAt);
       if (key && countsByDate[key] !== undefined) {
@@ -635,6 +564,10 @@ export default function ReceptionistDashboard() {
             {formatVisitorDate(item.checkInAt)}
           </span>
         </div>
+
+        <span className={`self-start max-w-full truncate px-2 py-0.5 rounded-full text-[10px] font-bold border ${PURPOSE_STYLES[getPurposeKey(item.visitPurpose)] || PURPOSE_STYLES.Other}`}>
+          {item.visitPurpose || 'Other'}
+        </span>
 
         {/* Details snippet */}
         <div className="text-[11px] text-gray-600 space-y-1 bg-gray-50/70 p-2 rounded-lg border border-gray-100">
@@ -772,366 +705,172 @@ export default function ReceptionistDashboard() {
         </div>
       </div>
 
-      {/* 2. Top Global Filter Toolbar */}
+      {/* 2. Filter Toolbar: Period + Purpose / Category / Location */}
       <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2.5">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          
-          {/* Date Range Mode Segmented Controls */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
-              Period:
-            </span>
+        <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+          <span className="hidden lg:inline text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
+            Period:
+          </span>
 
-            <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
+          {/* Date Range Mode Segmented Controls (short labels on phones so all 5 fit one row) */}
+          <div className="grid grid-cols-5 lg:inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs w-full lg:w-auto">
+            {[
+              { id: 'today', label: 'Today', short: 'Today', match: ['today'] },
+              { id: 'yesterday', label: 'Yesterday', short: 'Yest.', match: ['yesterday'] },
+              { id: 'single', label: 'Single Date', short: 'Date', match: ['single', 'specific'] },
+              { id: 'range', label: 'Date Range', short: 'Range', match: ['range', 'custom'] },
+              { id: 'all', label: 'All Dates', short: 'All', match: ['all'] }
+            ].map((p) => (
               <button
+                key={p.id}
                 type="button"
-                onClick={() => handleDateFilterSelect('today')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  dateFilter === 'today'
+                onClick={() => handleDateFilterSelect(p.id)}
+                className={`px-2 lg:px-3 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
+                  p.match.includes(dateFilter)
                     ? 'bg-white text-indigo-700 shadow-2xs font-bold'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
                 }`}
               >
-                Today
+                <span className="sm:hidden">{p.short}</span>
+                <span className="hidden sm:inline">{p.label}</span>
               </button>
-              <button
-                type="button"
-                onClick={() => handleDateFilterSelect('yesterday')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  dateFilter === 'yesterday'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-                }`}
-              >
-                Yesterday
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDateFilterSelect('single')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  dateFilter === 'single' || dateFilter === 'specific'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-                }`}
-              >
-                Single Date
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDateFilterSelect('range')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  dateFilter === 'range' || dateFilter === 'custom'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-                }`}
-              >
-                Date Range
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDateFilterSelect('all')}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  dateFilter === 'all'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-                }`}
-              >
-                All Dates
-              </button>
-            </div>
-
-            {/* Inline Single Date Picker */}
-            {(dateFilter === 'single' || dateFilter === 'specific') && (
-              <div className="flex items-center gap-1.5 bg-indigo-50/60 px-2.5 py-1 rounded-lg border border-indigo-100">
-                <span className="text-[11px] font-semibold text-indigo-900">Date:</span>
-                <input
-                  type="date"
-                  value={specificDate}
-                  onChange={(e) => handleSpecificDateChange(e.target.value)}
-                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                />
-                {specificDate && (
-                  <button
-                    type="button"
-                    onClick={() => handleSpecificDateChange('')}
-                    className="text-gray-400 hover:text-gray-700 p-0.5 cursor-pointer"
-                    title="Clear date"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Inline Date Range Inputs */}
-            {(dateFilter === 'range' || dateFilter === 'custom') && (
-              <div className="flex items-center gap-1.5 flex-wrap bg-indigo-50/60 px-2.5 py-1 rounded-lg border border-indigo-100">
-                <span className="text-[11px] font-semibold text-indigo-900">From:</span>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => handleCustomRangeChange('from', e.target.value)}
-                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                />
-                <span className="text-[11px] font-semibold text-indigo-900">To:</span>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => handleCustomRangeChange('to', e.target.value)}
-                  className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                />
-                {(customFrom || customTo) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomFrom('');
-                      setCustomTo('');
-                      setPurposeFilter('all');
-                      setLocationFilter('all');
-                      setStatusFilter('all');
-                      setSearchQuery('');
-                      setCurrentPage(1);
-                    }}
-                    className="text-gray-400 hover:text-gray-700 p-0.5 cursor-pointer"
-                    title="Clear date range"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-            )}
+            ))}
           </div>
+
+          {/* Inline Single Date Picker */}
+          {(dateFilter === 'single' || dateFilter === 'specific') && (
+            <div className="flex items-center gap-1.5 bg-indigo-50/60 px-2.5 py-1 rounded-lg border border-indigo-100">
+              <span className="text-[11px] font-semibold text-indigo-900">Date:</span>
+              <input
+                type="date"
+                value={specificDate}
+                onChange={(e) => handleSpecificDateChange(e.target.value)}
+                className="flex-1 lg:flex-none text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              />
+              {specificDate && (
+                <button
+                  type="button"
+                  onClick={() => handleSpecificDateChange('')}
+                  className="text-gray-400 hover:text-gray-700 p-0.5 cursor-pointer"
+                  title="Clear date"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Inline Date Range Inputs */}
+          {(dateFilter === 'range' || dateFilter === 'custom') && (
+            <div className="grid grid-cols-[auto_1fr] lg:flex items-center gap-1.5 bg-indigo-50/60 px-2.5 py-1.5 lg:py-1 rounded-lg border border-indigo-100">
+              <span className="text-[11px] font-semibold text-indigo-900">From:</span>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => handleCustomRangeChange('from', e.target.value)}
+                className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              />
+              <span className="text-[11px] font-semibold text-indigo-900">To:</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => handleCustomRangeChange('to', e.target.value)}
+                className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              />
+            </div>
+          )}
 
           {/* Reset Filters Action */}
           {activeFiltersCount > 0 && (
             <button
               type="button"
               onClick={handleResetFilters}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition cursor-pointer"
+              className="lg:ml-auto self-start lg:self-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition cursor-pointer"
               title="Reset all filters"
             >
               <RotateCcw size={12} />
               <span>Reset Filters ({activeFiltersCount})</span>
             </button>
           )}
-
         </div>
 
-        {/* Filter Controls Row (Purpose, Location) */}
-        <div className="flex items-center gap-2 pt-1.5 border-t border-gray-100 flex-wrap">
-          <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
-            Filter:
-          </span>
-
-          {/* Purpose Filter */}
-          <div className="w-48 sm:w-56">
+        {/* Filter Controls Row (Purpose, Category, Location) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2.5 border-t border-gray-100">
+          {[
+            { value: purposeFilter, onChange: setPurposeFilter, allLabel: 'All Purposes', options: VISIT_PURPOSE_OPTIONS },
+            { value: categoryFilter, onChange: setCategoryFilter, allLabel: 'All Categories', options: VISITOR_TYPE_OPTIONS },
+            {
+              value: locationFilter,
+              onChange: setLocationFilter,
+              allLabel: 'All Locations',
+              options: [
+                { value: 'Office', label: 'Corporate Office' },
+                { value: 'Construction Site', label: 'Construction Site' }
+              ]
+            }
+          ].map((f) => (
             <select
-              value={purposeFilter}
-              onChange={(e) => setPurposeFilter(e.target.value)}
-              className="w-full text-xs h-[32px] px-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs"
+              key={f.allLabel}
+              value={f.value}
+              onChange={(e) => {
+                f.onChange(e.target.value);
+                setCurrentPage(1);
+              }}
+              className={`w-full text-xs h-[34px] px-2.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs ${
+                f.value !== 'all' ? 'border-indigo-300 text-indigo-800 bg-indigo-50/40' : 'bg-white border-gray-200 text-gray-700'
+              }`}
             >
-              <option value="all">All Purposes</option>
-              {VISIT_PURPOSE_OPTIONS.map((opt) => (
+              <option value="all">{f.allLabel}</option>
+              {f.options.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
             </select>
-          </div>
-
-          {/* Location Filter */}
-          <div className="w-48 sm:w-56">
-            <select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="w-full text-xs h-[32px] px-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs"
-            >
-              <option value="all">All Locations</option>
-              <option value="Office">Corporate Office</option>
-              <option value="Construction Site">Construction Site</option>
-            </select>
-          </div>
-
+          ))}
         </div>
       </div>
 
-      {/* 3. Simple KPI Cards (Clickable) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
-
-        {/* 1. Total Visitors */}
-        <div
-          onClick={() => handleKpiCardClick('total')}
-          className="p-3 bg-white hover:bg-indigo-50/50 border border-gray-200 hover:border-indigo-300 rounded-xl transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-          title="Click to view all visitor records"
-        >
-          <div className="flex items-center justify-between text-gray-600 group-hover:text-indigo-600 transition">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Total Visitors
-            </span>
-            <Users size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl sm:text-3xl font-black text-gray-900 group-hover:text-indigo-950 transition">
-              {kpiCounts.totalVisitors}
-            </span>
-            <span className="text-[10px] font-semibold text-gray-400 group-hover:text-indigo-600 flex items-center gap-0.5">
-              <span>View</span>
-              <ChevronRight size={10} />
-            </span>
-          </div>
-          <span className="text-[10px] text-gray-400 mt-1 font-medium truncate">
-            {dateFilter === 'today'
-              ? 'Today’s registrations'
-              : dateFilter === 'yesterday'
-              ? 'Yesterday’s registrations'
-              : (dateFilter === 'single' || dateFilter === 'specific')
-              ? (specificDate ? `Date: ${specificDate}` : 'Single date')
-              : dateFilter === 'all'
-              ? 'All dates'
-              : 'Selected range'}
-          </span>
+      {/* 3. KPIs: total visitors + one tile per visit purpose, for the selected period. Every tile filters the records below */}
+      <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Users size={13} className="text-indigo-600" />
+            Visitors by Purpose
+          </h3>
+          <span className="text-[10px] font-semibold text-gray-400 truncate">{kpiPeriodLabel} · Tap to filter</span>
         </div>
-
-        {/* 2. Corporate Office Visits */}
-        <div
-          onClick={() => handleKpiCardClick('office')}
-          className={`p-3 bg-white hover:bg-blue-50/50 border rounded-xl transition cursor-pointer shadow-2xs flex flex-col justify-between group ${
-            locationFilter === 'Office' ? 'border-blue-500 ring-1 ring-blue-500/30 bg-blue-50/20' : 'border-gray-200 hover:border-blue-300'
-          }`}
-          title="Click to filter Corporate Office visitors"
-        >
-          <div className="flex items-center justify-between text-blue-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <Building2 size={13} />
-              Corporate Office
-            </span>
-            <Building2 size={14} className="group-hover:scale-110 transition text-blue-600" />
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl sm:text-3xl font-black text-blue-950">
-              {kpiCounts.officeCount}
-            </span>
-            <span className="text-[10px] font-bold text-blue-700 flex items-center gap-0.5">
-              <span>Filter</span>
-              <ChevronRight size={10} />
-            </span>
-          </div>
-          <span className="text-[10px] text-blue-700/80 mt-1 font-medium truncate">
-            HQ office visits
-          </span>
+        <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
+          {[
+            { value: 'all', label: 'Total Visitors', count: kpiCounts.totalVisitors, dot: 'bg-indigo-500' },
+            ...VISIT_PURPOSE_OPTIONS.map((opt) => ({
+              value: opt.value,
+              label: opt.label,
+              count: dateFilteredStats.purposeCounts?.[opt.value] || 0,
+              dot: opt.dot
+            }))
+          ].map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => {
+                setCurrentPage(1);
+                setPurposeFilter(t.value === 'all' || purposeFilter === t.value ? 'all' : t.value);
+              }}
+              className={`text-left p-2.5 rounded-lg border transition cursor-pointer flex flex-col justify-between ${
+                purposeFilter === t.value
+                  ? 'bg-indigo-50 border-indigo-300'
+                  : 'bg-gray-50/70 border-gray-100 hover:bg-gray-100 hover:border-gray-200'
+              }`}
+            >
+              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 flex items-start gap-1.5 leading-tight">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-[3px] ${t.dot}`} />
+                {t.label}
+              </span>
+              <span className="mt-1.5 text-xl sm:text-2xl font-black text-gray-900">{t.count}</span>
+            </button>
+          ))}
         </div>
-
-        {/* 3. Construction Site Visits */}
-        <div
-          onClick={() => handleKpiCardClick('constructionSites')}
-          className={`p-3 bg-white hover:bg-amber-50/50 border rounded-xl transition cursor-pointer shadow-2xs flex flex-col justify-between group ${
-            locationFilter === 'Construction Site' ? 'border-amber-500 ring-1 ring-amber-500/30 bg-amber-50/20' : 'border-gray-200 hover:border-amber-300'
-          }`}
-          title="Click to filter Construction Site visits"
-        >
-          <div className="flex items-center justify-between text-amber-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-              <MapPin size={13} />
-              Site Visits
-            </span>
-            <MapPin size={14} className="group-hover:scale-110 transition text-amber-600" />
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl sm:text-3xl font-black text-amber-950">
-              {kpiCounts.siteCount}
-            </span>
-            <span className="text-[10px] font-bold text-amber-700 flex items-center gap-0.5">
-              <span>Filter</span>
-              <ChevronRight size={10} />
-            </span>
-          </div>
-          <span className="text-[10px] text-amber-700/80 mt-1 font-medium truncate">
-            Projects & sites
-          </span>
-        </div>
-
-        {/* 4. Meetings */}
-        <div
-          onClick={() => handleKpiCardClick('meetings')}
-          className={`p-3 bg-white hover:bg-violet-50/50 border rounded-xl transition cursor-pointer shadow-2xs flex flex-col justify-between group ${
-            purposeFilter === 'Meeting' ? 'border-violet-500 ring-1 ring-violet-500/30 bg-violet-50/20' : 'border-gray-200 hover:border-violet-300'
-          }`}
-          title="Click to filter meeting visits"
-        >
-          <div className="flex items-center justify-between text-gray-600 group-hover:text-violet-600 transition">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Meetings
-            </span>
-            <Briefcase size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl sm:text-3xl font-black text-gray-900 group-hover:text-violet-950 transition">
-              {kpiCounts.meetings}
-            </span>
-            <span className="text-[10px] font-semibold text-gray-400 group-hover:text-violet-600 flex items-center gap-0.5">
-              <span>Filter</span>
-              <ChevronRight size={10} />
-            </span>
-          </div>
-          <span className="text-[10px] text-gray-400 mt-1 font-medium truncate">
-            Host meetings
-          </span>
-        </div>
-
-        {/* 5. Purpose: Site Visits */}
-        <div
-          onClick={() => handleKpiCardClick('siteVisits')}
-          className={`p-3 bg-white hover:bg-emerald-50/50 border rounded-xl transition cursor-pointer shadow-2xs flex flex-col justify-between group ${
-            purposeFilter === 'Site Visit' ? 'border-emerald-500 ring-1 ring-emerald-500/30 bg-emerald-50/20' : 'border-gray-200 hover:border-emerald-300'
-          }`}
-          title="Click to filter site visits purpose"
-        >
-          <div className="flex items-center justify-between text-emerald-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider">
-              Site Walkthroughs
-            </span>
-            <CheckCircle2 size={14} className="group-hover:scale-110 transition text-emerald-600" />
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl sm:text-3xl font-black text-emerald-950">
-              {kpiCounts.siteVisits}
-            </span>
-            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
-              <span>Filter</span>
-              <ChevronRight size={10} />
-            </span>
-          </div>
-          <span className="text-[10px] text-emerald-700/80 mt-1 font-medium truncate">
-            Walkthroughs
-          </span>
-        </div>
-
-        {/* 6. All Time Total */}
-        <div
-          onClick={() => handleKpiCardClick('all')}
-          className="p-3 bg-white hover:bg-slate-100/60 border border-gray-200 hover:border-slate-300 rounded-xl transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-          title="Click to show all registered visitors across all dates"
-        >
-          <div className="flex items-center justify-between text-gray-600 group-hover:text-slate-700 transition">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              All-Time Total
-            </span>
-            <UserCheck size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-2 flex items-baseline justify-between">
-            <span className="text-2xl sm:text-3xl font-black text-gray-900 group-hover:text-slate-950 transition">
-              {kpiCounts.allTimeTotal}
-            </span>
-            <span className="text-[10px] font-semibold text-gray-400 group-hover:text-slate-600 flex items-center gap-0.5">
-              <span>All Dates</span>
-              <ChevronRight size={10} />
-            </span>
-          </div>
-          <span className="text-[10px] text-gray-400 mt-1 font-medium truncate">
-            Total entries recorded
-          </span>
-        </div>
-
       </div>
 
       {/* 4. Analytics Row: Trends Graph & Numeric Summaries */}
@@ -1193,7 +932,7 @@ export default function ReceptionistDashboard() {
           </div>
 
           {/* Chart Area */}
-          <div className="h-[180px] w-full">
+          <div className="flex-1 min-h-[200px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={trendChartData}
@@ -1242,16 +981,16 @@ export default function ReceptionistDashboard() {
           </div>
         </div>
 
-        {/* Small Numeric Summaries for Purpose & Location */}
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-gray-200 shadow-2xs flex flex-col justify-between gap-3">
+        {/* Visitor Category & Location Summaries */}
+        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-3">
           
-          {/* Visits by Purpose */}
+          {/* Visits by Visitor Category */}
           <div>
             <div className="flex items-center justify-between pb-2 border-b border-gray-100">
               <div className="flex items-center gap-1.5">
-                <Briefcase size={14} className="text-indigo-600" />
+                <Users size={14} className="text-indigo-600" />
                 <h4 className="text-xs font-bold text-gray-900">
-                  Visits by Purpose
+                  Visits by Category
                 </h4>
               </div>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
@@ -1259,35 +998,28 @@ export default function ReceptionistDashboard() {
               </span>
             </div>
 
-            <div className="mt-2 space-y-1.5">
-              {[
-                { key: 'Meeting', label: 'Meeting', count: dateFilteredStats.purposeCounts?.Meeting || 0, color: 'bg-indigo-500' },
-                { key: 'Site Visit', label: 'Site Visit', count: dateFilteredStats.purposeCounts?.['Site Visit'] || 0, color: 'bg-amber-500' },
-                { key: 'Supply Item', label: 'Supply Item', count: dateFilteredStats.purposeCounts?.['Supply Item'] || 0, color: 'bg-cyan-500' },
-                { key: 'Broking', label: 'Broking', count: dateFilteredStats.purposeCounts?.Broking || 0, color: 'bg-purple-500' },
-                { key: 'Other', label: 'Other', count: dateFilteredStats.purposeCounts?.Other || 0, color: 'bg-gray-400' }
-              ].map((item) => (
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {VISITOR_TYPE_OPTIONS.map((opt) => (
                 <div
-                  key={item.key}
+                  key={opt.value}
                   onClick={() => {
-                    setPurposeFilter(item.key);
-                    setStatusFilter('all');
+                    setCategoryFilter(categoryFilter === opt.value ? 'all' : opt.value);
                   }}
                   className={`flex items-center justify-between px-2.5 py-1 rounded-lg border transition cursor-pointer group ${
-                    purposeFilter === item.key
+                    categoryFilter === opt.value
                       ? 'bg-indigo-50 border-indigo-300 font-bold'
                       : 'bg-gray-50/70 hover:bg-gray-100 border-gray-100'
                   }`}
-                  title={`Filter by ${item.label}`}
+                  title={`Filter by ${opt.label}`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${item.color}`} />
+                    <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
                     <span className="text-xs font-medium text-gray-800 group-hover:text-indigo-600 transition">
-                      {item.label}
+                      {opt.label}
                     </span>
                   </div>
                   <span className="text-xs font-extrabold text-gray-900 group-hover:text-indigo-600 transition">
-                    {item.count}
+                    {dateFilteredStats.typeCounts?.[opt.value] || 0}
                   </span>
                 </div>
               ))}
@@ -1309,7 +1041,6 @@ export default function ReceptionistDashboard() {
               <div
                 onClick={() => {
                   setLocationFilter('Office');
-                  setStatusFilter('all');
                 }}
                 className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between ${
                   locationFilter === 'Office'
@@ -1330,7 +1061,6 @@ export default function ReceptionistDashboard() {
               <div
                 onClick={() => {
                   setLocationFilter('Construction Site');
-                  setStatusFilter('all');
                 }}
                 className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between ${
                   locationFilter === 'Construction Site'
@@ -1368,7 +1098,7 @@ export default function ReceptionistDashboard() {
             </h2>
             <p className="text-[11px] text-gray-500">
               {viewMode === 'columns'
-                ? 'Multi-column dashboard feeds organized by visitor category.'
+                ? 'Visitor cards grouped by visit purpose.'
                 : 'Detailed tabular visitor register with full column details.'}
             </p>
           </div>
@@ -1395,7 +1125,7 @@ export default function ReceptionistDashboard() {
             )}
           </div>
 
-          {/* Toggle between Columns View and Table View */}
+          {/* Toggle between Cards View and Table View */}
           <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
             <button
               type="button"
@@ -1407,7 +1137,7 @@ export default function ReceptionistDashboard() {
               }`}
             >
               <LayoutGrid size={13} />
-              <span>Columns View</span>
+              <span>Cards View</span>
             </button>
             <button
               type="button"
@@ -1424,154 +1154,72 @@ export default function ReceptionistDashboard() {
           </div>
         </div>
 
-        {/* View Mode 1: Multi-Column Dashboard (Standard CRM Dashboard Design) */}
+        {/* View Mode 1: Cards grouped by visit purpose (tabs) in a responsive grid */}
         {viewMode === 'columns' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-3 items-start">
-            
-            {/* Column 1: Registered Visitor Entries */}
-            <div className="bg-white rounded-xl border border-gray-200/90 shadow-2xs flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between px-3.5 py-3 border-b border-gray-100 bg-indigo-50/30">
-                <div className="flex items-center gap-2">
-                  <UserCheck size={15} className="text-indigo-600" />
-                  <h3 className="text-xs sm:text-sm font-bold text-gray-900">
-                    All Entries
-                  </h3>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200">
-                    {columnData.allList.length}
-                  </span>
-                </div>
-                <span className="text-[10px] font-semibold text-indigo-700 uppercase tracking-wider">
-                  Visitor Log
-                </span>
-              </div>
-
-              <div className="p-2 space-y-2 max-h-[480px] overflow-y-auto">
-                {loading ? (
-                  <div className="py-12 flex flex-col items-center justify-center text-gray-400">
-                    <RefreshCw size={18} className="animate-spin text-indigo-600 mb-1.5" />
-                    <span className="text-xs">Loading...</span>
-                  </div>
-                ) : columnData.allList.length === 0 ? (
-                  <div className="py-12 px-3 text-center text-gray-400">
-                    <UserCheck size={24} className="mx-auto text-gray-300 mb-1" />
-                    <p className="text-xs font-semibold text-gray-600">No visitors recorded</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Click + New Visitor to register entries</p>
-                  </div>
-                ) : (
-                  columnData.allList.map((v) => renderVisitorCardItem(v))
-                )}
-              </div>
+          <div className="bg-white rounded-xl border border-gray-200 shadow-2xs flex flex-col overflow-hidden">
+            {/* Purpose tabs: same state as the purpose KPI tiles and filter.
+                Phones: 2-column grid (no sideways scrolling); wider screens: one wrapping row */}
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-1.5 px-3 py-2.5 border-b border-gray-100">
+              {[
+                { value: 'all', label: 'All Entries', dot: 'bg-indigo-500', count: baseVisitors.length },
+                ...VISIT_PURPOSE_OPTIONS.map((opt) => ({ ...opt, count: purposeTabCounts[opt.value] || 0 }))
+              ].map((tab) => {
+                const isActive = purposeFilter === tab.value;
+                return (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    onClick={() => setPurposeFilter(tab.value)}
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold text-left border transition cursor-pointer ${
+                      isActive
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-700'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-white' : tab.dot}`} />
+                    <span className="flex-1 sm:flex-none leading-tight">{tab.label}</span>
+                    <span className={`shrink-0 px-1.5 rounded-full text-[10px] font-extrabold ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'}`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Column 2: Meetings */}
-            <div className="bg-white rounded-xl border border-gray-200/90 shadow-2xs flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between px-3.5 py-3 border-b border-gray-100 bg-violet-50/30">
-                <div className="flex items-center gap-2">
-                  <Briefcase size={14} className="text-violet-600" />
-                  <h3 className="text-xs sm:text-sm font-bold text-gray-900">
-                    Meetings
-                  </h3>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-violet-100 text-violet-800 border border-violet-200">
-                    {columnData.meetingsList.length}
-                  </span>
+            {loading ? (
+              <div className="py-16 flex flex-col items-center justify-center text-gray-400">
+                <RefreshCw size={18} className="animate-spin text-indigo-600 mb-1.5" />
+                <span className="text-xs">Loading...</span>
+              </div>
+            ) : filteredVisitors.length === 0 ? (
+              <div className="py-16 px-3 text-center text-gray-400">
+                <UserCheck size={26} className="mx-auto text-gray-300 mb-1.5" />
+                <p className="text-xs font-semibold text-gray-600">
+                  {purposeFilter === 'all' ? 'No visitors recorded' : `No ${purposeFilter} visits`}
+                </p>
+                <p className="text-[10px] text-gray-400 mt-0.5">
+                  {baseVisitors.length === 0 ? 'Click + New Visitor to register entries' : 'Try another purpose tab or change the filters'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
+                  {filteredVisitors.slice(0, cardLimit).map((v) => renderVisitorCardItem(v))}
                 </div>
-                <span className="text-[10px] font-semibold text-violet-700 uppercase tracking-wider">
-                  Host Visits
-                </span>
-              </div>
-
-              <div className="p-2 space-y-2 max-h-[480px] overflow-y-auto">
-                {loading ? (
-                  <div className="py-12 flex flex-col items-center justify-center text-gray-400">
-                    <RefreshCw size={18} className="animate-spin text-indigo-600 mb-1.5" />
-                    <span className="text-xs">Loading...</span>
-                  </div>
-                ) : columnData.meetingsList.length === 0 ? (
-                  <div className="py-12 px-3 text-center text-gray-400">
-                    <Briefcase size={24} className="mx-auto text-gray-300 mb-1" />
-                    <p className="text-xs font-semibold text-gray-600">No meeting records</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">No meetings for current filters</p>
-                  </div>
-                ) : (
-                  columnData.meetingsList.map((v) => renderVisitorCardItem(v))
+                {filteredVisitors.length > cardLimit && (
+                  <button
+                    type="button"
+                    onClick={() => setCardLimit((n) => n + CARD_PAGE)}
+                    className="w-full py-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-50/60 transition border-t border-gray-100 cursor-pointer"
+                  >
+                    Show more ({filteredVisitors.length - cardLimit} remaining)
+                  </button>
                 )}
-              </div>
-            </div>
-
-            {/* Column 3: Site Visits */}
-            <div className="bg-white rounded-xl border border-gray-200/90 shadow-2xs flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between px-3.5 py-3 border-b border-gray-100 bg-amber-50/30">
-                <div className="flex items-center gap-2">
-                  <MapPin size={14} className="text-amber-600" />
-                  <h3 className="text-xs sm:text-sm font-bold text-gray-900">
-                    Site Visits
-                  </h3>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200">
-                    {columnData.siteVisitsList.length}
-                  </span>
-                </div>
-                <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider">
-                  Construction Sites
-                </span>
-              </div>
-
-              <div className="p-2 space-y-2 max-h-[480px] overflow-y-auto">
-                {loading ? (
-                  <div className="py-12 flex flex-col items-center justify-center text-gray-400">
-                    <RefreshCw size={18} className="animate-spin text-indigo-600 mb-1.5" />
-                    <span className="text-xs">Loading...</span>
-                  </div>
-                ) : columnData.siteVisitsList.length === 0 ? (
-                  <div className="py-12 px-3 text-center text-gray-400">
-                    <MapPin size={24} className="mx-auto text-gray-300 mb-1" />
-                    <p className="text-xs font-semibold text-gray-600">No site visits</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">No site visits for current filters</p>
-                  </div>
-                ) : (
-                  columnData.siteVisitsList.map((v) => renderVisitorCardItem(v))
-                )}
-              </div>
-            </div>
-
-            {/* Column 4: General & Supply */}
-            <div className="bg-white rounded-xl border border-gray-200/90 shadow-2xs flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between px-3.5 py-3 border-b border-gray-100 bg-slate-100/60">
-                <div className="flex items-center gap-2">
-                  <Users size={14} className="text-slate-600" />
-                  <h3 className="text-xs sm:text-sm font-bold text-gray-900">
-                    General & Supply
-                  </h3>
-                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-200 text-slate-800 border border-slate-300">
-                    {columnData.otherList.length}
-                  </span>
-                </div>
-                <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">
-                  Other Visits
-                </span>
-              </div>
-
-              <div className="p-2 space-y-2 max-h-[480px] overflow-y-auto">
-                {loading ? (
-                  <div className="py-12 flex flex-col items-center justify-center text-gray-400">
-                    <RefreshCw size={18} className="animate-spin text-indigo-600 mb-1.5" />
-                    <span className="text-xs">Loading...</span>
-                  </div>
-                ) : columnData.otherList.length === 0 ? (
-                  <div className="py-12 px-3 text-center text-gray-400">
-                    <Users size={24} className="mx-auto text-gray-300 mb-1" />
-                    <p className="text-xs font-semibold text-gray-600">No other inquiries</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Supply, broking, or general entries</p>
-                  </div>
-                ) : (
-                  columnData.otherList.map((v) => renderVisitorCardItem(v))
-                )}
-              </div>
-            </div>
-
+              </>
+            )}
           </div>
         )}
 
-        {/* View Mode 2: Full Tabular Register */}
         {viewMode === 'table' && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-2xs flex flex-col overflow-hidden">
             <div className="w-full overflow-x-auto min-h-[300px]">
@@ -1710,7 +1358,7 @@ export default function ReceptionistDashboard() {
 
                           {/* 5. Visit Purpose */}
                           <td className="px-3 py-2 text-center whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${PURPOSE_STYLES[item.visitPurpose] || PURPOSE_STYLES.Other}`}>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${PURPOSE_STYLES[getPurposeKey(item.visitPurpose)] || PURPOSE_STYLES.Other}`}>
                               {item.visitPurpose || '—'}
                             </span>
                           </td>
@@ -1749,9 +1397,9 @@ export default function ReceptionistDashboard() {
                           </td>
 
                           {/* 9. Actual Person Met */}
-                          <td className="px-3 py-2 text-left whitespace-nowrap max-w-[170px] truncate" title={item.personActuallyMetName || item.personToMeetName || '—'}>
+                          <td className="px-3 py-2 text-left whitespace-nowrap max-w-[170px] truncate" title={item.personToMeetName || '—'}>
                             <span className="text-gray-700 truncate block">
-                              {item.personActuallyMetName || (item.status === 'CHECKED_OUT' ? (item.personToMeetName || '—') : '—')}
+                              {item.personToMeetName || '—'}
                             </span>
                           </td>
 

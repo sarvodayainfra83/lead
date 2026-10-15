@@ -5,20 +5,14 @@ import {
   ShieldCheck, LogOut, MessageSquare, CheckCircle, AlertCircle
 } from 'lucide-react';
 import {
-  VISITOR_STATUS_MAP,
   PURPOSE_STYLES,
+  getPurposeKey,
   formatVisitorDate,
   formatVisitorTime
 } from './receptionConstants';
 
 export default function VisitorDetailsModal({ isOpen, onClose, visitor }) {
   if (!isOpen || !visitor) return null;
-
-  const statusConfig = VISITOR_STATUS_MAP[visitor.status] || {
-    label: visitor.status || 'Unknown',
-    color: 'bg-gray-100 text-gray-700 border-gray-300',
-    dotColor: 'bg-gray-400'
-  };
 
   const cleanPhone = String(visitor.mobileNumber || '').replace(/[^0-9]/g, '');
 
@@ -96,7 +90,7 @@ export default function VisitorDetailsModal({ isOpen, onClose, visitor }) {
           <div className="grid grid-cols-2 gap-3 p-3.5 bg-gray-50/70 border border-gray-200 rounded-xl">
             <div>
               <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">Visit Purpose</span>
-              <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-semibold border ${PURPOSE_STYLES[visitor.visitPurpose] || PURPOSE_STYLES.Other}`}>
+              <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-semibold border ${PURPOSE_STYLES[getPurposeKey(visitor.visitPurpose)] || PURPOSE_STYLES.Other}`}>
                 {visitor.visitPurpose}
               </span>
             </div>
@@ -125,21 +119,11 @@ export default function VisitorDetailsModal({ isOpen, onClose, visitor }) {
             </h4>
 
             <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-gray-500 text-[11px] block">Person Intended to Meet:</span>
+              <div className="col-span-2">
+                <span className="text-gray-500 text-[11px] block">Person to Meet:</span>
                 <span className="font-bold text-gray-900 mt-0.5 block">{visitor.personToMeetName || '-'}</span>
                 {visitor.department && (
                   <span className="text-[10px] text-gray-500 block">Dept: {visitor.department}</span>
-                )}
-              </div>
-
-              <div>
-                <span className="text-gray-500 text-[11px] block">Person Actually Met:</span>
-                <span className={`font-bold mt-0.5 block ${visitor.personActuallyMetName && visitor.personActuallyMetName !== visitor.personToMeetName ? 'text-purple-700' : 'text-gray-900'}`}>
-                  {visitor.personActuallyMetName || visitor.personToMeetName || '-'}
-                </span>
-                {visitor.personActuallyMetName && visitor.personActuallyMetName !== visitor.personToMeetName && (
-                  <span className="text-[10px] font-semibold text-purple-600 block">(Alternate Host)</span>
                 )}
               </div>
             </div>
@@ -159,7 +143,7 @@ export default function VisitorDetailsModal({ isOpen, onClose, visitor }) {
               </div>
 
               <div className="p-2.5 bg-white rounded-lg border border-gray-200">
-                <span className="text-[10px] text-gray-400 uppercase font-semibold block">Arrival Time</span>
+                <span className="text-[10px] text-gray-400 uppercase font-semibold block">Visit Time</span>
                 <span className="font-bold text-gray-800 mt-0.5 block">{formatVisitorTime(visitor.checkInAt)}</span>
               </div>
             </div>

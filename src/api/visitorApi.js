@@ -5,6 +5,13 @@ import {
   saveVisitorLogs as saveLocalVisitorLogs,
   deleteVisitorLog as deleteLocalVisitorLog
 } from '../utils/storageManager';
+import {
+  VISIT_PURPOSE_OPTIONS,
+  VISITOR_TYPE_OPTIONS,
+  getPurposeKey,
+  getVisitorTypeKey,
+  emptyCounts
+} from '../pages/Reception/receptionConstants';
 
 // Normalize DB row (snake_case) to Frontend Object (camelCase)
 const mapDbToVisitor = (row) => {
@@ -15,23 +22,17 @@ const mapDbToVisitor = (row) => {
     mobileNumber: row.mobile_number || row.mobileNumber || '',
     companyName: row.company_name || row.companyName || '',
     visitorType: row.visitor_type || row.visitorType || 'Guest',
-    visitPurpose: row.visit_purpose || row.visitPurpose || 'Meeting',
+    visitPurpose: row.visit_purpose || row.visitPurpose || 'Other',
     visitLocation: row.visit_location || row.visitLocation || 'Office',
     projectName: row.project_name || row.projectName || '',
     projectId: row.project_id || row.projectId || null,
     personToMeetId: row.person_to_meet_id || row.personToMeetId || null,
     personToMeetName: row.person_to_meet_name || row.personToMeetName || '',
     department: row.department || '',
-    personActuallyMetId: row.person_actually_met_id || row.personActuallyMetId || null,
-    personActuallyMetName: row.person_actually_met_name || row.personActuallyMetName || '',
     remarks: row.remarks || '',
     checkInAt: row.check_in_at || row.checkInAt || row.created_at || new Date().toISOString(),
-    checkOutAt: row.check_out_at || row.checkOutAt || null,
     checkedInBy: row.checked_in_by || row.checkedInBy || '',
     checkedInById: row.checked_in_by_id || row.checkedInById || null,
-    checkedOutBy: row.checked_out_by || row.checkedOutBy || '',
-    checkedOutById: row.checked_out_by_id || row.checkedOutById || null,
-    status: row.status || 'CHECKED_IN',
     createdAt: row.created_at || row.createdAt || new Date().toISOString(),
     updatedAt: row.updated_at || row.updatedAt || new Date().toISOString()
   };
@@ -44,23 +45,17 @@ const mapVisitorToDb = (item) => {
     mobile_number: item.mobileNumber?.trim(),
     company_name: item.companyName?.trim() || null,
     visitor_type: item.visitorType || 'Guest',
-    visit_purpose: item.visitPurpose || 'Meeting',
+    visit_purpose: item.visitPurpose || 'Other',
     visit_location: item.visitLocation || 'Office',
     project_name: item.projectName?.trim() || null,
     project_id: item.projectId || null,
     person_to_meet_id: item.personToMeetId || null,
     person_to_meet_name: item.personToMeetName?.trim() || '',
     department: item.department?.trim() || null,
-    person_actually_met_id: item.personActuallyMetId || null,
-    person_actually_met_name: item.personActuallyMetName?.trim() || null,
     remarks: item.remarks?.trim() || null,
     check_in_at: item.checkInAt || new Date().toISOString(),
-    check_out_at: item.checkOutAt || null,
     checked_in_by: item.checkedInBy?.trim() || null,
     checked_in_by_id: item.checkedInById || null,
-    checked_out_by: item.checkedOutBy?.trim() || null,
-    checked_out_by_id: item.checkedOutById || null,
-    status: item.status || 'CHECKED_IN',
     updated_at: new Date().toISOString()
   };
 };
@@ -109,33 +104,26 @@ export const visitorApi = {
   },
 
   /**
-   * Register a new visitor with status 'CHECKED_IN' (or 'CHECKED_OUT' if already departed).
+   * Register a new visitor entry (who came, when, and for what purpose).
    */
   async registerVisitor(formData, currentUser) {
     const nowIso = new Date().toISOString();
-    const isCheckedOut = formData.status === 'CHECKED_OUT' || Boolean(formData.checkOutAt);
     const newVisitorObj = {
       visitorName: formData.visitorName?.trim(),
       mobileNumber: formData.mobileNumber?.trim(),
       companyName: formData.companyName?.trim() || '',
       visitorType: formData.visitorType || 'Guest',
-      visitPurpose: formData.visitPurpose || 'Meeting',
+      visitPurpose: formData.visitPurpose || 'Other',
       visitLocation: formData.visitLocation || 'Office',
       projectName: formData.projectName?.trim() || '',
       projectId: formData.projectId || null,
       personToMeetId: formData.personToMeetId || null,
       personToMeetName: formData.personToMeetName?.trim() || '',
       department: formData.department?.trim() || '',
-      personActuallyMetId: formData.personActuallyMetId || null,
-      personActuallyMetName: formData.personActuallyMetName?.trim() || (isCheckedOut ? (formData.personToMeetName?.trim() || '') : ''),
       remarks: formData.remarks?.trim() || '',
       checkInAt: formData.checkInAt || nowIso,
-      checkOutAt: formData.checkOutAt || null,
       checkedInBy: currentUser?.name || currentUser?.username || 'Receptionist',
       checkedInById: currentUser?.dbId || null,
-      checkedOutBy: isCheckedOut ? (formData.checkedOutBy || currentUser?.name || currentUser?.username || 'Receptionist') : null,
-      checkedOutById: isCheckedOut ? (formData.checkedOutById || currentUser?.dbId || null) : null,
-      status: isCheckedOut ? 'CHECKED_OUT' : (formData.status || 'CHECKED_IN'),
       createdAt: nowIso,
       updatedAt: nowIso
     };
@@ -171,71 +159,6 @@ export const visitorApi = {
   },
 
   /**
-   * Check out an active visitor.
-   */
-  async checkOutVisitor(id, checkoutData = {}, currentUser) {
-    const nowIso = new Date().toISOString();
-    const checkoutUpdates = {
-      checkOutAt: nowIso,
-      checkedOutBy: currentUser?.name || currentUser?.username || 'Receptionist',
-      checkedOutById: currentUser?.dbId || null,
-      status: 'CHECKED_OUT',
-      updatedAt: nowIso
-    };
-
-    if (checkoutData.personActuallyMetName) {
-      checkoutUpdates.personActuallyMetName = checkoutData.personActuallyMetName.trim();
-      checkoutUpdates.personActuallyMetId = checkoutData.personActuallyMetId || null;
-    }
-
-    if (checkoutData.checkoutRemarks) {
-      const extraRemarks = checkoutData.checkoutRemarks.trim();
-      checkoutUpdates.remarks = checkoutData.existingRemarks
-        ? `${checkoutData.existingRemarks} | Checkout: ${extraRemarks}`
-        : `Checkout: ${extraRemarks}`;
-    }
-
-    // Update in local cache
-    saveLocalVisitorLog({ id, ...checkoutUpdates });
-
-    if (isSupabaseConfigured) {
-      try {
-        const dbPayload = {
-          check_out_at: checkoutUpdates.checkOutAt,
-          checked_out_by: checkoutUpdates.checkedOutBy,
-          checked_out_by_id: checkoutUpdates.checkedOutById,
-          status: 'CHECKED_OUT',
-          updated_at: nowIso
-        };
-
-        if (checkoutUpdates.personActuallyMetName) {
-          dbPayload.person_actually_met_name = checkoutUpdates.personActuallyMetName;
-          dbPayload.person_actually_met_id = checkoutUpdates.personActuallyMetId;
-        }
-
-        if (checkoutUpdates.remarks) {
-          dbPayload.remarks = checkoutUpdates.remarks;
-        }
-
-        const { data, error } = await supabase
-          .from('visitor_logs')
-          .update(dbPayload)
-          .eq('id', id)
-          .select()
-          .maybeSingle();
-
-        if (!error && data) {
-          return mapDbToVisitor(data);
-        }
-      } catch (err) {
-        console.warn('[Visitor API] Supabase checkout update failed, local fallback used:', err);
-      }
-    }
-
-    return { id, ...checkoutUpdates };
-  },
-
-  /**
    * Update visitor details (e.g. edit remarks, purpose, person to meet).
    */
   async updateVisitor(id, updateData) {
@@ -266,66 +189,23 @@ export const visitorApi = {
   },
 
   /**
-   * Cancel a visitor registration.
-   */
-  async cancelVisitor(id, reason = '', currentUser) {
-    const cancelUpdates = {
-      status: 'CANCELLED',
-      remarks: reason ? `[Cancelled]: ${reason}` : '[Cancelled]',
-      updatedAt: new Date().toISOString()
-    };
-
-    saveLocalVisitorLog({ id, ...cancelUpdates });
-
-    if (isSupabaseConfigured) {
-      try {
-        await supabase
-          .from('visitor_logs')
-          .update({
-            status: 'CANCELLED',
-            remarks: cancelUpdates.remarks,
-            updated_at: cancelUpdates.updatedAt
-          })
-          .eq('id', id);
-      } catch (err) {
-        console.warn('[Visitor API] Supabase cancel failed:', err);
-      }
-    }
-
-    return { id, ...cancelUpdates };
-  },
-
-  /**
    * Compute reception dashboard statistics from visitor records.
    */
   calculateStats(visitors = []) {
     let totalToday = 0;
-    let currentlyInside = 0;
-    let meetingsToday = 0;
-    let siteVisitsToday = 0;
-    let awaitingCheckout = 0;
-    let checkedOutToday = 0;
+    let meetingsToday = 0; // 'Meeting to Director'
+    let propertyEnquiriesToday = 0;
 
-    const todayPurposeCounts = {
-      Meeting: 0,
-      'Site Visit': 0,
-      'Supply Item': 0,
-      Broking: 0,
-      Other: 0
-    };
+    const todayPurposeCounts = emptyCounts(VISIT_PURPOSE_OPTIONS);
+    const todayTypeCounts = emptyCounts(VISITOR_TYPE_OPTIONS);
 
     const todayLocationCounts = {
       Office: 0,
       'Construction Site': 0
     };
 
-    const purposeCounts = {
-      Meeting: 0,
-      'Site Visit': 0,
-      'Supply Item': 0,
-      Broking: 0,
-      Other: 0
-    };
+    const purposeCounts = emptyCounts(VISIT_PURPOSE_OPTIONS);
+    const typeCounts = emptyCounts(VISITOR_TYPE_OPTIONS);
 
     const locationCounts = {
       Office: 0,
@@ -335,62 +215,45 @@ export const visitorApi = {
     const employeeVisits = {};
 
     visitors.forEach(v => {
-      if (v.status === 'CANCELLED') return;
       const isToday = isDateToday(v.checkInAt);
-      const isInside = v.status === 'CHECKED_IN';
-      const isCheckedOut = v.status === 'CHECKED_OUT';
 
       if (isToday) {
         totalToday++;
-        if (v.visitPurpose === 'Meeting') meetingsToday++;
-        if (v.visitPurpose === 'Site Visit') siteVisitsToday++;
-        if (isCheckedOut) checkedOutToday++;
+        const purpose = getPurposeKey(v.visitPurpose);
+        if (purpose === 'Meeting to Director') meetingsToday++;
+        if (purpose === 'Property Enquiry') propertyEnquiriesToday++;
 
-        // Purpose breakdown for today
-        const p = v.visitPurpose || 'Other';
-        if (todayPurposeCounts[p] !== undefined) {
-          todayPurposeCounts[p]++;
-        } else {
-          todayPurposeCounts.Other++;
-        }
+        // Purpose & visitor category breakdown for today
+        todayPurposeCounts[purpose]++;
+        todayTypeCounts[getVisitorTypeKey(v.visitorType)]++;
 
         // Location breakdown for today
         const loc = v.visitLocation === 'Construction Site' ? 'Construction Site' : 'Office';
         todayLocationCounts[loc] = (todayLocationCounts[loc] || 0) + 1;
       }
 
-      if (isInside) {
-        currentlyInside++;
-        awaitingCheckout++;
-      }
-
-      // Purpose breakdown (all time)
-      const p = v.visitPurpose || 'Other';
-      if (purposeCounts[p] !== undefined) {
-        purposeCounts[p]++;
-      } else {
-        purposeCounts.Other++;
-      }
+      // Purpose & visitor category breakdown (all time)
+      purposeCounts[getPurposeKey(v.visitPurpose)]++;
+      typeCounts[getVisitorTypeKey(v.visitorType)]++;
 
       // Location breakdown (all time)
       const loc = v.visitLocation === 'Construction Site' ? 'Construction Site' : 'Office';
       locationCounts[loc] = (locationCounts[loc] || 0) + 1;
 
       // Employee breakdown
-      const emp = v.personActuallyMetName || v.personToMeetName || 'Unassigned';
+      const emp = v.personToMeetName || 'Unassigned';
       employeeVisits[emp] = (employeeVisits[emp] || 0) + 1;
     });
 
     return {
       totalToday,
-      currentlyInside,
       meetingsToday,
-      siteVisitsToday,
-      awaitingCheckout,
-      checkedOutToday,
+      propertyEnquiriesToday,
       todayPurposeCounts,
+      todayTypeCounts,
       todayLocationCounts,
       purposeCounts,
+      typeCounts,
       locationCounts,
       employeeVisits
     };

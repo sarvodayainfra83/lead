@@ -25,7 +25,7 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
     mobileNumber: '',
     companyName: '',
     visitorType: 'Client',
-    visitPurpose: 'Meeting',
+    visitPurpose: '',
     customPurpose: '',
     visitLocation: 'Office',
     projectName: '',
@@ -49,14 +49,14 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
       setProjectsList(projects || []);
     });
 
-    let vPurpose = visitor.visitPurpose || 'Meeting';
+    let vPurpose = visitor.visitPurpose || '';
     let customPurp = '';
     let supplyItem = '';
 
-    if (vPurpose.startsWith('Supply Item')) {
-      const match = vPurpose.match(/^Supply Item\s*\(([^)]+)\)/i);
+    if (vPurpose.startsWith('Material Enquiry')) {
+      const match = vPurpose.match(/^Material Enquiry\s*\(([^)]+)\)/i);
       supplyItem = match ? match[1].trim() : (visitor.supplyItemName || '');
-      vPurpose = 'Supply Item';
+      vPurpose = 'Material Enquiry';
     } else if (VISIT_PURPOSE_OPTIONS.some(p => p.value === vPurpose)) {
       // standard purpose
     } else {
@@ -260,12 +260,17 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
       return;
     }
 
+    if (!formData.visitPurpose) {
+      toast.error('Please select a visit purpose');
+      return;
+    }
+
     let finalPurpose = formData.visitPurpose;
     if (formData.visitPurpose === 'Other') {
       finalPurpose = formData.customPurpose.trim() || 'Other';
-    } else if (formData.visitPurpose === 'Supply Item') {
+    } else if (formData.visitPurpose === 'Material Enquiry') {
       const cleanItem = formData.supplyItemName?.trim();
-      finalPurpose = cleanItem ? `Supply Item (${cleanItem.replace(/^\(+|\)+$/g, '')})` : 'Supply Item';
+      finalPurpose = cleanItem ? `Material Enquiry (${cleanItem.replace(/^\(+|\)+$/g, '')})` : 'Material Enquiry';
     }
 
     if (!formData.personToMeetName.trim()) {
@@ -349,10 +354,10 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
           />
         </div>
 
-        {/* Check-In Time */}
+        {/* Visit Time */}
         <div>
           <label className="block text-[11px] font-semibold text-gray-700 mb-1">
-            Check-In Time
+            Visit Time
           </label>
           <input
             type="time"
@@ -430,7 +435,7 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
               className="w-full mt-1.5 border border-gray-300 rounded-lg px-2.5 py-1 text-xs"
             />
           )}
-          {formData.visitPurpose === 'Supply Item' && (
+          {formData.visitPurpose === 'Material Enquiry' && (
             <div className="mt-1.5 animate-in fade-in duration-150">
               <label className="block text-[10px] font-semibold text-indigo-900 mb-0.5">
                 Exact Item / Material Name <span className="text-gray-400 font-normal">(Optional)</span>
@@ -475,7 +480,7 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
           </div>
         </div>
 
-        {(formData.visitLocation === 'Construction Site' || formData.visitPurpose === 'Site Visit') && (
+        {(formData.visitLocation === 'Construction Site' || formData.visitPurpose === 'Property Enquiry') && (
           <div className="sm:col-span-2 bg-amber-50/50 p-2.5 rounded-xl border border-amber-200">
             <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
               <label className="block text-[11px] font-semibold text-amber-900">

@@ -56,16 +56,16 @@ export default function ReceptionReportsModal({ isOpen, onClose, stats, visitors
               <span className="text-xl font-extrabold text-indigo-950 mt-0.5 block">{stats?.totalToday || 0}</span>
             </div>
             <div className="p-3 bg-emerald-50/70 border border-emerald-100 rounded-xl">
-              <span className="text-[10px] uppercase font-bold text-emerald-700 block">Currently Inside</span>
-              <span className="text-xl font-extrabold text-emerald-950 mt-0.5 block">{stats?.currentlyInside || 0}</span>
+              <span className="text-[10px] uppercase font-bold text-emerald-700 block">Material Enquiries Today</span>
+              <span className="text-xl font-extrabold text-emerald-950 mt-0.5 block">{stats?.todayPurposeCounts?.['Material Enquiry'] || 0}</span>
             </div>
             <div className="p-3 bg-violet-50/70 border border-violet-100 rounded-xl">
-              <span className="text-[10px] uppercase font-bold text-violet-700 block">Meetings Today</span>
+              <span className="text-[10px] uppercase font-bold text-violet-700 block">Director Meetings Today</span>
               <span className="text-xl font-extrabold text-violet-950 mt-0.5 block">{stats?.meetingsToday || 0}</span>
             </div>
             <div className="p-3 bg-amber-50/70 border border-amber-100 rounded-xl">
-              <span className="text-[10px] uppercase font-bold text-amber-700 block">Site Visits Today</span>
-              <span className="text-xl font-extrabold text-amber-950 mt-0.5 block">{stats?.siteVisitsToday || 0}</span>
+              <span className="text-[10px] uppercase font-bold text-amber-700 block">Property Enquiries Today</span>
+              <span className="text-xl font-extrabold text-amber-950 mt-0.5 block">{stats?.propertyEnquiriesToday || 0}</span>
             </div>
           </div>
 

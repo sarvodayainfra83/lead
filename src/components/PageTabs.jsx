@@ -9,13 +9,14 @@ import React from 'react';
  *   activeKey – key of the selected tab
  *   onChange  – fn(key)
  *   fill      – stretch tabs to share the row equally on mobile (for 2–3 short tabs)
+ *   wrap      – wrap tabs onto more lines instead of scrolling sideways
  *   className – extra classes for the wrapper
  */
 export const TAB_HEIGHT = 'h-[34px]';
 
-export default function PageTabs({ tabs = [], activeKey, onChange, fill = false, className = '' }) {
+export default function PageTabs({ tabs = [], activeKey, onChange, fill = false, wrap = false, className = '' }) {
   return (
-    <div className={`flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap pb-0.5 min-w-0 ${className}`}>
+    <div className={`flex items-center gap-1.5 ${wrap ? 'flex-wrap' : 'overflow-x-auto scrollbar-hide flex-nowrap'} pb-0.5 min-w-0 ${className}`}>
       {tabs.map(({ key, label, icon: Icon, count }) => {
         const isActive = activeKey === key;
         return (

@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
   UserPlus, Search, RefreshCw, X, RotateCcw, FileSpreadsheet, Eye, LogOut,
-  Pencil, Phone, Calendar, Clock, MapPin, Building2, Briefcase, User,
+  Pencil, Phone, Calendar, Clock, MapPin, User,
   CheckCircle2, AlertCircle, BarChart3, ChevronDown, ChevronUp, UserCheck
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
@@ -12,18 +12,20 @@ import NewVisitorModal from './NewVisitorModal';
 import VisitorDetailsModal from './VisitorDetailsModal';
 import EditVisitorModal from './EditVisitorModal';
 import ReceptionReportsModal from './ReceptionReportsModal';
+import VisitBreakdownChips from './VisitBreakdownChips';
 import { visitorApi } from '../../api/visitorApi';
 import { useAuthStore } from '../../store/authStore';
 import { hasFullAccess, isUserAdmin } from '../../utils/authUtils';
 import {
   VISIT_PURPOSE_OPTIONS,
   VISIT_LOCATION_OPTIONS,
-  VISITOR_STATUS_MAP,
   PURPOSE_STYLES,
+  getPurposeKey,
+  VISITOR_TYPE_OPTIONS,
+  getVisitorTypeKey,
   DATE_FILTER_OPTIONS,
   formatVisitorDate,
-  formatVisitorTime,
-  getVisitDuration
+  formatVisitorTime
 } from './receptionConstants';
 
 export default function Reception() {
@@ -41,9 +43,9 @@ export default function Reception() {
   const [dateFilter, setDateFilter] = useState(initFilters.dateFilter || 'today');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [statusFilter, setStatusFilter] = useState(initFilters.statusFilter || 'all');
   const [purposeFilter, setPurposeFilter] = useState(initFilters.purposeFilter || 'all');
   const [locationFilter, setLocationFilter] = useState(initFilters.locationFilter || 'all');
+  const [categoryFilter, setCategoryFilter] = useState(initFilters.categoryFilter || 'all');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -89,9 +91,9 @@ export default function Reception() {
   useEffect(() => {
     if (location.state) {
       if (location.state.dateFilter !== undefined) setDateFilter(location.state.dateFilter);
-      if (location.state.statusFilter !== undefined) setStatusFilter(location.state.statusFilter);
       if (location.state.purposeFilter !== undefined) setPurposeFilter(location.state.purposeFilter);
       if (location.state.locationFilter !== undefined) setLocationFilter(location.state.locationFilter);
+      if (location.state.categoryFilter !== undefined) setCategoryFilter(location.state.categoryFilter);
       if (location.state.searchQuery !== undefined) setSearchQuery(location.state.searchQuery);
       if (location.state.openNewModal) setIsNewModalOpen(true);
       if (location.state.openReports) setIsReportsOpen(true);
@@ -116,20 +118,19 @@ export default function Reception() {
         (v.mobileNumber && v.mobileNumber.includes(q)) ||
         (v.companyName && v.companyName.toLowerCase().includes(q)) ||
         (v.personToMeetName && v.personToMeetName.toLowerCase().includes(q)) ||
-        (v.personActuallyMetName && v.personActuallyMetName.toLowerCase().includes(q)) ||
         (v.projectName && v.projectName.toLowerCase().includes(q)) ||
         (v.remarks && v.remarks.toLowerCase().includes(q))
       ));
     }
 
-    // Status filter
-    if (statusFilter !== 'all') {
-      list = list.filter(v => v.status === statusFilter);
-    }
-
     // Purpose filter
     if (purposeFilter !== 'all') {
-      list = list.filter(v => v.visitPurpose === purposeFilter || v.visitPurpose?.startsWith(purposeFilter + ' ('));
+      list = list.filter(v => getPurposeKey(v.visitPurpose) === purposeFilter);
+    }
+
+    // Visitor category filter
+    if (categoryFilter !== 'all') {
+      list = list.filter(v => getVisitorTypeKey(v.visitorType) === categoryFilter);
     }
 
     // Location filter
@@ -183,11 +184,12 @@ export default function Reception() {
     }
 
     return list;
-  }, [visitors, searchQuery, statusFilter, purposeFilter, locationFilter, dateFilter, customFrom, customTo]);
+  }, [visitors, searchQuery, purposeFilter, categoryFilter, locationFilter, dateFilter, customFrom, customTo]);
 
   // Count active filters
-  const activeFiltersCount = (statusFilter !== 'all' ? 1 : 0) +
+  const activeFiltersCount =
     (purposeFilter !== 'all' ? 1 : 0) +
+    (categoryFilter !== 'all' ? 1 : 0) +
     (locationFilter !== 'all' ? 1 : 0) +
     (dateFilter !== 'today' ? 1 : 0) +
     (searchQuery ? 1 : 0);
@@ -197,42 +199,20 @@ export default function Reception() {
     setDateFilter('today');
     setCustomFrom('');
     setCustomTo('');
-    setStatusFilter('all');
     setPurposeFilter('all');
+    setCategoryFilter('all');
     setLocationFilter('all');
     setCurrentPage(1);
     toast.success('Filters reset to Today');
   }, []);
 
-  // Quick filter from KPI cards
-  const applyKpiFilter = (type) => {
+  // Quick filter from KPI cards: today's visitors, optionally of one purpose ('all' = every purpose)
+  const applyKpiFilter = (purpose) => {
     setCurrentPage(1);
-    if (type === 'today') {
-      setDateFilter('today');
-      setLocationFilter('all');
-      setPurposeFilter('all');
-      setStatusFilter('all');
-    } else if (type === 'office') {
-      setDateFilter('today');
-      setLocationFilter('Office');
-      setPurposeFilter('all');
-      setStatusFilter('all');
-    } else if (type === 'siteVisits') {
-      setDateFilter('today');
-      setLocationFilter('Construction Site');
-      setPurposeFilter('all');
-      setStatusFilter('all');
-    } else if (type === 'meetings') {
-      setDateFilter('today');
-      setPurposeFilter('Meeting');
-      setLocationFilter('all');
-      setStatusFilter('all');
-    } else if (type === 'all') {
-      setDateFilter('all');
-      setLocationFilter('all');
-      setPurposeFilter('all');
-      setStatusFilter('all');
-    }
+    setDateFilter('today');
+    setPurposeFilter(purpose);
+    setCategoryFilter('all');
+    setLocationFilter('all');
   };
 
   // Export to Excel / CSV
@@ -253,10 +233,8 @@ export default function Reception() {
       'Project / Site': item.projectName || '-',
       'Person to Meet': item.personToMeetName || '-',
       'Department': item.department || '-',
-      'Person Actually Met': item.personActuallyMetName || item.personToMeetName || '-',
       'Visit Date': formatVisitorDate(item.checkInAt),
       'Arrival Time': formatVisitorTime(item.checkInAt),
-      'Status': item.status === 'CANCELLED' ? 'Cancelled' : 'Registered',
       'Checked-In By': item.checkedInBy || '-',
       'Remarks': item.remarks || '-'
     }));
@@ -376,7 +354,7 @@ export default function Reception() {
 
         {/* 3. Visit Purpose */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${PURPOSE_STYLES[item.visitPurpose] || PURPOSE_STYLES.Other}`}>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${PURPOSE_STYLES[getPurposeKey(item.visitPurpose)] || PURPOSE_STYLES.Other}`}>
             {item.visitPurpose}
           </span>
         </td>
@@ -402,11 +380,6 @@ export default function Reception() {
             <span className="font-semibold text-gray-900 truncate">
               {item.personToMeetName || '-'}
             </span>
-            {item.personActuallyMetName && item.personActuallyMetName !== item.personToMeetName && (
-              <span className="text-[9.5px] text-purple-700 font-bold" title={`Actually met: ${item.personActuallyMetName}`}>
-                Met: {item.personActuallyMetName}
-              </span>
-            )}
           </div>
         </td>
 
@@ -428,9 +401,6 @@ export default function Reception() {
   // Render Mobile Card View
   const renderCard = (item, idx) => {
     const isExpanded = expandedCardIds.has(item.id || idx);
-    const duration = getVisitDuration(item.checkInAt, item.checkOutAt);
-    const isInside = item.status === 'CHECKED_IN' || (!item.checkOutAt && item.status !== 'CANCELLED');
-    const statusCfg = VISITOR_STATUS_MAP[item.status] || (isInside ? VISITOR_STATUS_MAP.CHECKED_IN : VISITOR_STATUS_MAP.CHECKED_OUT);
 
     return (
       <div
@@ -439,7 +409,7 @@ export default function Reception() {
           isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200 bg-indigo-50/10' : 'border-gray-200 hover:border-gray-300'
         }`}
       >
-        {/* Card Header: Visitor Name, Company & Status Badge */}
+        {/* Card Header: Visitor Name, Company & Visit Date */}
         <div className="flex items-start justify-between gap-2 border-b border-gray-100 pb-2">
           <div className="min-w-0 flex-1">
             <h4
@@ -454,17 +424,13 @@ export default function Reception() {
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusCfg.color}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dotColor} ${isInside ? 'animate-pulse' : ''}`} />
-              {statusCfg.label}
-            </span>
             <span className="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
               {formatVisitorDate(item.checkInAt)}
             </span>
           </div>
         </div>
 
-        {/* Primary Info Grid: Contact, Host, Purpose, Duration */}
+        {/* Primary Info Grid: Contact, Host, Purpose, Visit Time */}
         <div className="grid grid-cols-2 gap-2.5 text-xs">
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Contact</span>
@@ -494,23 +460,16 @@ export default function Reception() {
 
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Purpose</span>
-            <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${PURPOSE_STYLES[item.visitPurpose] || PURPOSE_STYLES.Other}`}>
+            <span className={`inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold border ${PURPOSE_STYLES[getPurposeKey(item.visitPurpose)] || PURPOSE_STYLES.Other}`}>
               {item.visitPurpose || 'Other'}
             </span>
           </div>
 
           <div>
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">
-              {isInside ? 'Duration (Live)' : 'Duration'}
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Visit Time</span>
+            <span className="font-bold text-gray-800 mt-0.5 block">
+              {formatVisitorTime(item.checkInAt)}
             </span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="font-bold text-gray-800">
-                {duration}
-              </span>
-              <span className="text-[10px] text-gray-400">
-                ({formatVisitorTime(item.checkInAt)})
-              </span>
-            </div>
           </div>
         </div>
 
@@ -531,18 +490,6 @@ export default function Reception() {
         {/* Expanded Details */}
         {isExpanded && (
           <div className="pt-2 border-t border-gray-100 text-xs space-y-1.5 animate-in fade-in duration-150">
-            {item.personActuallyMetName && item.personActuallyMetName !== item.personToMeetName && (
-              <div>
-                <span className="text-gray-400">Actually Met:</span>{' '}
-                <span className="font-bold text-purple-700">{item.personActuallyMetName}</span>
-              </div>
-            )}
-            {item.checkOutAt && (
-              <div>
-                <span className="text-gray-400">Exit Time:</span>{' '}
-                <span className="font-semibold text-gray-700">{formatVisitorTime(item.checkOutAt)}</span>
-              </div>
-            )}
             {item.remarks && (
               <div>
                 <span className="text-gray-400">Remarks:</span>{' '}
@@ -669,130 +616,70 @@ export default function Reception() {
 
       {/* Compact Quick-Pill Bar (shown when KPI cards are collapsed on mobile) */}
       {!showKpiCards && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:hidden scrollbar-hide text-xs animate-in fade-in duration-150">
-          <button
-            type="button"
-            onClick={() => applyKpiFilter('today')}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0 font-bold active:scale-95"
-          >
-            <span>Today:</span>
-            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-indigo-900 font-extrabold">{stats.totalToday}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyKpiFilter('office')}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 shrink-0 font-bold active:scale-95"
-          >
-            <span>Office:</span>
-            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-blue-900 font-extrabold">{stats.todayLocationCounts?.Office || 0}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyKpiFilter('siteVisits')}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 shrink-0 font-bold active:scale-95"
-          >
-            <span>Sites:</span>
-            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-amber-900 font-extrabold">{stats.todayLocationCounts?.['Construction Site'] || 0}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyKpiFilter('meetings')}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-200 shrink-0 font-bold active:scale-95"
-          >
-            <span>Meetings:</span>
-            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-violet-900 font-extrabold">{stats.meetingsToday}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => applyKpiFilter('all')}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-200 shrink-0 font-bold active:scale-95"
-          >
-            <span>All Time:</span>
-            <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-slate-900 font-extrabold">{visitors.length}</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-1.5 md:hidden text-xs animate-in fade-in duration-150">
+          {[{ value: 'all', label: 'Today', count: stats.totalToday }, ...VISIT_PURPOSE_OPTIONS.map(opt => ({
+            value: opt.value,
+            label: opt.label,
+            count: stats.todayPurposeCounts?.[opt.value] || 0
+          }))].map(p => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => applyKpiFilter(p.value)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shrink-0 font-bold active:scale-95 ${
+                dateFilter === 'today' && purposeFilter === p.value
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-gray-700 border-gray-200'
+              }`}
+            >
+              <span>{p.label}:</span>
+              <span className="bg-white px-1.5 py-0.2 rounded-full text-[10px] text-indigo-900 font-extrabold">{p.count}</span>
+            </button>
+          ))}
         </div>
       )}
 
-      {/* 5 Real-Time Summary KPI Cards */}
-      <div className={`${showKpiCards ? 'grid' : 'hidden md:grid'} grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5 flex-shrink-0 animate-in fade-in duration-200`}>
-        
-        {/* Card 1: Total Visitors Today */}
-        <div
-          onClick={() => applyKpiFilter('today')}
-          className="p-2.5 sm:p-3 rounded-xl border border-indigo-200/90 bg-indigo-50/50 hover:bg-indigo-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between text-indigo-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Total Today</span>
-            <User size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-indigo-950">{stats.totalToday}</span>
-            <span className="text-[10px] font-semibold text-indigo-600">Registered</span>
-          </div>
-        </div>
+      {/* Today's KPIs: total visitors + one tile per visit purpose (click to filter) */}
+      <div className={`${showKpiCards ? 'grid' : 'hidden md:grid'} grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5 flex-shrink-0 animate-in fade-in duration-200`}>
+        {[
+          { value: 'all', label: 'Visitors Today', count: stats.totalToday, dot: 'bg-indigo-500' },
+          ...VISIT_PURPOSE_OPTIONS.map(opt => ({
+            value: opt.value,
+            label: opt.label,
+            count: stats.todayPurposeCounts?.[opt.value] || 0,
+            dot: opt.dot
+          }))
+        ].map(t => {
+          const isActive = dateFilter === 'today' && purposeFilter === t.value;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => applyKpiFilter(t.value)}
+              className={`text-left p-2.5 sm:p-3 rounded-xl border transition cursor-pointer shadow-2xs flex flex-col justify-between ${
+                isActive ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:border-indigo-200 hover:bg-indigo-50/30'
+              }`}
+            >
+              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-500 flex items-start gap-1.5 leading-tight">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-[3px] ${t.dot}`} />
+                {t.label}
+              </span>
+              <span className="mt-1.5 text-xl sm:text-2xl font-black text-gray-900">{t.count}</span>
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Card 2: Corporate Office */}
-        <div
-          onClick={() => applyKpiFilter('office')}
-          className="p-2.5 sm:p-3 rounded-xl border border-blue-200/90 bg-blue-50/50 hover:bg-blue-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between text-blue-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide flex items-center gap-1.5">
-              <Building2 size={13} />
-              Corporate Office
-            </span>
-            <Building2 size={14} className="group-hover:scale-110 transition text-blue-600" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-blue-950">{stats.todayLocationCounts?.Office || 0}</span>
-            <span className="text-[10px] font-bold text-blue-700">Today</span>
-          </div>
-        </div>
-
-        {/* Card 3: Construction Sites */}
-        <div
-          onClick={() => applyKpiFilter('siteVisits')}
-          className="p-2.5 sm:p-3 rounded-xl border border-amber-200/90 bg-amber-50/50 hover:bg-amber-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between text-amber-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Construction Sites</span>
-            <MapPin size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-amber-950">{stats.todayLocationCounts?.['Construction Site'] || 0}</span>
-            <span className="text-[10px] font-semibold text-amber-700">Today</span>
-          </div>
-        </div>
-
-        {/* Card 4: Meetings Today */}
-        <div
-          onClick={() => applyKpiFilter('meetings')}
-          className="p-2.5 sm:p-3 rounded-xl border border-violet-200/90 bg-violet-50/50 hover:bg-violet-100/50 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between text-violet-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Meetings Today</span>
-            <Briefcase size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-violet-950">{stats.meetingsToday}</span>
-            <span className="text-[10px] font-semibold text-violet-600">Office Hosts</span>
-          </div>
-        </div>
-
-        {/* Card 5: All Registered Visitors */}
-        <div
-          onClick={() => applyKpiFilter('all')}
-          className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 rounded-xl border border-slate-200/90 bg-slate-50/70 hover:bg-slate-100/70 transition cursor-pointer shadow-2xs flex flex-col justify-between group"
-        >
-          <div className="flex items-center justify-between text-slate-700">
-            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide">Total All Time</span>
-            <UserCheck size={14} className="group-hover:scale-110 transition" />
-          </div>
-          <div className="mt-1 flex items-baseline justify-between">
-            <span className="text-xl sm:text-2xl font-black text-slate-950">{visitors.length}</span>
-            <span className="text-[10px] font-semibold text-slate-600">Total Logged</span>
-          </div>
-        </div>
+      {/* Today's counts by Visitor Category (click to filter) */}
+      <div className={`${showKpiCards ? 'flex' : 'hidden md:flex'} bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs flex-shrink-0`}>
+        <VisitBreakdownChips
+          title="Category Today"
+          icon={User}
+          options={VISITOR_TYPE_OPTIONS}
+          counts={stats.todayTypeCounts}
+          active={categoryFilter}
+          onSelect={(val) => { setDateFilter('today'); setCategoryFilter(val); setCurrentPage(1); }}
+        />
       </div>
 
       {/* Filter & Search Bar Strip */}
@@ -828,8 +715,8 @@ export default function Reception() {
             onChange={(e) => {
               setDateFilter(e.target.value);
               setPurposeFilter('all');
+              setCategoryFilter('all');
               setLocationFilter('all');
-              setStatusFilter('all');
               setSearchQuery('');
               setCurrentPage(1);
             }}
@@ -859,18 +746,6 @@ export default function Reception() {
             </div>
           )}
 
-          {/* Status Filter Dropdown */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
-          >
-            <option value="all">All Statuses</option>
-            <option value="CHECKED_IN">Checked In (Inside)</option>
-            <option value="CHECKED_OUT">Checked Out</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
-
           {/* Purpose Filter Dropdown */}
           <select
             value={purposeFilter}
@@ -880,6 +755,18 @@ export default function Reception() {
             <option value="all">All Purposes</option>
             {VISIT_PURPOSE_OPTIONS.map(p => (
               <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
+          </select>
+
+          {/* Visitor Category Filter Dropdown */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
+          >
+            <option value="all">All Categories</option>
+            {VISITOR_TYPE_OPTIONS.map(t => (
+              <option key={t.value} value={t.value}>{t.label}</option>
             ))}
           </select>
 

@@ -1316,22 +1316,14 @@ CREATE TABLE IF NOT EXISTS public.visitor_logs (
     person_to_meet_id TEXT,
     person_to_meet_name TEXT NOT NULL,
     department TEXT,
-    person_actually_met_id TEXT,
-    person_actually_met_name TEXT,
     remarks TEXT,
-    checkout_remarks TEXT,
     check_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    check_out_at TIMESTAMPTZ,
     checked_in_by TEXT,
     checked_in_by_id TEXT,
-    checked_out_by TEXT,
-    checked_out_by_id TEXT,
-    status TEXT NOT NULL DEFAULT 'CHECKED_IN' CHECK (status IN ('CHECKED_IN', 'CHECKED_OUT', 'CANCELLED')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_visitor_logs_status ON public.visitor_logs(status);
 CREATE INDEX IF NOT EXISTS idx_visitor_logs_check_in ON public.visitor_logs(check_in_at DESC);
 CREATE INDEX IF NOT EXISTS idx_visitor_logs_purpose ON public.visitor_logs(visit_purpose);
 CREATE INDEX IF NOT EXISTS idx_visitor_logs_person_to_meet ON public.visitor_logs(person_to_meet_name);
