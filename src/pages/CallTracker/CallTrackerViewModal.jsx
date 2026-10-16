@@ -115,7 +115,20 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
     (lead.leadType || lead.category || '').toLowerCase().includes('estate') ||
     (lead.leadNo && String(lead.leadNo).startsWith('LR'));
 
-  const fields = [
+  const refName = lead.referencerName || lead.referenceName;
+
+  const initials = (name) => String(name || '?').trim().split(/\s+/).slice(0, 2).map(w => w.charAt(0).toUpperCase()).join('') || '?';
+
+  // Customer information split by relevance: what the caller needs while working the lead sits above the
+  // call history; profile details (address, DOB, email...) sit at the bottom. Caller / Team Member / Site Assigned /
+  // Lead Source / Ref Name are shown in the highlighted cards at the very top, so they are not repeated here.
+  const primaryFields = [
+    {
+      label: 'Customer Name',
+      value: formatVal(lead.personName || lead.customerName),
+      icon: User,
+      isCustomerName: true
+    },
     {
       label: 'Phone Number',
       value: formatVal(lead.number || lead.customerNumber),
@@ -123,59 +136,20 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
       isPhone: true
     },
     {
-      label: 'Email',
-      value: formatVal(lead.email || lead.customerEmail),
-      icon: Mail,
-      isEmail: true
-    },
-    {
-      label: 'DOB',
-      value: isValid(lead.dob) ? formatDate(lead.dob) : '-',
-      icon: Calendar
-    },
-    {
-      label: 'Occupation',
-      value: formatVal(lead.occupation),
-      icon: Briefcase
+      label: 'Requirement',
+      value: formatVal(lead.requirement),
+      icon: FileText
     },
     {
       label: 'Product Type',
       value: formatVal(lead.insuranceType || lead.productType),
       icon: Shield
-    }
-  ];
-
-  if (isInsurance || isValid(lead.insuranceSubType)) {
-    fields.push({
+    },
+    ...(isInsurance || isValid(lead.insuranceSubType) ? [{
       label: 'Sub Product Type',
       value: formatVal(lead.insuranceSubType),
       icon: ShieldCheck
-    });
-  }
-
-  if (isInsurance || isValid(lead.anyDesease)) {
-    fields.push({
-      label: 'Medical Condition',
-      value: formatVal(lead.anyDesease),
-      icon: FileText
-    });
-  }
-
-  fields.push({
-    label: 'Requirement',
-    value: formatVal(lead.requirement),
-    icon: FileText
-  });
-
-  if (isRealEstate || isValid(lead.siteLocation)) {
-    fields.push({
-      label: 'Site Location',
-      value: formatVal(lead.siteLocation),
-      icon: MapPin
-    });
-  }
-
-  fields.push(
+    }] : []),
     {
       label: 'Investment Budget',
       value: formatVal(lead.investmentBudget),
@@ -186,50 +160,40 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
       value: formatVal(lead.whenToBuyPlan),
       icon: Clock
     },
-    {
-      // Who takes the site visit (Real Estate) / meeting (Insurance, Mutual Fund)
-      label: isRealEstate ? 'Site Visit Assigned To' : 'Meeting Assigned To',
-      value: formatVal(lead.assignedVisitor),
-      icon: UserCheck
-    },
-    {
-      label: 'Caller Assigned',
-      value: formatVal(lead.callerAssigned),
-      icon: UserCheck
-    }
-  );
+    ...(isRealEstate || isValid(lead.siteLocation) ? [{
+      label: 'Site Location',
+      value: formatVal(lead.siteLocation),
+      icon: MapPin
+    }] : [])
+  ];
 
-  if (isValid(lead.leadSource)) {
-    fields.push({
-      label: 'Lead Source',
-      value: formatVal(lead.leadSource),
-      icon: FileText
-    });
-  }
-
-  if (isValid(lead.leadReceiver)) {
-    fields.push({
-      label: 'Team Member',
-      value: formatVal(lead.leadReceiver),
-      icon: User
-    });
-  }
-
-  const refName = lead.referencerName || lead.referenceName;
-  if (isValid(refName) || (lead.leadSource && String(lead.leadSource).toLowerCase().includes('reference'))) {
-    fields.push({
-      label: 'Reference Name',
-      value: formatVal(refName),
-      icon: User
-    });
-  }
-
-  fields.push(
+  const secondaryFields = [
     {
       label: 'Customer Address',
       value: formatVal(lead.location || lead.customerAddress),
       icon: MapPin,
       isLong: true
+    },
+    ...(isInsurance || isValid(lead.anyDesease) ? [{
+      label: 'Medical Condition',
+      value: formatVal(lead.anyDesease),
+      icon: FileText
+    }] : []),
+    {
+      label: 'Occupation',
+      value: formatVal(lead.occupation),
+      icon: Briefcase
+    },
+    {
+      label: 'DOB',
+      value: isValid(lead.dob) ? formatDate(lead.dob) : '-',
+      icon: Calendar
+    },
+    {
+      label: 'Email',
+      value: formatVal(lead.email || lead.customerEmail),
+      icon: Mail,
+      isEmail: true
     },
     {
       label: 'Remarks',
@@ -237,6 +201,72 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
       icon: MessageSquare,
       isLong: true
     }
+  ];
+
+  // Renders one "Customer Information" style block of label/value cards
+  const renderFieldSection = (title, list) => (
+    <div className="border border-gray-200 rounded-lg p-3 bg-slate-50/50 space-y-2">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+        <span>{title}</span>
+        <span className="text-gray-400 font-normal">({list.length} fields)</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+        {list.map((col, cIdx) => {
+          const Icon = col.icon;
+          const isPlaceholder = !col.value || col.value === '-' || col.value === 'null';
+          return (
+            <div
+              key={cIdx}
+              className={`rounded-lg p-2.5 shadow-2xs flex flex-col justify-between transition-colors ${
+                col.isCustomerName
+                  ? 'bg-indigo-50/80 border-2 border-indigo-300 ring-1 ring-indigo-200'
+                  : 'bg-white border border-gray-200 hover:border-indigo-200'
+              } ${col.isLong ? 'col-span-1 sm:col-span-2 md:col-span-2' : 'col-span-1'}`}
+            >
+              <div className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 mb-1 text-gray-500">
+                {Icon && <Icon size={12} className={col.isCustomerName ? 'text-indigo-600 shrink-0' : 'text-gray-400 shrink-0'} />}
+                <span className="truncate" title={col.label}>{col.label}</span>
+              </div>
+              <div className="text-xs font-medium text-gray-800 break-words leading-snug" title={typeof col.value === 'string' ? col.value : undefined}>
+                {col.isCustomerName ? (
+                  <span className="text-[13px] font-extrabold text-indigo-950 flex items-center gap-1">
+                    {col.value}
+                  </span>
+                ) : col.isPhone && !isPlaceholder ? (
+                  <div className="flex items-center justify-between gap-1">
+                    <a href={`tel:${col.value}`} className="text-indigo-600 hover:underline font-bold truncate">
+                      {col.value}
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cleanPhone = String(col.value).replace(/[^0-9+]/g, '');
+                        const phoneWithCountry = cleanPhone.startsWith('91') || cleanPhone.startsWith('+') ? cleanPhone.replace('+', '') : `91${cleanPhone}`;
+                        const message = encodeURIComponent(`Hello ${lead.personName || lead.customerName || 'Customer'}, greeting from Sarvodaya Infracon regarding your inquiry for ${lead.leadType || 'our services'}.`);
+                        window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, '_blank');
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 transition inline-flex items-center gap-0.5 shrink-0 cursor-pointer"
+                      title="Chat on WhatsApp"
+                    >
+                      <MessageSquare size={10} />
+                      <span>WA</span>
+                    </button>
+                  </div>
+                ) : col.isEmail && !isPlaceholder ? (
+                  <a href={`mailto:${col.value}`} className="text-indigo-600 hover:underline break-all">
+                    {col.value}
+                  </a>
+                ) : isPlaceholder ? (
+                  <span className="text-gray-400 font-normal italic">-</span>
+                ) : (
+                  col.value
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 
   const lastDateOfCall = lead.dateOfCall || (lead.latestTracker?.timestamp ? formatDate(lead.latestTracker.timestamp) : null);
@@ -251,27 +281,37 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
         className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col border border-gray-100/80 ring-1 ring-black/5 overflow-hidden max-h-[88dvh] sm:max-h-[85vh] animate-in zoom-in-95 duration-150 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Compact Modal Header */}
-        <div className="px-3.5 py-2.5 border-b border-gray-200 bg-slate-50 flex items-center justify-between gap-2 flex-shrink-0">
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 flex-1">
-            <h2 className="text-xs sm:text-sm font-bold text-gray-900 truncate">
-              {lead.personName || lead.customerName || 'Customer Details'}
-            </h2>
-            {lead.leadNo && (
-              <span className="text-[10px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200 shrink-0">
-                Lead #{lead.leadNo}
-              </span>
-            )}
-            {lead.status && (
-              <span className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[lead.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
-                {lead.status}
-              </span>
-            )}
-            {(lead.leadType || lead.category) && (
-              <span className="text-[11px] text-gray-500 font-medium hidden sm:inline shrink-0">
-                Category: <strong className="text-gray-700">{lead.leadType || lead.category}</strong>
-              </span>
-            )}
+        {/* Modal Header: Clear, prominent customer identity with avatar */}
+        <div className="px-4 py-3 border-b border-gray-200 bg-slate-50 flex items-center justify-between gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <span className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-600 to-indigo-800 text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs">
+              {initials(lead.personName || lead.customerName)}
+            </span>
+            <div className="min-w-0 flex items-center gap-2 flex-wrap">
+              <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
+                {lead.personName || lead.customerName || 'Customer Details'}
+              </h2>
+              {lead.leadNo && (
+                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200 shrink-0">
+                  Lead #{lead.leadNo}
+                </span>
+              )}
+              {lead.status && (
+                <span className={`text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[lead.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                  {lead.status}
+                </span>
+              )}
+              {latestCustomerStatus && (
+                <span className={`text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase border shrink-0 ${CUSTOMER_STATUS_STYLES[latestCustomerStatus] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                  {latestCustomerStatus}
+                </span>
+              )}
+              {(lead.leadType || lead.category) && (
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 hidden sm:inline-block shrink-0">
+                  {lead.leadType || lead.category}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -283,9 +323,9 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
                 navigate('/products', { state: { shareClient } });
               }}
               title={`Share ${lead.leadType || ''} products with ${lead.personName || 'this client'}`}
-              className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white rounded text-xs font-semibold shadow-xs transition active:scale-95"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white rounded-lg text-xs font-semibold shadow-xs transition active:scale-95 cursor-pointer"
             >
-              <Share2 size={11} />
+              <Share2 size={12} />
               <span className="hidden sm:inline">Share Products</span>
               <span className="sm:hidden">Share</span>
             </button>
@@ -293,25 +333,83 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
               <button
                 onClick={() => onFollowup(lead)}
                 title={`Log follow-up for ${lead.personName || 'Customer'}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold shadow-xs transition active:scale-95"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition active:scale-95 cursor-pointer"
               >
-                <Phone size={11} />
+                <Phone size={12} />
                 <span>Followup</span>
               </button>
             )}
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-700 p-1 rounded-lg hover:bg-gray-200 transition"
+              className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 transition cursor-pointer"
               title="Close popup"
             >
-              <X size={17} />
+              <X size={18} />
             </button>
           </div>
         </div>
 
         {/* Scrollable Compact Body */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-white">
-          {/* Top Quick Highlights */}
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3.5 bg-white">
+          {/* Key Handling & Lead Source Highlighted Cards (Caller, Team Member, Site Assigned, Source, Ref) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            {/* 1. Caller Assigned (HIGHLIGHTED) */}
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 border-2 border-amber-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider flex items-center gap-1">
+                <UserCheck size={12} className="text-amber-600 shrink-0" />
+                <span className="truncate">Caller Assigned</span>
+              </span>
+              <p className="text-xs sm:text-[13px] font-extrabold text-amber-950 mt-1 truncate" title={lead.callerAssigned || 'Unassigned'}>
+                {lead.callerAssigned || <span className="text-amber-600/70 font-normal italic">Unassigned</span>}
+              </p>
+            </div>
+
+            {/* 2. Team Member (HIGHLIGHTED) */}
+            <div className="bg-gradient-to-br from-violet-50 to-purple-100/70 border-2 border-violet-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-violet-800 uppercase tracking-wider flex items-center gap-1">
+                <User size={12} className="text-violet-600 shrink-0" />
+                <span className="truncate">Team Member</span>
+              </span>
+              <p className="text-xs sm:text-[13px] font-extrabold text-violet-950 mt-1 truncate" title={lead.leadReceiver || lead.relationshipManager || 'Unassigned'}>
+                {lead.leadReceiver || lead.relationshipManager || <span className="text-violet-600/70 font-normal italic">Unassigned</span>}
+              </p>
+            </div>
+
+            {/* 3. Site Visit / Meeting Assigned To (HIGHLIGHTED) */}
+            <div className="bg-gradient-to-br from-indigo-50 to-blue-100/70 border-2 border-indigo-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wider flex items-center gap-1">
+                <MapPin size={12} className="text-indigo-600 shrink-0" />
+                <span className="truncate">{isRealEstate ? 'Site Assigned To' : 'Meeting Assigned To'}</span>
+              </span>
+              <p className="text-xs sm:text-[13px] font-extrabold text-indigo-950 mt-1 truncate" title={lead.assignedVisitor || 'Unassigned'}>
+                {lead.assignedVisitor || <span className="text-indigo-600/70 font-normal italic">Unassigned</span>}
+              </p>
+            </div>
+
+            {/* 4. Lead Source */}
+            <div className="bg-gradient-to-br from-sky-50 to-slate-100 border border-sky-200 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
+              <span className="text-[10px] font-extrabold text-sky-800 uppercase tracking-wider flex items-center gap-1">
+                <FileText size={12} className="text-sky-600 shrink-0" />
+                <span className="truncate">Lead Source</span>
+              </span>
+              <p className="text-xs sm:text-[13px] font-bold text-gray-800 mt-1 truncate" title={lead.leadSource || '-'}>
+                {lead.leadSource || '-'}
+              </p>
+            </div>
+
+            {/* 5. Reference Name (HIGHLIGHTED) */}
+            <div className="bg-gradient-to-br from-emerald-50 to-teal-100/70 border-2 border-emerald-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between col-span-2 sm:col-span-1">
+              <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                <Share2 size={12} className="text-emerald-600 shrink-0" />
+                <span className="truncate">Ref Name</span>
+              </span>
+              <p className="text-xs sm:text-[13px] font-extrabold text-emerald-950 mt-1 truncate" title={refName || '-'}>
+                {refName || <span className="text-gray-400 font-normal">-</span>}
+              </p>
+            </div>
+          </div>
+
+          {/* Top Quick Timing & Metrics Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between">
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
@@ -360,71 +458,18 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 flex flex-col justify-between col-span-2 sm:col-span-1">
               <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
                 <UserCheck size={11} className="text-gray-400 shrink-0" />
-                <span className="truncate">Assigned To</span>
+                <span className="truncate">Stage</span>
               </span>
-              <p className="text-xs font-bold text-gray-800 mt-0.5 truncate" title={lead.callerAssigned || 'Unassigned'}>
-                {lead.callerAssigned || <span className="text-gray-400 font-normal italic">Unassigned</span>}
+              <p className="text-xs font-bold text-gray-800 mt-0.5 truncate">
+                {lead.stage || (lead.visitorFollowUpCount > 0 ? 'Site Visit' : 'Leads / Calling')}
               </p>
             </div>
           </div>
 
-          {/* Customer Details Grid (all columns corresponding to the front table) */}
-          <div className="border border-gray-200 rounded-lg p-3 bg-slate-50/50 space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center justify-between">
-              <span>Customer Information</span>
-              <span className="text-gray-400 font-normal">({fields.length} fields)</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-              {fields.map((col, cIdx) => {
-                const Icon = col.icon;
-                const isPlaceholder = !col.value || col.value === '-' || col.value === 'null';
-                return (
-                  <div
-                    key={cIdx}
-                    className={`bg-white border border-gray-200 rounded p-2 shadow-2xs flex flex-col justify-between transition-colors hover:border-indigo-200 ${
-                      col.isLong ? 'col-span-1 sm:col-span-2 md:col-span-2' : 'col-span-1'
-                    }`}
-                  >
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-1">
-                      {Icon && <Icon size={11} className="text-gray-400 shrink-0" />}
-                      <span className="truncate" title={col.label}>{col.label}</span>
-                    </div>
-                    <div className="text-xs font-medium text-gray-800 break-words leading-snug" title={typeof col.value === 'string' ? col.value : undefined}>
-                      {col.isPhone && !isPlaceholder ? (
-                        <div className="flex items-center justify-between gap-1">
-                          <a href={`tel:${col.value}`} className="text-indigo-600 hover:underline font-semibold truncate">
-                            {col.value}
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const cleanPhone = String(col.value).replace(/[^0-9+]/g, '');
-                              const phoneWithCountry = cleanPhone.startsWith('91') || cleanPhone.startsWith('+') ? cleanPhone.replace('+', '') : `91${cleanPhone}`;
-                              const message = encodeURIComponent(`Hello ${lead.personName || lead.customerName || 'Customer'}, greeting from Sarvodaya Infracon regarding your inquiry for ${lead.leadType || 'our services'}.`);
-                              window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, '_blank');
-                            }}
-                            className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-bold hover:bg-emerald-100 transition inline-flex items-center gap-0.5 shrink-0"
-                            title="Chat on WhatsApp"
-                          >
-                            <MessageSquare size={10} />
-                            <span>WA</span>
-                          </button>
-                        </div>
-                      ) : col.isEmail && !isPlaceholder ? (
-                        <a href={`mailto:${col.value}`} className="text-indigo-600 hover:underline break-all">
-                          {col.value}
-                        </a>
-                      ) : isPlaceholder ? (
-                        <span className="text-gray-400 font-normal italic">-</span>
-                      ) : (
-                        col.value
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {renderFieldSection('Customer Information', primaryFields)}
+
+          {/* Other profile details — own section, above the call & site-visit history */}
+          {renderFieldSection('Other Details', secondaryFields)}
 
           {/* All Call Records / History Table */}
           <div className="space-y-1.5">

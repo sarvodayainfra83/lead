@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
   Search, X, RotateCcw, Phone, Eye, ChevronDown, ChevronUp,
-  Calendar, FileSpreadsheet, Plus, UserCheck,
+  Calendar, FileSpreadsheet, Plus, UserCheck, User,
   Mail, Briefcase, FileText, MapPin, Clock, IndianRupee, MessageSquare, Bell, Pencil, Reply,
   CalendarDays, Upload
 } from 'lucide-react';
@@ -879,22 +879,23 @@ export default function CallTrackerCategoryView({
       'Site Visit Status': item.siteVisitStatus || '-',
       'Site Visit Follow-ups': item.visitorFollowUpCount || 0,
       'What did Customer Said': item.customerSaid || '-',
+      'Phone Number': item.number || '-',
+      [assignedToLabel]: item.assignedVisitor || '-',
+      'Caller Assigned': item.callerAssigned || '-',
+      'Team Member': item.leadReceiver || '-',
+      'Requirement': item.requirement || '-',
+      'Investment Budget': item.investmentBudget || '-',
+      'When to Buy Plan': item.whenToBuyPlan || '-',
+      'Total Calls': item.followUpCount || 0,
+      ...(isRealEstate ? { 'Total Visits': item.totalVisits || 0 } : {}),
+      'Customer Address': item.location || '-',
+      'Occupation': item.occupation || '-',
+      'DOB': formatDate(item.dob),
+      'Email': item.email || '-',
       'Admin Remark': item.adminRemark || '-',
       'Admin Remark Date (IST)': item.adminRemarkDate ? formatIST(item.adminRemarkDate) : '-',
       'User Remark': item.userRemark || '-',
       'User Remark Date (IST)': item.userRemarkDate ? formatIST(item.userRemarkDate) : '-',
-      'Phone Number': item.number || '-',
-      'Total Calls': item.followUpCount || 0,
-      ...(isRealEstate ? { 'Total Visits': item.totalVisits || 0 } : {}),
-      'Email': item.email || '-',
-      'DOB': formatDate(item.dob),
-      'Occupation': item.occupation || '-',
-      'Requirement': item.requirement || '-',
-      'Investment Budget': item.investmentBudget || '-',
-      'Customer Address': item.location || '-',
-      'When to Buy Plan': item.whenToBuyPlan || '-',
-      [assignedToLabel]: item.assignedVisitor || '-',
-      ...(isAdmin ? { 'Caller Assigned': item.callerAssigned || '-' } : {}),
       'Remarks': item.remarks || '-'
     }));
 
@@ -904,7 +905,9 @@ export default function CallTrackerCategoryView({
     XLSX.writeFile(workbook, `CallTracker_${category.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Table Headers: hide lead no and lead type; show Last Date of Call, Next Date of Call, Customer Name, Status first
+  // Table Headers: hide lead no and lead type; show Last Date of Call, Next Date of Call, Customer Name, Status first;
+  // followed by who is handling the lead (Phone, Site Assigned To, Caller Assigned, Team Member), then requirement/profile,
+  // with Total Calls / Total Visits after When to Buy Plan, and all remarks at last
   const tableHeaders = [
     "Action",
     "Last Date of Call",
@@ -914,20 +917,21 @@ export default function CallTrackerCategoryView({
     "Status",
     "Customer Status",
     "What did Customer Said",
-    "Admin Remark",
-    "User Remark",
     "Phone Number",
-    "Total Calls",
-    ...(isRealEstate ? ["Total Visits"] : []),
-    "Email",
-    "DOB",
-    "Occupation",
+    assignedToLabel,
+    "Caller Assigned",
+    "Team Member",
     "Requirement",
     "Investment Budget",
-    "Customer Address",
     "When to Buy Plan",
-    assignedToLabel,
-    ...(isAdmin ? ["Caller Assigned"] : []),
+    "Total Calls",
+    ...(isRealEstate ? ["Total Visits"] : []),
+    "Customer Address",
+    "Occupation",
+    "DOB",
+    "Email",
+    "Admin Remark",
+    "User Remark",
     "Remarks"
   ];
 
@@ -1119,6 +1123,93 @@ export default function CallTrackerCategoryView({
           {item.customerSaid || <span className="text-gray-300">-</span>}
         </td>
 
+        {/* Phone Number */}
+        <td className="px-3 py-2 text-center text-xs text-gray-700 whitespace-nowrap">
+          {item.number ? (
+            <a href={`tel:${item.number}`} className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-medium">
+              <Phone size={11} className="text-gray-400" />
+              {item.number}
+            </a>
+          ) : '-'}
+        </td>
+
+        {/* Site Visit / Meeting Assigned To */}
+        <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
+          {item.assignedVisitor ? (
+            <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded text-xs font-semibold">
+              <UserCheck size={11} className="text-indigo-600" />
+              {item.assignedVisitor}
+            </span>
+          ) : (
+            <span className="text-gray-400 italic">-</span>
+          )}
+        </td>
+
+        {/* Caller Assigned */}
+        <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
+          {item.callerAssigned ? (
+            <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-xs font-semibold">
+              <UserCheck size={11} className="text-amber-600" />
+              {item.callerAssigned}
+            </span>
+          ) : (
+            <span className="text-gray-400 italic">-</span>
+          )}
+        </td>
+
+        {/* Team Member */}
+        <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
+          {item.leadReceiver ? (
+            <span className="inline-flex items-center gap-1 bg-violet-50 text-violet-800 border border-violet-200 px-2 py-0.5 rounded text-xs font-semibold">
+              <User size={11} className="text-violet-600" />
+              {item.leadReceiver}
+            </span>
+          ) : (
+            <span className="text-gray-400 italic">-</span>
+          )}
+        </td>
+
+        {/* Requirement */}
+        <td className="px-3 py-2 text-center text-xs text-gray-700 whitespace-nowrap max-w-[160px] truncate" title={item.requirement}>
+          {item.requirement || '-'}
+        </td>
+
+        {/* Investment Budget */}
+        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
+
+        {/* When to Buy Plan */}
+        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
+
+        {/* Total Calls */}
+        <td className="px-3 py-2 text-center whitespace-nowrap">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+            {item.followUpCount} {item.followUpCount === 1 ? 'Call' : 'Calls'}
+          </span>
+        </td>
+
+        {/* Total Visits (Real Estate only) */}
+        {isRealEstate && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${item.totalVisits > 0 ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+              {item.totalVisits} {item.totalVisits === 1 ? 'Visit' : 'Visits'}
+            </span>
+          </td>
+        )}
+
+        {/* Customer Address */}
+        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location}>
+          {item.location || '-'}
+        </td>
+
+        {/* Occupation */}
+        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
+
+        {/* DOB */}
+        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
+
+        {/* Email */}
+        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
+
         {/* Admin Remark (lead-level, IST date) — blinks for the user until they reply */}
         <td className="px-3 py-2 text-left text-xs max-w-[240px]">
           <button
@@ -1180,83 +1271,6 @@ export default function CallTrackerCategoryView({
           </button>
         </td>
 
-        {/* 6. Phone Number */}
-        <td className="px-3 py-2 text-center text-xs text-gray-700 whitespace-nowrap">
-          {item.number ? (
-            <a href={`tel:${item.number}`} className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-medium">
-              <Phone size={11} className="text-gray-400" />
-              {item.number}
-            </a>
-          ) : '-'}
-        </td>
-
-        {/* 7. Total Calls */}
-        <td className="px-3 py-2 text-center whitespace-nowrap">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            {item.followUpCount} {item.followUpCount === 1 ? 'Call' : 'Calls'}
-          </span>
-        </td>
-
-        {/* 7b. Total Visits (Real Estate only) */}
-        {isRealEstate && (
-          <td className="px-3 py-2 text-center whitespace-nowrap">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${item.totalVisits > 0 ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-              {item.totalVisits} {item.totalVisits === 1 ? 'Visit' : 'Visits'}
-            </span>
-          </td>
-        )}
-
-        {/* 8. Email */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.email || '-'}</td>
-
-        {/* 9. DOB */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{formatDate(item.dob)}</td>
-
-        {/* 10. Occupation */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.occupation || '-'}</td>
-
-        {/* 11. Requirement */}
-        <td className="px-3 py-2 text-center text-xs text-gray-700 whitespace-nowrap max-w-[160px] truncate" title={item.requirement}>
-          {item.requirement || '-'}
-        </td>
-
-        {/* 12. Investment Budget */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.investmentBudget || '-'}</td>
-
-        {/* 13. Customer Address */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location}>
-          {item.location || '-'}
-        </td>
-
-        {/* 14. When to Buy Plan */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">{item.whenToBuyPlan || '-'}</td>
-
-        {/* 15. Site Visit / Meeting Assigned To */}
-        <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
-          {item.assignedVisitor ? (
-            <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded text-xs font-semibold">
-              <UserCheck size={11} className="text-indigo-600" />
-              {item.assignedVisitor}
-            </span>
-          ) : (
-            <span className="text-gray-400 italic">-</span>
-          )}
-        </td>
-
-        {/* 16. Caller Assigned (ADMIN / Tester only) */}
-        {isAdmin && (
-          <td className="px-3 py-2 text-center text-xs text-gray-800 font-medium whitespace-nowrap">
-            {item.callerAssigned ? (
-              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-xs font-semibold">
-                <UserCheck size={11} className="text-amber-600" />
-                {item.callerAssigned}
-              </span>
-            ) : (
-              <span className="text-gray-400 italic">Unassigned</span>
-            )}
-          </td>
-        )}
-
         {/* Remarks */}
         <td className="px-3 py-2 text-center text-xs text-gray-500 whitespace-nowrap max-w-[160px] truncate" title={item.remarks}>
           {item.remarks || '-'}
@@ -1280,15 +1294,16 @@ export default function CallTrackerCategoryView({
     };
 
     const details = [];
-    if (isValid(item.email)) details.push({ label: 'Email', value: item.email, icon: Mail, isEmail: true });
-    if (isValid(item.dob) && formatDate(item.dob) !== '-') details.push({ label: 'DOB', value: formatDate(item.dob), icon: Calendar });
-    if (isValid(item.occupation)) details.push({ label: 'Occupation', value: item.occupation, icon: Briefcase });
+    if (isValid(item.assignedVisitor)) details.push({ label: assignedToLabel, value: item.assignedVisitor, icon: UserCheck });
+    if (isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
+    if (isValid(item.leadReceiver)) details.push({ label: 'Team Member', value: item.leadReceiver, icon: User });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget)) details.push({ label: 'Budget', value: item.investmentBudget, icon: IndianRupee });
-    if (isValid(item.location)) details.push({ label: 'Address', value: item.location, icon: MapPin, isLong: true });
     if (isValid(item.whenToBuyPlan)) details.push({ label: 'When to Buy', value: item.whenToBuyPlan, icon: Clock });
-    if (isValid(item.assignedVisitor)) details.push({ label: assignedToLabel, value: item.assignedVisitor, icon: UserCheck });
-    if (isAdmin && isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
+    if (isValid(item.location)) details.push({ label: 'Address', value: item.location, icon: MapPin, isLong: true });
+    if (isValid(item.occupation)) details.push({ label: 'Occupation', value: item.occupation, icon: Briefcase });
+    if (isValid(item.dob) && formatDate(item.dob) !== '-') details.push({ label: 'DOB', value: formatDate(item.dob), icon: Calendar });
+    if (isValid(item.email)) details.push({ label: 'Email', value: item.email, icon: Mail, isEmail: true });
     if (isValid(item.remarks)) details.push({ label: 'Remarks', value: item.remarks, icon: MessageSquare, isLong: true });
 
     return (

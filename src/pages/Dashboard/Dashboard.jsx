@@ -332,11 +332,11 @@ const UserCardHeader = ({ title, subtitle, action, icon: Icon }) => (
   </div>
 );
 
-const MetricBlock = ({ label, value, onClick }) => (
+const MetricBlock = ({ label, value, onClick, className = '' }) => (
   <button
     type="button"
     onClick={onClick}
-    className="w-full min-w-0 text-left bg-white px-2.5 sm:px-4 py-2 sm:py-3 hover:bg-gray-50 transition group flex flex-col justify-center cursor-pointer"
+    className={`w-full min-w-0 text-left bg-white px-2.5 sm:px-4 py-2 sm:py-3 hover:bg-gray-50 transition group flex flex-col justify-center cursor-pointer ${className}`}
   >
     <p className="text-[10px] sm:text-[11px] text-gray-500 font-medium flex items-center justify-between gap-1">
       <span className="truncate">{label}</span>
@@ -952,6 +952,7 @@ export default function Dashboard() {
           {/* HEADER: Business Vertical Tabs (Left) · All Employees / Filter & Refresh (Right) */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <PageTabs
+              wrap
               tabs={visibleTabs.map(t => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
               activeKey={tab}
               onChange={setActiveTab}
@@ -1190,9 +1191,9 @@ export default function Dashboard() {
                 {/* Chart Render */}
                 {adminChartMode === 'team' ? (
                   chartData.length > 0 ? (
-                    <div className="flex-1 px-3 pb-3 overflow-x-auto">
-                      <div style={{ minWidth: `${Math.max(chartData.length * 80, 280)}px` }}>
-                        <ResponsiveContainer width="100%" height={260}>
+                    <div className="flex-1 flex flex-col px-3 pb-3 overflow-x-auto">
+                      <div className="flex-1 min-h-[260px]" style={{ minWidth: `${Math.max(chartData.length * 56, 280)}px` }}>
+                        <ResponsiveContainer width="100%" height="100%">
                           <BarChart
                             data={chartData}
                             margin={{ top: 16, right: 8, left: -20, bottom: 0 }}
@@ -1228,9 +1229,9 @@ export default function Dashboard() {
                   )
                 ) : (
                   daily.length > 0 ? (
-                    <div className="flex-1 px-3 pb-3 overflow-x-auto">
-                      <div style={{ minWidth: `${Math.max(daily.length * (period === 'today' ? 36 : 48), 280)}px` }}>
-                        <ResponsiveContainer width="100%" height={260}>
+                    <div className="flex-1 flex flex-col px-3 pb-3 overflow-x-auto">
+                      <div className="flex-1 min-h-[260px]" style={{ minWidth: `${Math.max(daily.length * (period === 'today' ? 36 : 48), 280)}px` }}>
+                        <ResponsiveContainer width="100%" height="100%">
                           <BarChart
                             data={daily.map(d => ({ ...d, name: d.name || formatDay(d.dayMs) }))}
                             margin={{ top: 16, right: 8, left: -20, bottom: 0 }}
@@ -1506,7 +1507,7 @@ export default function Dashboard() {
                   subtitle="Lead distribution by industry"
                   icon={Building2}
                 />
-                <div className="p-4 space-y-2.5 flex-1 flex flex-col justify-center">
+                <div className="p-4 space-y-2.5 flex-1 flex flex-col">
                   {byType.map(t => {
                     const Icon = t.icon;
                     const isCurrent = tab === t.key;
@@ -1552,7 +1553,7 @@ export default function Dashboard() {
                     <ViewAll onClick={() => go('/customer-master', { customerStatus: 'all' })} label="Open" />
                   )}
                 />
-                <div className="p-4 space-y-3 flex-1 flex flex-col justify-center">
+                <div className="p-4 space-y-3 flex-1 flex flex-col">
                   <div className="grid grid-cols-2 gap-2.5">
                     <button
                       type="button"
@@ -1719,7 +1720,7 @@ export default function Dashboard() {
             {/* ROW 4: Activity Lists — one card, the admin picks the list by tab */}
             <AdminCard className="flex flex-col">
               <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2.5 border-b border-gray-100">
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-1.5">
                   {[
                     { key: 'calling', label: "Today's Calling", icon: PhoneCall, count: todayCalls.length },
                     { key: 'leads', label: "Today's Leads", icon: UserPlus, count: todayLeads.length },
@@ -1730,11 +1731,11 @@ export default function Dashboard() {
                       key={key}
                       type="button"
                       onClick={() => setActivityTab(key)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${activityTab === key ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                      className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold text-left border transition cursor-pointer ${activityTab === key ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'}`}
                     >
-                      <Icon size={13} />
-                      {label}
-                      <span className={`text-[10px] px-1.5 py-0 rounded-full font-bold ${activityTab === key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      <Icon size={13} className="shrink-0" />
+                      <span className="flex-1 sm:flex-none leading-tight">{label}</span>
+                      <span className={`shrink-0 text-[10px] px-1.5 py-0 rounded-full font-bold ${activityTab === key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
                         {count}
                       </span>
                     </button>
@@ -1899,6 +1900,7 @@ export default function Dashboard() {
         {/* Header: Lead category tabs (left) · My Dashboard badge (right) */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
           <PageTabs
+            wrap
             tabs={visibleTabs.map(t => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
             activeKey={tab}
             onChange={setActiveTab}
@@ -2099,6 +2101,7 @@ export default function Dashboard() {
                 onClick={() => go('/deal-closed')}
               />
               <MetricBlock
+                className="col-span-3 lg:col-span-2"
                 label={isMeetingOnly ? 'Meetings' : 'Site Visits'}
                 value={kpis.siteVisit}
                 onClick={() => go('/site-visit-meeting', { dateFilter: 'all' })}
@@ -2393,15 +2396,39 @@ export default function Dashboard() {
             </UserCard>
           </div>
 
-          {/* ================= Row 3: today's calling · today's leads · hot & warm · deal closed ================= */}
-          <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-4 gap-3">
-            <UserCard className="flex flex-col">
-              <UserCardHeader
-                title="Today's Calling"
-                subtitle={`${todayCalls.length} calls logged today`}
-                icon={PhoneCall}
-                action={canDrillInto('/call-tracker') && <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })} />}
-              />
+          {/* ================= Row 3: one card, the list picked by tab (Today's Calling · Today's Leads · Hot & Warm · Deal Closed) ================= */}
+          <UserCard className="flex flex-col">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 sm:px-4 pt-3 pb-2.5 border-b border-gray-100">
+              <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-1.5">
+                {[
+                  { key: 'calling', label: "Today's Calling", icon: PhoneCall, count: todayCalls.length },
+                  { key: 'leads', label: "Today's Leads", icon: UserPlus, count: todayLeads.length },
+                  { key: 'hotWarm', label: 'Hot & Warm', icon: Flame, count: hotWarm.length },
+                  { key: 'deals', label: 'Deal Closed', icon: CheckCircle2, count: dealsClosed.length }
+                ].map(({ key, label, icon: Icon, count }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActivityTab(key)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold text-left border transition cursor-pointer select-none ${
+                      activityTab === key
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'
+                    }`}
+                  >
+                    <Icon size={13} className="shrink-0" />
+                    <span className="flex-1 sm:flex-none leading-tight">{label}</span>
+                    <span className={`shrink-0 text-[10px] px-1.5 py-0 rounded-full font-bold ${activityTab === key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                      {count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {activityViewAll && canDrillInto({ calling: '/call-tracker', leads: '/call-tracker', hotWarm: '/customer-master', deals: '/deal-closed' }[activityTab]) && (
+                <ViewAll onClick={activityViewAll.onClick} label={activityViewAll.label} />
+              )}
+            </div>
+            {activityTab === 'calling' && (<>
               {todayCalls.length > 0 ? (
                 <div className="max-h-[380px] overflow-y-auto pb-1">
                   {todayCalls.slice(0, listLimit.calls).map((c, idx) => {
@@ -2412,7 +2439,7 @@ export default function Dashboard() {
                         onClick={() => lead && setDetailsLead(lead)}
                         highlight={Boolean(lead?.isDealClosed)}
                         name={c.personName}
-                        sub={`${formatTime(c.timestampMs)} · ${c.callerAssigned || 'Unassigned'}${c.number ? ` · ${c.number}` : ''}`}
+                        sub={`${formatTime(c.timestampMs)} · Caller: ${c.callerAssigned || 'Unassigned'}${c.number ? ` · ${c.number}` : ''}`}
                         right={<>
                           <StatusPill status={lead?.isDealClosed ? 'Deal Lock' : (lead?.status || c.status)} meetingOnly={MEETING_ONLY_CATEGORIES.includes(lead?.category || tab)} />
                           <div className="flex items-center gap-1">
@@ -2428,45 +2455,34 @@ export default function Dashboard() {
               ) : (
                 <Empty text={loadingOr('No calls logged today.')} />
               )}
-            </UserCard>
-
-            <UserCard className="flex flex-col">
-              <UserCardHeader
-                title="Today's Leads"
-                subtitle={`${todayLeads.length} new leads today`}
-                icon={UserPlus}
-                action={canDrillInto('/call-tracker') && <ViewAll onClick={() => go('/call-tracker', { dateFilter: 'today' })} />}
-              />
+            </>)}
+            {activityTab === 'leads' && (<>
               {todayLeads.length > 0 ? (
                 <div className="max-h-[380px] overflow-y-auto pb-1">
-                  {todayLeads.slice(0, listLimit.leads).map((l, idx) => (
-                    <UserPersonRow
-                      key={l.id || idx}
-                      onClick={() => setDetailsLead(l)}
-                      highlight={l.isDealClosed}
-                      name={l.personName}
-                      sub={`${l.leadNo || ''}${l.leadSource ? ` · ${l.leadSource}` : ''} · ${l.callerAssigned || l.assignedVisitor || 'Unassigned'}`}
-                      right={<>
-                        <StatusPill status={l.isDealClosed ? 'Deal Lock' : l.status} meetingOnly={MEETING_ONLY_CATEGORIES.includes(l.category || tab)} />
-                        {isAll && <TypePill type={l.leadType} />}
-                        <TempPill value={l.customerStatus} />
-                      </>}
-                    />
-                  ))}
+                  {todayLeads.slice(0, listLimit.leads).map((l, idx) => {
+                    const leadTime = l.createdDate ? formatTime(l.createdDate.getTime()) : (l.timestamp ? formatTime(parseTrackerDateStr(l.timestamp)?.getTime()) : '');
+                    return (
+                      <UserPersonRow
+                        key={l.id || idx}
+                        onClick={() => setDetailsLead(l)}
+                        highlight={l.isDealClosed}
+                        name={l.personName}
+                        sub={`${l.leadNo ? `${l.leadNo} · ` : ''}${l.leadSource ? `Source: ${l.leadSource} · ` : ''}${leadTime ? `${leadTime} · ` : ''}Assigned: ${l.callerAssigned || l.assignedVisitor || 'Unassigned'}`}
+                        right={<>
+                          <StatusPill status={l.isDealClosed ? 'Deal Lock' : l.status} meetingOnly={MEETING_ONLY_CATEGORIES.includes(l.category || tab)} />
+                          {isAll && <TypePill type={l.leadType} />}
+                          <TempPill value={l.customerStatus} />
+                        </>}
+                      />
+                    );
+                  })}
                   {todayLeads.length > listLimit.leads && <MoreButton remaining={todayLeads.length - listLimit.leads} onClick={() => showMore('leads')} />}
                 </div>
               ) : (
                 <Empty text={loadingOr('No new leads today.')} />
               )}
-            </UserCard>
-
-            <UserCard className="flex flex-col">
-              <UserCardHeader
-                title="Recent Hot & Warm"
-                subtitle="Latest interested clients"
-                icon={Flame}
-                action={canDrillInto('/customer-master') && <ViewAll onClick={() => go('/customer-master', { customerStatus: 'all' })} />}
-              />
+            </>)}
+            {activityTab === 'hotWarm' && (<>
               {hotWarm.length > 0 ? (
                 <div className="max-h-[380px] overflow-y-auto pb-1">
                   {hotWarm.slice(0, listLimit.hot).map((l, idx) => (
@@ -2474,7 +2490,7 @@ export default function Dashboard() {
                       key={l.id || idx}
                       onClick={() => setDetailsLead(l)}
                       name={l.personName}
-                      sub={`Last call ${formatDay(l.lastActivityMs)}${l.latestTracker?.nextDate ? ` · Next ${formatIsoDate(l.latestTracker.nextDate)}` : ''} · ${l.callerAssigned || 'Unassigned'}`}
+                      sub={`Last call ${formatDay(l.lastActivityMs)}${l.latestTracker?.nextDate ? ` · Next ${formatIsoDate(l.latestTracker.nextDate)}` : (l.nextCallDate ? ` · Next ${formatIsoDate(l.nextCallDate)}` : '')} · ${l.callerAssigned || 'Unassigned'}`}
                       right={<>
                         <TempPill value={l.customerStatus} />
                         {isAll && <TypePill type={l.leadType} />}
@@ -2486,15 +2502,8 @@ export default function Dashboard() {
               ) : (
                 <Empty text={loadingOr('No Hot or Warm clients yet.')} />
               )}
-            </UserCard>
-
-            <UserCard className="flex flex-col">
-              <UserCardHeader
-                title="Deal Closed"
-                subtitle={`${dealsClosed.length} ${isAll ? '' : `${tab} `}deal${dealsClosed.length === 1 ? '' : 's'} closed`}
-                icon={CheckCircle2}
-                action={canDrillInto('/deal-closed') && <ViewAll onClick={() => go('/deal-closed')} />}
-              />
+            </>)}
+            {activityTab === 'deals' && (<>
               {dealsClosed.length > 0 ? (
                 <div className="max-h-[380px] overflow-y-auto pb-1">
                   {dealsClosed.slice(0, listLimit.deals).map((l, idx) => {
@@ -2520,8 +2529,8 @@ export default function Dashboard() {
               ) : (
                 <Empty text={loadingOr('No deals closed yet.')} />
               )}
-            </UserCard>
-          </div>
+            </>)}
+          </UserCard>
 
         </>)}
       </div>

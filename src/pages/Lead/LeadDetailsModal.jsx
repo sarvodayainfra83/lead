@@ -101,24 +101,34 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-3.5 sm:p-5 md:p-6 bg-black/60 backdrop-blur-xs">
       <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-gray-100/80 ring-1 ring-black/5 w-full max-w-3xl max-h-[88dvh] sm:max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between gap-2 border-b border-white/10">
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
-            {lead.leadNo && (
-              <span className="font-mono text-xs sm:text-sm font-bold text-white bg-white/10 px-2.5 py-1 rounded-lg border border-white/15 tracking-wide shrink-0">
-                #{lead.leadNo}
-              </span>
-            )}
-            {lead.leadType && (
-              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap shadow-2xs ${badgeStyle.bg}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${badgeStyle.dot}`} />
-                <span>{lead.leadType}</span>
-              </span>
-            )}
-            {lead.processType && (
-              <span className="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-medium whitespace-nowrap">
-                {lead.processType}
-              </span>
-            )}
+        <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between gap-3 border-b border-white/10">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white font-bold text-sm sm:text-base flex items-center justify-center shrink-0 shadow-md ring-2 ring-white/20">
+              {(lead.personName || lead.customerName || 'C').slice(0, 2).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base sm:text-lg font-bold text-white truncate leading-tight" title={lead.personName || lead.customerName || 'Customer Details'}>
+                  {lead.personName || lead.customerName || 'Customer Details'}
+                </h3>
+                {lead.leadNo && (
+                  <span className="font-mono text-[11px] sm:text-xs font-bold text-indigo-200 bg-white/10 px-2 py-0.5 rounded-md border border-white/15 tracking-wide shrink-0">
+                    #{lead.leadNo}
+                  </span>
+                )}
+                {lead.leadType && (
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border inline-flex items-center gap-1 shrink-0 whitespace-nowrap shadow-2xs ${badgeStyle.bg}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${badgeStyle.dot}`} />
+                    <span>{lead.leadType}</span>
+                  </span>
+                )}
+                {lead.processType && (
+                  <span className="hidden md:inline-block text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-medium whitespace-nowrap">
+                    {lead.processType}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {onShareProducts && (
@@ -146,45 +156,69 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
 
         {/* Content */}
         <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-4 overflow-y-auto">
-          {/* Quick Info Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs">
-            <div>
-              <p className="text-gray-400 text-[10px] uppercase tracking-wider font-medium">Lead Date</p>
-              <p className="font-semibold text-gray-800 flex items-center gap-1 mt-0.5">
-                <Calendar size={12} className="text-indigo-500" />
-                {formatLeadDate(lead.timestamp || lead.created_at || lead.date)}
+          {/* Top Key Handling & Source Highlight Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            {/* Caller Assigned - Highlighted */}
+            <div className="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200/90 shadow-2xs">
+              <p className="text-[10px] uppercase font-bold text-amber-700 tracking-wider flex items-center gap-1">
+                <UserCheck size={11} className="text-amber-600" /> Caller Assigned
+              </p>
+              <p className="font-bold text-xs text-amber-950 mt-1 truncate" title={lead.callerAssigned || 'Unassigned'}>
+                {lead.callerAssigned || <span className="italic font-medium text-amber-600">Unassigned</span>}
               </p>
             </div>
-            <div>
-              <p className="text-gray-400 text-[10px] uppercase tracking-wider font-medium">Caller Assigned</p>
-              <p className="font-semibold text-gray-800 flex items-center gap-1 mt-0.5 truncate">
-                <UserCheck size={12} className="text-emerald-500 flex-shrink-0" />
-                <span className={lead.callerAssigned ? 'text-emerald-700' : 'text-amber-600 italic'}>
-                  {lead.callerAssigned || 'Unassigned'}
-                </span>
+
+            {/* Team Member - Highlighted */}
+            <div className="p-2.5 rounded-xl bg-violet-50/80 border border-violet-200/90 shadow-2xs">
+              <p className="text-[10px] uppercase font-bold text-violet-700 tracking-wider flex items-center gap-1">
+                <User size={11} className="text-violet-600" /> Team Member
               </p>
-            </div>
-            <div>
-              <p className="text-gray-400 text-[10px] uppercase tracking-wider font-medium">Team Member</p>
-              <p className="font-semibold text-gray-800 flex items-center gap-1 mt-0.5 truncate">
-                <User size={12} className="text-blue-500 flex-shrink-0" />
+              <p className="font-bold text-xs text-violet-950 mt-1 truncate" title={lead.leadReceiver || '-'}>
                 {lead.leadReceiver || '-'}
               </p>
             </div>
-            <div>
-              <p className="text-gray-400 text-[10px] uppercase tracking-wider font-medium">Lead Source</p>
-              <p className="font-semibold text-gray-800 mt-0.5 truncate">
+
+            {/* Site Visit / Meeting Assigned To - Highlighted */}
+            <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-200/90 shadow-2xs">
+              <p className="text-[10px] uppercase font-bold text-indigo-700 tracking-wider flex items-center gap-1">
+                <MapPin size={11} className="text-indigo-600" /> {lead.leadType === 'Real Estate' ? 'Site Visit Assigned' : 'Meeting Assigned'}
+              </p>
+              <p className="font-bold text-xs text-indigo-950 mt-1 truncate" title={lead.assignedVisitor || 'Unassigned'}>
+                {lead.assignedVisitor || <span className="italic font-medium text-indigo-500">Unassigned</span>}
+              </p>
+            </div>
+
+            {/* Lead Source - Highlighted */}
+            <div className="p-2.5 rounded-xl bg-sky-50/80 border border-sky-200/90 shadow-2xs">
+              <p className="text-[10px] uppercase font-bold text-sky-700 tracking-wider flex items-center gap-1">
+                <Briefcase size={11} className="text-sky-600" /> Lead Source
+              </p>
+              <p className="font-bold text-xs text-sky-950 mt-1 truncate" title={lead.leadSource || '-'}>
                 {lead.leadSource || '-'}
               </p>
             </div>
-            {(lead.referencerName || lead.referenceName || (lead.leadSource && String(lead.leadSource).toLowerCase().includes('reference'))) && (
-              <div>
-                <p className="text-gray-400 text-[10px] uppercase tracking-wider font-medium">Reference Name</p>
-                <p className="font-bold text-indigo-700 mt-0.5 truncate" title={lead.referencerName || lead.referenceName || '-'}>
+
+            {/* Ref Name - Highlighted if present */}
+            {(lead.referencerName || lead.referenceName || (lead.leadSource && String(lead.leadSource).toLowerCase().includes('reference'))) ? (
+              <div className="p-2.5 rounded-xl bg-emerald-50/80 border border-emerald-200/90 shadow-2xs">
+                <p className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider flex items-center gap-1">
+                  <User size={11} className="text-emerald-600" /> Ref Name
+                </p>
+                <p className="font-bold text-xs text-emerald-950 mt-1 truncate" title={lead.referencerName || lead.referenceName || '-'}>
                   {lead.referencerName || lead.referenceName || '-'}
                 </p>
               </div>
-            )}
+            ) : null}
+
+            {/* Lead Date */}
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 shadow-2xs">
+              <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider flex items-center gap-1">
+                <Calendar size={11} className="text-slate-500" /> Lead Date
+              </p>
+              <p className="font-bold text-xs text-slate-800 mt-1">
+                {formatLeadDate(lead.timestamp || lead.created_at || lead.date)}
+              </p>
+            </div>
           </div>
 
           {/* Customer Details */}
@@ -193,11 +227,11 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
               <User size={14} /> Customer Information
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div>
-                <p className="text-gray-500 text-[11px]">Full Name</p>
-                <p className="text-gray-900 font-semibold text-sm">{lead.personName || lead.customerName || '-'}</p>
+              <div className="p-2.5 rounded-lg bg-indigo-50/70 border border-indigo-200">
+                <p className="text-indigo-700 text-[10px] uppercase font-bold tracking-wider">Customer Name</p>
+                <p className="text-indigo-950 font-extrabold text-sm mt-0.5">{lead.personName || lead.customerName || '-'}</p>
               </div>
-              <div>
+              <div className="p-2.5 rounded-lg border border-gray-200">
                 <p className="text-gray-500 text-[11px]">Phone Number</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <a
@@ -215,31 +249,6 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
                     </button>
                   )}
                 </div>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[11px]">Email</p>
-                <p className="text-gray-900 font-medium">
-                  {lead.email || lead.customerEmail ? (
-                    <a href={`mailto:${lead.email || lead.customerEmail}`} className="text-indigo-600 hover:underline flex items-center gap-1">
-                      <Mail size={12} /> {lead.email || lead.customerEmail}
-                    </a>
-                  ) : '-'}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[11px]">Date of Birth</p>
-                <p className="text-gray-800 font-medium">{formatDate(lead.dob)}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[11px]">Occupation</p>
-                <p className="text-gray-800 font-medium">{lead.occupation || '-'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[11px]">Address / Location</p>
-                <p className="text-gray-800 font-medium flex items-center gap-1">
-                  <MapPin size={12} className="text-gray-400 flex-shrink-0" />
-                  {lead.location || lead.customerAddress || '-'}
-                </p>
               </div>
             </div>
           </div>
@@ -286,26 +295,9 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
                 <p className="text-gray-500 text-[11px]">Investment Budget</p>
                 <p className="text-emerald-700 font-bold">{lead.investmentBudget || '-'}</p>
               </div>
-              {(lead.referencerName || lead.referenceName) && (
-                <div>
-                  <p className="text-gray-500 text-[11px]">Reference Name</p>
-                  <p className="text-gray-800 font-medium">{lead.referencerName || lead.referenceName}</p>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Remarks */}
-          {lead.remarks && (
-            <div className="border border-gray-100 rounded-xl p-4 bg-white shadow-xs">
-              <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2 flex items-center gap-1.5 text-gray-700">
-                <FileText size={14} /> Remarks & Notes
-              </h4>
-              <p className="text-xs text-gray-700 whitespace-pre-wrap bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-                {lead.remarks}
-              </p>
-            </div>
-          )}
 
           {/* Call Report (call_trackers linked by lead_id) */}
           <div className="border border-gray-100 rounded-xl p-4 bg-white shadow-xs">
@@ -418,6 +410,52 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
             leadType={lead.leadType}
             initialFollowUps={lead.visitorFollowUps}
           />
+
+          {/* Other profile details — kept at the bottom, below the call & site-visit history */}
+          <div className="border border-gray-100 rounded-xl p-4 bg-white shadow-xs">
+            <h4 className="text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5 text-gray-600">
+              <User size={14} /> Other Details
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <p className="text-gray-500 text-[11px]">Email</p>
+                <p className="text-gray-900 font-medium">
+                  {lead.email || lead.customerEmail ? (
+                    <a href={`mailto:${lead.email || lead.customerEmail}`} className="text-indigo-600 hover:underline flex items-center gap-1">
+                      <Mail size={12} /> {lead.email || lead.customerEmail}
+                    </a>
+                  ) : '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-[11px]">Date of Birth</p>
+                <p className="text-gray-800 font-medium">{formatDate(lead.dob)}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-[11px]">Occupation</p>
+                <p className="text-gray-800 font-medium">{lead.occupation || '-'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500 text-[11px]">Address / Location</p>
+                <p className="text-gray-800 font-medium flex items-center gap-1">
+                  <MapPin size={12} className="text-gray-400 flex-shrink-0" />
+                  {lead.location || lead.customerAddress || '-'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Remarks */}
+          {lead.remarks && (
+            <div className="border border-gray-100 rounded-xl p-4 bg-white shadow-xs">
+              <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-2 flex items-center gap-1.5 text-gray-700">
+                <FileText size={14} /> Remarks & Notes
+              </h4>
+              <p className="text-xs text-gray-700 whitespace-pre-wrap bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                {lead.remarks}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
