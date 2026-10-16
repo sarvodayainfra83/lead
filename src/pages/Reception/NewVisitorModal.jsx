@@ -372,7 +372,7 @@ export default function NewVisitorModal({ isOpen, onClose, onSaved }) {
             {!isTodayEntry && (
               <p className="text-[10px] text-amber-700 font-medium mt-1">
                 Backdating visitor entry to {formData.checkInDate}
-              </p>
+              </p>    
             )}
           </div>
 

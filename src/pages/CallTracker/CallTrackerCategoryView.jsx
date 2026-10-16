@@ -1295,7 +1295,6 @@ export default function CallTrackerCategoryView({
 
     const details = [];
     if (isValid(item.assignedVisitor)) details.push({ label: assignedToLabel, value: item.assignedVisitor, icon: UserCheck });
-    if (isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
     if (isValid(item.leadReceiver)) details.push({ label: 'Team Member', value: item.leadReceiver, icon: User });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget)) details.push({ label: 'Budget', value: item.investmentBudget, icon: IndianRupee });
@@ -1421,13 +1420,26 @@ export default function CallTrackerCategoryView({
           )}
         </div>
 
-        {/* Customer Status + latest Admin Remark (if any) */}
-        {item.customerStatus && (
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Customer Status</span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${CUSTOMER_STATUS_STYLES[item.customerStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-              {item.customerStatus}
-            </span>
+        {/* Customer Status & Caller Assigned + latest Admin Remark (if any) */}
+        {(item.customerStatus || isValid(item.callerAssigned)) && (
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {item.customerStatus && (
+              <div className="min-w-0">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Status</span>
+                <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border mt-0.5 ${CUSTOMER_STATUS_STYLES[item.customerStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                  {item.customerStatus}
+                </span>
+              </div>
+            )}
+            {isValid(item.callerAssigned) && (
+              <div className={`min-w-0 ${item.customerStatus ? '' : 'col-start-2'}`}>
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Caller</span>
+                <span className="inline-flex items-center gap-1 max-w-full bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[11px] font-semibold mt-0.5">
+                  <UserCheck size={11} className="text-amber-600 shrink-0" />
+                  <span className="truncate">{item.callerAssigned}</span>
+                </span>
+              </div>
+            )}
           </div>
         )}
         {(isAdmin || item.adminRemark) && (
