@@ -469,6 +469,7 @@ export default function CallTrackerCategoryView({
     const names = new Set();
     enrichedLeads.forEach(l => {
       if (l.callerAssigned) names.add(l.callerAssigned);
+      if (isAdmin && l.assignedVisitor) names.add(l.assignedVisitor);
     });
     callersMaster.forEach(c => {
       const name = typeof c === 'string' ? c : (c.personName || c.name);
@@ -708,9 +709,11 @@ export default function CallTrackerCategoryView({
       // "New remarks" chip: unread admin remarks for users, new user replies for admins
       if (newRemarksOnly && !(isAdmin ? item.hasNewUserReply : item.hasNewAdminRemark)) return false;
 
-      // Caller filter
-      if (callerFilter !== 'all' && item.callerAssigned !== callerFilter) {
-        return false;
+      // Caller / Visitor filter
+      if (callerFilter !== 'all') {
+        const matchesCaller = item.callerAssigned === callerFilter;
+        const matchesVisitor = isAdmin && item.assignedVisitor === callerFilter;
+        if (!matchesCaller && !matchesVisitor) return false;
       }
 
       // Date filter (evaluates Next Call Date, Last Meeting Date, and Next Meeting Date)
@@ -1282,8 +1285,58 @@ export default function CallTrackerCategoryView({
       return s !== '' && s !== '-' && s !== 'null' && s !== 'undefined';
     };
 
+    const isSiteVisitStage = item.stage === 'Site Visit' || item.inSiteVisitList;
+
+    // For Admin role: show assigned caller or assigned visitor based on the lead's stage
+    // (Site Visit stage -> show Visitor; Calling stage -> show Caller).
+    // For other roles: standard caller display (or visitor if caller not present).
+    let assignedLabel = 'Caller';
+    let assignedPerson = '';
+
+    if (isAdmin) {
+      if (isSiteVisitStage) {
+        if (isValid(item.assignedVisitor)) {
+          assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+          assignedPerson = item.assignedVisitor;
+        } else if (isValid(item.callerAssigned)) {
+          assignedLabel = 'Caller';
+          assignedPerson = item.callerAssigned;
+        } else {
+          assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+          assignedPerson = '';
+        }
+      } else {
+        if (isValid(item.callerAssigned)) {
+          assignedLabel = 'Caller';
+          assignedPerson = item.callerAssigned;
+        } else if (isValid(item.assignedVisitor)) {
+          assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+          assignedPerson = item.assignedVisitor;
+        } else {
+          assignedLabel = 'Caller';
+          assignedPerson = '';
+        }
+      }
+    } else {
+      if (isValid(item.callerAssigned)) {
+        assignedLabel = 'Caller';
+        assignedPerson = item.callerAssigned;
+      } else if (isValid(item.assignedVisitor)) {
+        assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+        assignedPerson = item.assignedVisitor;
+      }
+    }
+
+    const hasAssignedPerson = isValid(assignedPerson);
+    const isVisitorBadge = assignedLabel !== 'Caller';
+
     const details = [];
-    if (isValid(item.assignedVisitor)) details.push({ label: assignedToLabel, value: item.assignedVisitor, icon: UserCheck });
+    // Show secondary assigned person in details if both exist
+    if (isVisitorBadge) {
+      if (isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
+    } else {
+      if (isValid(item.assignedVisitor)) details.push({ label: assignedToLabel, value: item.assignedVisitor, icon: UserCheck });
+    }
     if (isValid(item.leadReceiver)) details.push({ label: 'Team Member', value: item.leadReceiver, icon: User });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget)) details.push({ label: 'Budget', value: item.investmentBudget, icon: IndianRupee });
@@ -1409,24 +1462,33 @@ export default function CallTrackerCategoryView({
           )}
         </div>
 
-        {/* Customer Status & Caller Assigned + latest Admin Remark (if any) */}
-        {(item.customerStatus || isValid(item.callerAssigned)) && (
+        {/* Customer Status & Assigned Caller / Visitor (based on stage for Admin) */}
+        {(item.customerStatus || hasAssignedPerson || (isAdmin && (isSiteVisitStage || item.callerAssigned))) && (
           <div className="grid grid-cols-2 gap-2 text-xs">
-            {item.customerStatus && (
+            {item.customerStatus ? (
               <div className="min-w-0">
                 <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Status</span>
                 <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border mt-0.5 ${CUSTOMER_STATUS_STYLES[item.customerStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                   {item.customerStatus}
                 </span>
               </div>
-            )}
-            {isValid(item.callerAssigned) && (
-              <div className={`min-w-0 ${item.customerStatus ? '' : 'col-start-2'}`}>
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Caller</span>
-                <span className="inline-flex items-center gap-1 max-w-full bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded text-[11px] font-semibold mt-0.5">
-                  <UserCheck size={11} className="text-amber-600 shrink-0" />
-                  <span className="truncate">{item.callerAssigned}</span>
+            ) : <div />}
+            {hasAssignedPerson ? (
+              <div className="min-w-0">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">{assignedLabel}</span>
+                <span className={`inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded text-[11px] font-semibold mt-0.5 border ${
+                  isVisitorBadge
+                    ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}>
+                  <UserCheck size={11} className={`${isVisitorBadge ? 'text-indigo-600' : 'text-amber-600'} shrink-0`} />
+                  <span className="truncate">{assignedPerson}</span>
                 </span>
+              </div>
+            ) : isAdmin && (
+              <div className="min-w-0">
+                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">{assignedLabel}</span>
+                <span className="text-gray-400 italic text-[11px] mt-0.5 block">Not assigned</span>
               </div>
             )}
           </div>
