@@ -353,42 +353,57 @@ export default function Customermaster() {
       </div>
 
       {/* Filter Bar (Always visible) */}
-      <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap">
-        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
-          Filter Options:
-        </span>
-
-        <div className="w-[130px] lg:w-[150px]">
-          <SearchableDropdown
-            options={[
-              ...CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v })),
-              { value: 'all', label: 'Hot & Warm' }
-            ]}
-            value={filters.customerStatus}
-            onChange={(val) => updateFilter('customerStatus', val || DEFAULT_CUSTOMER_STATUS)}
-            placeholder="Hot"
-            height="h-[30px]"
-          />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+            Filter Options:
+          </span>
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => {
+                setFilters(prev => ({ ...prev, leadSource: '', callerAssigned: '', customerStatus: '' }));
+                setCurrentPage(1);
+              }}
+              className="sm:hidden text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
 
-        <div className="w-[130px] lg:w-[150px]">
-          <SearchableDropdown
-            options={LEAD_SOURCES.map(v => ({ value: v, label: v }))}
-            value={filters.leadSource}
-            onChange={(val) => updateFilter('leadSource', val)}
-            placeholder="All Lead Source"
-            height="h-[30px]"
-          />
-        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 sm:flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-initial">
+          <div className="w-full sm:w-[140px] lg:w-[150px]">
+            <SearchableDropdown
+              options={[
+                ...CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v })),
+                { value: 'all', label: 'Hot & Warm' }
+              ]}
+              value={filters.customerStatus}
+              onChange={(val) => updateFilter('customerStatus', val || DEFAULT_CUSTOMER_STATUS)}
+              placeholder="Hot"
+              height="h-[30px]"
+            />
+          </div>
 
-        <div className="w-[130px] lg:w-[150px]">
-          <SearchableDropdown
-            options={callerOptions}
-            value={filters.callerAssigned}
-            onChange={(val) => updateFilter('callerAssigned', val)}
-            placeholder="All Assigned Caller"
-            height="h-[30px]"
-          />
+          <div className="w-full sm:w-[140px] lg:w-[150px]">
+            <SearchableDropdown
+              options={LEAD_SOURCES.map(v => ({ value: v, label: v }))}
+              value={filters.leadSource}
+              onChange={(val) => updateFilter('leadSource', val)}
+              placeholder="All Lead Source"
+              height="h-[30px]"
+            />
+          </div>
+
+          <div className="w-full sm:w-[140px] lg:w-[150px]">
+            <SearchableDropdown
+              options={callerOptions}
+              value={filters.callerAssigned}
+              onChange={(val) => updateFilter('callerAssigned', val)}
+              placeholder="All Assigned Caller"
+              height="h-[30px]"
+            />
+          </div>
         </div>
 
         {activeFilterCount > 0 && (
@@ -397,7 +412,7 @@ export default function Customermaster() {
               setFilters(prev => ({ ...prev, leadSource: '', callerAssigned: '', customerStatus: '' }));
               setCurrentPage(1);
             }}
-            className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer"
+            className="hidden sm:inline-block text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer shrink-0"
           >
             Clear filters
           </button>

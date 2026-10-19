@@ -1167,87 +1167,89 @@ export default function LeadCategoryView({
       </div>
 
       {/* Filter Options Bar (Always Visible) */}
-      <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
-        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
+        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">
           Filter Options:
         </span>
 
-        {/* Caller Status Filter */}
-        <div className="w-[130px] lg:w-[150px]">
-          <select
-            value={callerStatusFilter}
-            onChange={(e) => { setCallerStatusFilter(e.target.value); setCurrentPage(1); }}
-            title="Status"
-            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-          >
-            <option value="all">All Leads</option>
-            <option value="unassigned">Unassigned (Pending)</option>
-            <option value="assigned">Caller Assigned</option>
-          </select>
-        </div>
-
-        {/* Product Type Filter */}
-        {distinctProductTypes.length > 0 && (
-          <div className="w-[130px] lg:w-[150px]">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Caller Status Filter */}
+          <div className="w-full sm:w-[130px] lg:w-[150px]">
             <select
-              value={productTypeFilter}
-              onChange={(e) => { setProductTypeFilter(e.target.value); setCurrentPage(1); }}
-              title="Product Type"
+              value={callerStatusFilter}
+              onChange={(e) => { setCallerStatusFilter(e.target.value); setCurrentPage(1); }}
+              title="Status"
               className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
             >
-              <option value="">All Products</option>
-              {distinctProductTypes.map(p => (
-                <option key={p} value={p}>{p}</option>
+              <option value="all">All Leads</option>
+              <option value="unassigned">Unassigned (Pending)</option>
+              <option value="assigned">Caller Assigned</option>
+            </select>
+          </div>
+
+          {/* Product Type Filter */}
+          {distinctProductTypes.length > 0 && (
+            <div className="w-full sm:w-[130px] lg:w-[150px]">
+              <select
+                value={productTypeFilter}
+                onChange={(e) => { setProductTypeFilter(e.target.value); setCurrentPage(1); }}
+                title="Product Type"
+                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+              >
+                <option value="">All Products</option>
+                {distinctProductTypes.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Requirement Filter (Real Estate only) */}
+          {category === 'Real Estate' && distinctRequirements.length > 0 && (
+            <div className="w-full sm:w-[130px] lg:w-[150px]">
+              <select
+                value={requirementFilter}
+                onChange={(e) => { setRequirementFilter(e.target.value); setCurrentPage(1); }}
+                title="Requirement"
+                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+              >
+                <option value="">All Requirements</option>
+                {distinctRequirements.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Assigned Caller Filter */}
+          <div className="w-full sm:w-[130px] lg:w-[150px]">
+            <select
+              value={callerFilter}
+              onChange={(e) => { setCallerFilter(e.target.value); setCurrentPage(1); }}
+              title="Caller"
+              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
+            >
+              <option value="">All Callers</option>
+              {callerOptions.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
           </div>
-        )}
 
-        {/* Requirement Filter (Real Estate only) */}
-        {category === 'Real Estate' && distinctRequirements.length > 0 && (
-          <div className="w-[130px] lg:w-[150px]">
+          {/* Lead Source Filter */}
+          <div className="w-full sm:w-[130px] lg:w-[150px]">
             <select
-              value={requirementFilter}
-              onChange={(e) => { setRequirementFilter(e.target.value); setCurrentPage(1); }}
-              title="Requirement"
+              value={leadSourceFilter}
+              onChange={(e) => { setLeadSourceFilter(e.target.value); setCurrentPage(1); }}
+              title="Source"
               className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
             >
-              <option value="">All Requirements</option>
-              {distinctRequirements.map(r => (
-                <option key={r} value={r}>{r}</option>
+              <option value="">All Sources</option>
+              {LEAD_SOURCES.map(s => (
+                <option key={s} value={s}>{s}</option>
               ))}
             </select>
           </div>
-        )}
-
-        {/* Assigned Caller Filter */}
-        <div className="w-[130px] lg:w-[150px]">
-          <select
-            value={callerFilter}
-            onChange={(e) => { setCallerFilter(e.target.value); setCurrentPage(1); }}
-            title="Caller"
-            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-          >
-            <option value="">All Callers</option>
-            {callerOptions.map(c => (
-              <option key={c.value} value={c.value}>{c.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {/* Lead Source Filter */}
-        <div className="w-[130px] lg:w-[150px]">
-          <select
-            value={leadSourceFilter}
-            onChange={(e) => { setLeadSourceFilter(e.target.value); setCurrentPage(1); }}
-            title="Source"
-            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px]"
-          >
-            <option value="">All Sources</option>
-            {LEAD_SOURCES.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
         </div>
       </div>
 

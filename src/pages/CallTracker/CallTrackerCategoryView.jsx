@@ -684,17 +684,6 @@ export default function CallTrackerCategoryView({
     return 'Custom Date Range';
   }, [customFrom, customTo, dateCounts.custom]);
 
-  // Dynamic Date Filter Options with live counts for all dates
-  const dateFilterOptions = useMemo(() => {
-    return [
-      { value: 'all', label: `All Dates (${dateCounts.all})` },
-      { value: 'today', label: `Today's Followup (${dateCounts.today})` },
-      { value: 'yesterday', label: `Yesterday (${dateCounts.yesterday})` },
-      { value: 'overdue', label: `Overdue (${dateCounts.overdue})` },
-      { value: 'upcoming', label: `Upcoming (${dateCounts.upcoming})` },
-      { value: 'custom', label: customDropdownLabel }
-    ];
-  }, [dateCounts, customDropdownLabel]);
 
   // Dropdown options for All Dates and other timeframes (excluding separate Today's Followup tab)
   const allDatesFilterOptions = useMemo(() => {
@@ -1932,98 +1921,60 @@ export default function CallTrackerCategoryView({
 
       {/* Filter Bar (always visible for ADMIN) */}
       {isAdmin && (
-        <div className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex-wrap animate-in fade-in slide-in-from-top-1 duration-150">
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0 mr-1">
-            Filter Options:
-          </span>
-
-          {/* Status Dropdown */}
-          <div className="w-[130px] lg:w-[150px]">
-            <SearchableDropdown
-              options={statusFilterOptions}
-              value={statusFilter}
-              onChange={(val) => {
-                setStatusFilter(val);
-                setCurrentPage(1);
-              }}
-              placeholder="All Status"
-              height="h-[30px]"
-            />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* Label + Mobile Clear Filters */}
+          <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+              Filter Options:
+            </span>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={handleClearFilters}
+                className="sm:hidden text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
 
-          {/* Date Filter Dropdown */}
-          <div className="w-[130px] lg:w-[150px]">
-            <SearchableDropdown
-              options={dateFilterOptions}
-              value={dateFilter}
-              onChange={(val) => {
-                setDateFilter(val);
-                setStageFilter('all');
-                if (val === 'custom' && !customFrom && !customTo) {
-                  const t = getTodayStr();
-                  setCustomFrom(t);
-                  setCustomTo(t);
-                }
-                setCurrentPage(1);
-              }}
-              placeholder="All Dates"
-              height="h-[30px]"
-            />
-          </div>
-
-          {/* Custom Date Range Inline Inputs */}
-          {dateFilter === 'custom' && (
-            <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
-              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-2 h-[30px] shadow-2xs">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
-                <input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => {
-                    setCustomFrom(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
-                  title="From Date"
-                />
-              </div>
-              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-2 h-[30px] shadow-2xs">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
-                <input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => {
-                    setCustomTo(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
-                  title="To Date"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Caller Dropdown (if admin or multiple callers) */}
-          {callerOptions.length > 2 && (
-            <div className="w-[130px] lg:w-[150px]">
+          {/* Filter Dropdowns Container */}
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-initial">
+            {/* Status Dropdown */}
+            <div className="flex-1 min-w-0 sm:flex-initial sm:w-[150px] lg:w-[160px]">
               <SearchableDropdown
-                options={callerOptions}
-                value={callerFilter}
+                options={statusFilterOptions}
+                value={statusFilter}
                 onChange={(val) => {
-                  setCallerFilter(val);
+                  setStatusFilter(val);
                   setCurrentPage(1);
                 }}
-                placeholder="All Callers"
+                placeholder="All Status"
                 height="h-[30px]"
               />
             </div>
-          )}
 
-          {/* Quick Clear Filters Link */}
+            {/* Caller Dropdown (if admin or multiple callers) */}
+            {callerOptions.length > 2 && (
+              <div className="flex-1 min-w-0 sm:flex-initial sm:w-[150px] lg:w-[160px]">
+                <SearchableDropdown
+                  options={callerOptions}
+                  value={callerFilter}
+                  onChange={(val) => {
+                    setCallerFilter(val);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="All Callers"
+                  height="h-[30px]"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Clear Filters Link */}
           {activeFilterCount > 0 && (
             <button
               onClick={handleClearFilters}
-              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer"
+              className="hidden sm:inline-block text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer shrink-0"
             >
               Clear filters
             </button>
