@@ -70,7 +70,8 @@ export const DEFAULT_USER_ACCESS = {
   misReport: 'view',
   attendance: 'edit',
   attendanceReport: 'view',
-  reception: 'edit',
+  receptionDashboard: 'none',
+  reception: 'none',
   master: 'none',
   setting: 'none'
 };

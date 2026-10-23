@@ -527,9 +527,14 @@ export const getPageAccess = (user, pageKey) => {
   // An explicit "No Access" from Setting → Page Access always wins (sidebar, Dashboard links and the route guard)
   if (level === 'none') return 'none';
 
+  // Reception and Reception Dashboard strictly require explicit access or Receptionist/Admin role
+  if (pageKey === 'reception' || pageKey === 'receptionDashboard') {
+    return 'none';
+  }
+
   // Core customer information & lead pages the admin never configured for this user default to
   // view mode, so they can still see their connected leads/customers.
-  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance', 'reception'];
+  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance'];
   if (CUSTOMER_INFO_PAGES.includes(pageKey)) {
     return 'view';
   }

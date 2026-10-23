@@ -152,7 +152,7 @@ export default function ReceptionistDashboard() {
   const [error, setError] = useState(null);
 
   // Filter states
-  const [dateFilter, setDateFilter] = useState('today'); // 'today' | 'yesterday' | 'specific' | 'range' | 'all'
+  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'single' | 'range'
   const [specificDate, setSpecificDate] = useState('');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -325,7 +325,7 @@ export default function ReceptionistDashboard() {
 
   // Active filters count
   const activeFiltersCount =
-    (dateFilter !== 'today' ? 1 : 0) +
+    (dateFilter !== 'all' ? 1 : 0) +
     (purposeFilter !== 'all' ? 1 : 0) +
     (categoryFilter !== 'all' ? 1 : 0) +
     (locationFilter !== 'all' ? 1 : 0) +
@@ -333,7 +333,7 @@ export default function ReceptionistDashboard() {
 
   // Clear / Reset All Filters
   const handleResetFilters = () => {
-    setDateFilter('today');
+    setDateFilter('all');
     setSpecificDate('');
     setCustomFrom('');
     setCustomTo('');
@@ -342,7 +342,7 @@ export default function ReceptionistDashboard() {
     setCategoryFilter('all');
     setLocationFilter('all');
     setCurrentPage(1);
-    toast.success('Filters reset to Today');
+    toast.success('Filters reset to All Dates');
   };
 
   // Date Filter Change Handler: automatically resets other filters (Purpose, Location, Status, Search)
@@ -831,6 +831,33 @@ export default function ReceptionistDashboard() {
         </div>
       </div>
 
+      {/* Notice Banner when Today has 0 records but past records exist */}
+      {dateFilter === 'today' && kpiCounts.totalVisitors === 0 && visitors.length > 0 && !loading && (
+        <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-indigo-50 border border-indigo-200 rounded-xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Calendar size={18} />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-bold text-indigo-950">
+                0 visitors recorded for Today ({todayDateStr})
+              </p>
+              <p className="text-[11px] sm:text-xs text-indigo-700 mt-0.5">
+                You have <strong className="font-bold text-indigo-900">{visitors.length} total visitor record{visitors.length > 1 ? 's' : ''}</strong> logged on earlier dates.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleDateFilterSelect('all')}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs transition active:scale-95 shrink-0 cursor-pointer"
+          >
+            <Eye size={14} />
+            <span>View All Dates ({visitors.length})</span>
+          </button>
+        </div>
+      )}
+
       {/* 3. KPIs: total visitors + one tile per visit purpose, for the selected period. Every tile filters the records below */}
       <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
@@ -1192,14 +1219,50 @@ export default function ReceptionistDashboard() {
                 <span className="text-xs">Loading...</span>
               </div>
             ) : filteredVisitors.length === 0 ? (
-              <div className="py-16 px-3 text-center text-gray-400">
-                <UserCheck size={26} className="mx-auto text-gray-300 mb-1.5" />
-                <p className="text-xs font-semibold text-gray-600">
-                  {purposeFilter === 'all' ? 'No visitors recorded' : `No ${purposeFilter} visits`}
-                </p>
-                <p className="text-[10px] text-gray-400 mt-0.5">
-                  {baseVisitors.length === 0 ? 'Click + New Visitor to register entries' : 'Try another purpose tab or change the filters'}
-                </p>
+              <div className="py-14 px-4 text-center">
+                {dateFilter === 'today' && visitors.length > 0 ? (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-2 border border-indigo-100">
+                      <Calendar size={22} />
+                    </div>
+                    <p className="text-sm font-bold text-gray-800">
+                      No visitors recorded today
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1 max-w-sm mx-auto">
+                      No check-ins were registered for today ({todayDateStr}), but you have <strong className="text-indigo-900 font-bold">{visitors.length} visitor record{visitors.length > 1 ? 's' : ''}</strong> on earlier dates.
+                    </p>
+                    <div className="mt-3.5 flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDateFilterSelect('all')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs transition cursor-pointer"
+                      >
+                        <Eye size={13} />
+                        <span>View All Dates ({visitors.length})</span>
+                      </button>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => setIsNewModalOpen(true)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 transition cursor-pointer"
+                        >
+                          <UserPlus size={13} />
+                          <span>+ New Visitor</span>
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <UserCheck size={26} className="mx-auto text-gray-300 mb-1.5" />
+                    <p className="text-xs font-semibold text-gray-600">
+                      {purposeFilter === 'all' ? 'No visitors recorded' : `No ${purposeFilter} visits`}
+                    </p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {baseVisitors.length === 0 ? 'Click + New Visitor to register entries' : 'Try another purpose tab or change the filters'}
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <>
@@ -1242,23 +1305,41 @@ export default function ReceptionistDashboard() {
                 </div>
               ) : paginatedVisitors.length === 0 ? (
                 <div className="py-16 px-4 flex flex-col items-center justify-center text-center text-gray-500">
-                  <div className="w-12 h-12 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center mb-2 border border-gray-200">
-                    <Users size={22} />
+                  <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mb-2 border border-indigo-100">
+                    {dateFilter === 'today' && visitors.length > 0 ? <Calendar size={22} /> : <Users size={22} />}
                   </div>
-                  <h4 className="text-sm font-bold text-gray-900">No visitor records found</h4>
+                  <h4 className="text-sm font-bold text-gray-900">
+                    {dateFilter === 'today' && visitors.length > 0
+                      ? 'No visitors recorded today'
+                      : 'No visitor records found'}
+                  </h4>
                   <p className="text-xs text-gray-500 mt-0.5 max-w-sm">
-                    No records match your selected filters. Try broadening your date range or clearing search criteria.
+                    {dateFilter === 'today' && visitors.length > 0
+                      ? `No check-ins have been logged for today (${todayDateStr}), but you have ${visitors.length} visitor record(s) on earlier dates.`
+                      : 'No records match your selected filters. Try broadening your date range or clearing search criteria.'}
                   </p>
-                  {activeFiltersCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleResetFilters}
-                      className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition cursor-pointer"
-                    >
-                      <RotateCcw size={13} />
-                      <span>Reset All Filters</span>
-                    </button>
-                  )}
+                  <div className="mt-3.5 flex items-center gap-2">
+                    {dateFilter === 'today' && visitors.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleDateFilterSelect('all')}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs transition cursor-pointer"
+                      >
+                        <Eye size={13} />
+                        <span>View All Dates ({visitors.length})</span>
+                      </button>
+                    )}
+                    {activeFiltersCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleResetFilters}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition cursor-pointer"
+                      >
+                        <RotateCcw size={13} />
+                        <span>Reset All Filters</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <table className="w-full text-left text-xs border-collapse min-w-[1250px]">

@@ -40,7 +40,7 @@ export default function Reception() {
 
   // Filter States (initialized from location.state if navigated with params)
   const [searchQuery, setSearchQuery] = useState(initFilters.searchQuery || '');
-  const [dateFilter, setDateFilter] = useState(initFilters.dateFilter || 'today');
+  const [dateFilter, setDateFilter] = useState(initFilters.dateFilter || 'all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [purposeFilter, setPurposeFilter] = useState(initFilters.purposeFilter || 'all');
@@ -191,25 +191,24 @@ export default function Reception() {
     (purposeFilter !== 'all' ? 1 : 0) +
     (categoryFilter !== 'all' ? 1 : 0) +
     (locationFilter !== 'all' ? 1 : 0) +
-    (dateFilter !== 'today' ? 1 : 0) +
+    (dateFilter !== 'all' ? 1 : 0) +
     (searchQuery ? 1 : 0);
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
-    setDateFilter('today');
+    setDateFilter('all');
     setCustomFrom('');
     setCustomTo('');
     setPurposeFilter('all');
     setCategoryFilter('all');
     setLocationFilter('all');
     setCurrentPage(1);
-    toast.success('Filters reset to Today');
+    toast.success('Filters reset to All Visitors');
   }, []);
 
-  // Quick filter from KPI cards: today's visitors, optionally of one purpose ('all' = every purpose)
+  // Quick filter from KPI cards: optionally of one purpose ('all' = every purpose)
   const applyKpiFilter = (purpose) => {
     setCurrentPage(1);
-    setDateFilter('today');
     setPurposeFilter(purpose);
     setCategoryFilter('all');
     setLocationFilter('all');
@@ -639,18 +638,23 @@ export default function Reception() {
         </div>
       )}
 
-      {/* Today's KPIs: total visitors + one tile per visit purpose (click to filter) */}
+      {/* KPIs: total visitors + one tile per visit purpose (click to filter) */}
       <div className={`${showKpiCards ? 'grid' : 'hidden md:grid'} grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5 flex-shrink-0 animate-in fade-in duration-200`}>
         {[
-          { value: 'all', label: 'Visitors Today', count: stats.totalToday, dot: 'bg-indigo-500' },
+          {
+            value: 'all',
+            label: dateFilter === 'today' ? 'Visitors Today' : 'Total Visitors',
+            count: dateFilter === 'today' ? stats.totalToday : visitors.length,
+            dot: 'bg-indigo-500'
+          },
           ...VISIT_PURPOSE_OPTIONS.map(opt => ({
             value: opt.value,
             label: opt.label,
-            count: stats.todayPurposeCounts?.[opt.value] || 0,
+            count: dateFilter === 'today' ? (stats.todayPurposeCounts?.[opt.value] || 0) : (stats.purposeCounts?.[opt.value] || 0),
             dot: opt.dot
           }))
         ].map(t => {
-          const isActive = dateFilter === 'today' && purposeFilter === t.value;
+          const isActive = purposeFilter === t.value;
           return (
             <button
               key={t.value}
@@ -670,15 +674,15 @@ export default function Reception() {
         })}
       </div>
 
-      {/* Today's counts by Visitor Category (click to filter) */}
+      {/* Counts by Visitor Category (click to filter) */}
       <div className={`${showKpiCards ? 'flex' : 'hidden md:flex'} bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs flex-shrink-0`}>
         <VisitBreakdownChips
-          title="Category Today"
+          title={dateFilter === 'today' ? 'Category Today' : 'Category Breakdown'}
           icon={User}
           options={VISITOR_TYPE_OPTIONS}
-          counts={stats.todayTypeCounts}
+          counts={dateFilter === 'today' ? stats.todayTypeCounts : stats.typeCounts}
           active={categoryFilter}
-          onSelect={(val) => { setDateFilter('today'); setCategoryFilter(val); setCurrentPage(1); }}
+          onSelect={(val) => { setCategoryFilter(val); setCurrentPage(1); }}
         />
       </div>
 
@@ -795,6 +799,33 @@ export default function Reception() {
           </button>
         )}
       </div>
+
+      {/* Notice Banner when Today has 0 records but past records exist */}
+      {dateFilter === 'today' && filteredVisitors.length === 0 && visitors.length > 0 && !loading && (
+        <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-indigo-50 border border-indigo-200 rounded-xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-200 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Calendar size={16} />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-bold text-indigo-950">
+                0 visitors recorded for Today
+              </p>
+              <p className="text-[11px] sm:text-xs text-indigo-700 mt-0.5">
+                You have <strong className="font-bold text-indigo-900">{visitors.length} total visitor record{visitors.length > 1 ? 's' : ''}</strong> available on earlier dates.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setDateFilter('all'); setCurrentPage(1); }}
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs transition active:scale-95 shrink-0 cursor-pointer"
+          >
+            <Eye size={13} />
+            <span>View All Visitors ({visitors.length})</span>
+          </button>
+        </div>
+      )}
 
       {/* Main Visitor Register Data Table */}
       <div className={`bg-white rounded-xl border border-gray-200 shadow-2xs overflow-hidden flex flex-col transition-all duration-300 ${
