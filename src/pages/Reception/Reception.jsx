@@ -40,7 +40,7 @@ export default function Reception() {
 
   // Filter States (initialized from location.state if navigated with params)
   const [searchQuery, setSearchQuery] = useState(initFilters.searchQuery || '');
-  const [dateFilter, setDateFilter] = useState(initFilters.dateFilter || 'all');
+  const [dateFilter, setDateFilter] = useState(initFilters.dateFilter || 'today');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [purposeFilter, setPurposeFilter] = useState(initFilters.purposeFilter || 'all');
@@ -191,19 +191,19 @@ export default function Reception() {
     (purposeFilter !== 'all' ? 1 : 0) +
     (categoryFilter !== 'all' ? 1 : 0) +
     (locationFilter !== 'all' ? 1 : 0) +
-    (dateFilter !== 'all' ? 1 : 0) +
+    (dateFilter !== 'today' ? 1 : 0) +
     (searchQuery ? 1 : 0);
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
-    setDateFilter('all');
+    setDateFilter('today');
     setCustomFrom('');
     setCustomTo('');
     setPurposeFilter('all');
     setCategoryFilter('all');
     setLocationFilter('all');
     setCurrentPage(1);
-    toast.success('Filters reset to All Visitors');
+    toast.success("Filters reset to Today's Visitors");
   }, []);
 
   // Quick filter from KPI cards: optionally of one purpose ('all' = every purpose)

@@ -152,7 +152,7 @@ export default function ReceptionistDashboard() {
   const [error, setError] = useState(null);
 
   // Filter states
-  const [dateFilter, setDateFilter] = useState('all'); // 'all' | 'today' | 'yesterday' | 'single' | 'range'
+  const [dateFilter, setDateFilter] = useState('today'); // 'all' | 'today' | 'yesterday' | 'single' | 'range'
   const [specificDate, setSpecificDate] = useState('');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -325,7 +325,7 @@ export default function ReceptionistDashboard() {
 
   // Active filters count
   const activeFiltersCount =
-    (dateFilter !== 'all' ? 1 : 0) +
+    (dateFilter !== 'today' ? 1 : 0) +
     (purposeFilter !== 'all' ? 1 : 0) +
     (categoryFilter !== 'all' ? 1 : 0) +
     (locationFilter !== 'all' ? 1 : 0) +
@@ -333,7 +333,7 @@ export default function ReceptionistDashboard() {
 
   // Clear / Reset All Filters
   const handleResetFilters = () => {
-    setDateFilter('all');
+    setDateFilter('today');
     setSpecificDate('');
     setCustomFrom('');
     setCustomTo('');
@@ -342,7 +342,7 @@ export default function ReceptionistDashboard() {
     setCategoryFilter('all');
     setLocationFilter('all');
     setCurrentPage(1);
-    toast.success('Filters reset to All Dates');
+    toast.success('Filters reset to Today');
   };
 
   // Date Filter Change Handler: automatically resets other filters (Purpose, Location, Status, Search)
