@@ -146,7 +146,8 @@ export default function CallTrackerCategoryView({
   initialStageFilter, // e.g. 'Site Visit' when opened from a Dashboard card
   initialCalledOnly = false, // true when opened from Dashboard "Today's Calls"
   openRemarkLeadId, // open this lead's remark conversation (from a navbar notification)
-  openRemarkNonce // changes on every notification click, so the same lead can be reopened
+  openRemarkNonce, // changes on every notification click, so the same lead can be reopened
+  onDateFilterChange // reports the active date filter up, so the parent can show cross-category context (e.g. a Today's Followup split banner)
 }) {
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
@@ -169,6 +170,11 @@ export default function CallTrackerCategoryView({
   const [callerFilter, setCallerFilter] = useState('all');
   // Stage buttons (All Dates only): 'all' | 'Leads / Calling' | 'Site Visit'
   const [stageFilter, setStageFilter] = useState(initialStageFilter || 'all');
+
+  // Let the parent know which date filter is active (it only reflects this view's internal state)
+  useEffect(() => {
+    onDateFilterChange?.(dateFilter);
+  }, [dateFilter, onDateFilterChange]);
 
   // Helper to format short date DD/MM
   const formatShortDate = (str) => {

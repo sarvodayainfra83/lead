@@ -822,6 +822,13 @@ export default function Dashboard() {
     [byType, userCategories]
   );
 
+  // How many of "Today's Leads" belong to each category — so a page drilled into from a single
+  // combined KPI (e.g. Today's Leads: 36) can explain the split instead of silently showing one category's slice
+  const todayLeadsBreakdown = useMemo(
+    () => Object.fromEntries(byType.map(t => [t.key, t.todayLeads])),
+    [byType]
+  );
+
   const leadById = useMemo(() => Object.fromEntries(data.leads.map(l => [String(l.id), l])), [data.leads]);
 
   const periodLabel = period === 'custom'
@@ -932,7 +939,7 @@ export default function Dashboard() {
       case 'calling':
         return { label: 'View all calls', onClick: () => go('/call-tracker', { dateFilter: 'today', calledOnly: true }) };
       case 'leads':
-        return { label: 'View all leads', onClick: () => go('/call-tracker', { dateFilter: 'today' }) };
+        return { label: 'View all leads', onClick: () => go('/call-tracker', { dateFilter: 'today', todayLeadsBreakdown }) };
       case 'hotWarm':
         return { label: 'View Hot & Warm', onClick: () => go('/customer-master', { customerStatus: 'all' }) };
       case 'deals':
@@ -940,7 +947,7 @@ export default function Dashboard() {
       default:
         return null;
     }
-  }, [activityTab]);
+  }, [activityTab, todayLeadsBreakdown]);
 
   // =========================================================================
   // ADMIN DASHBOARD VIEW (Current Modern Version)
@@ -1005,7 +1012,7 @@ export default function Dashboard() {
                 icon={UserPlus}
                 iconBg="bg-sky-50"
                 iconColor="text-sky-600"
-                onClick={() => go('/call-tracker', { dateFilter: 'today' })}
+                onClick={() => go('/call-tracker', { dateFilter: 'today', todayLeadsBreakdown })}
               />
               <KpiCard
                 title="Today's Calls"
@@ -2079,7 +2086,7 @@ export default function Dashboard() {
               <MetricBlock
                 label="Today's Leads"
                 value={kpis.todayLeads}
-                onClick={() => go('/call-tracker', { dateFilter: 'today' })}
+                onClick={() => go('/call-tracker', { dateFilter: 'today', todayLeadsBreakdown })}
               />
               <MetricBlock
                 label="Today's Calls"
