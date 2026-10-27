@@ -40,11 +40,13 @@ export default function ApplyLeaveModal({ isOpen, onClose, onApplied }) {
   const [formData, setFormData] = useState(getInitialForm());
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showDocError, setShowDocError] = useState(false);
 
   const resetForm = () => {
     setFormData(getInitialForm());
     setImagePreview(null);
     setLoading(false);
+    setShowDocError(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -93,6 +95,7 @@ export default function ApplyLeaveModal({ isOpen, onClose, onApplied }) {
     reader.onload = () => {
       setImagePreview(reader.result);
       setFormData(prev => ({ ...prev, documentUrl: reader.result }));
+      setShowDocError(false);
     };
     reader.readAsDataURL(file);
   };
@@ -121,6 +124,12 @@ export default function ApplyLeaveModal({ isOpen, onClose, onApplied }) {
 
     if (!formData.reason.trim()) {
       toast.error('Please provide a reason for leave');
+      return;
+    }
+
+    if (!formData.documentUrl) {
+      setShowDocError(true);
+      toast.error('Please upload an image / supporting document (Required)');
       return;
     }
 
@@ -303,13 +312,15 @@ export default function ApplyLeaveModal({ isOpen, onClose, onApplied }) {
           <div className="flex items-center justify-between mb-1">
             <label className="text-[11px] font-bold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
               <ImageIcon size={12} className="text-indigo-600" />
-              <span>Attach Supporting Document / Image</span>
+              <span>Attach Supporting Document / Image *</span>
             </label>
-            <span className="text-[10px] text-gray-400 font-normal">(Optional proof)</span>
+            <span className="text-[10px] text-rose-500 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
+              * Required
+            </span>
           </div>
 
           {imagePreview ? (
-            <div className="relative border border-gray-200 rounded-xl p-2 bg-gray-50 flex items-center gap-3">
+            <div className="relative border border-emerald-300 rounded-xl p-2 bg-emerald-50/40 flex items-center gap-3">
               <img
                 src={imagePreview}
                 alt="Leave attachment"
@@ -318,7 +329,7 @@ export default function ApplyLeaveModal({ isOpen, onClose, onApplied }) {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-gray-800 truncate">Image attached</p>
                 <p className="text-[10px] text-emerald-600 font-medium flex items-center gap-1 mt-0.5">
-                  <CheckCircle2 size={11} /> Ready to submit with reason
+                  <CheckCircle2 size={11} /> Ready to submit with leave request
                 </p>
               </div>
               <button
@@ -331,12 +342,16 @@ export default function ApplyLeaveModal({ isOpen, onClose, onApplied }) {
               </button>
             </div>
           ) : (
-            <label className="border-2 border-dashed border-gray-200 hover:border-indigo-400 rounded-xl p-3 flex flex-col items-center justify-center gap-1 cursor-pointer transition bg-gray-50/50 hover:bg-indigo-50/20 group">
-              <Upload size={18} className="text-gray-400 group-hover:text-indigo-600 transition" />
-              <span className="text-xs font-semibold text-gray-600 group-hover:text-indigo-600">
-                Upload Doctor Slip, Written Application or Photo
+            <label className={`border-2 border-dashed rounded-xl p-3 flex flex-col items-center justify-center gap-1 cursor-pointer transition ${
+              showDocError
+                ? 'border-rose-400 bg-rose-50/40 text-rose-600'
+                : 'border-gray-200 hover:border-indigo-400 bg-gray-50/50 hover:bg-indigo-50/20 text-gray-600 hover:text-indigo-600'
+            } group`}>
+              <Upload size={18} className={showDocError ? 'text-rose-500' : 'text-gray-400 group-hover:text-indigo-600 transition'} />
+              <span className="text-xs font-semibold">
+                Upload Doctor Slip, Written Application or Photo *
               </span>
-              <span className="text-[10px] text-gray-400">PNG, JPG up to 5MB</span>
+              <span className="text-[10px] text-gray-400">PNG, JPG up to 5MB (Mandatory)</span>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -345,6 +360,11 @@ export default function ApplyLeaveModal({ isOpen, onClose, onApplied }) {
                 className="sr-only"
               />
             </label>
+          )}
+          {showDocError && (
+            <p className="text-[10px] text-rose-600 font-medium mt-1 flex items-center gap-1">
+              <AlertCircle size={12} /> Please upload a photo or document proof before submitting.
+            </p>
           )}
         </div>
       </div>

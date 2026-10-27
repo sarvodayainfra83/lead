@@ -154,6 +154,7 @@ const PATH_PAGE_KEYS = {
   '/site-visit-meeting': 'siteVisitMeeting',
   '/customer-master': 'customerMaster',
   '/deal-closed': 'dealClosed',
+  '/broker': 'broker',
   '/products': 'products',
   '/mis-report': 'misReport',
   '/attendance': 'attendance',

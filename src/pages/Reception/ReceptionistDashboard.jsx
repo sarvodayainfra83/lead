@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import {
@@ -6,7 +6,7 @@ import {
   LogOut, UserPlus, RefreshCw, Eye, Phone, Building2,
   Calendar, ChevronRight, ChevronLeft, TrendingUp, RotateCcw,
   Pencil, Search, X, FileSpreadsheet, AlertCircle,
-  LayoutGrid, Table, ArrowRight
+  LayoutGrid, Table, ArrowRight, ChevronDown
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -22,6 +22,7 @@ import {
 import NewVisitorModal from './NewVisitorModal';
 import VisitorDetailsModal from './VisitorDetailsModal';
 import EditVisitorModal from './EditVisitorModal';
+import DateInput from '../../components/DateInput';
 import { visitorApi } from '../../api/visitorApi';
 import { useAuthStore } from '../../store/authStore';
 import { hasFullAccess, isUserAdmin } from '../../utils/authUtils';
@@ -161,6 +162,11 @@ export default function ReceptionistDashboard() {
   const [locationFilter, setLocationFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
 
+  const recordsSectionRef = useRef(null);
+  const scrollToRecords = () => {
+    recordsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   // View Mode: 'columns' (Dashboard 4-column cards) vs 'table' (Full tabular register)
   const [viewMode, setViewMode] = useState('columns');
 
@@ -199,6 +205,12 @@ export default function ReceptionistDashboard() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleVisitorUpdated = useCallback((updated) => {
+    if (!updated?.id) return;
+    setVisitors((prev) => prev.map((v) => (v.id === updated.id ? { ...v, ...updated } : v)));
+    setDetailsVisitor((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+  }, []);
 
   // Formatted string for today's date in header
   const todayDateStr = useMemo(() => {
@@ -641,31 +653,31 @@ export default function ReceptionistDashboard() {
     <div className="flex flex-col h-full min-h-0 bg-slate-50/70 p-2.5 sm:p-4 gap-3 sm:gap-4 overflow-y-auto">
 
       {/* 1. Header Banner */}
-      <div className="flex items-center justify-between gap-3 flex-wrap bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
-            <UserCheck size={20} />
+      <div className="flex items-center justify-between gap-2.5 sm:gap-3 flex-wrap bg-white p-2.5 sm:p-4 rounded-xl border border-gray-200 shadow-2xs">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <UserCheck size={18} className="sm:w-5 sm:h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="text-sm sm:text-lg font-black text-gray-900 tracking-tight truncate">
                 Reception Dashboard
               </h1>
-              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                 Visitor Management
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-gray-500">
+            <p className="hidden sm:block text-[11px] sm:text-xs text-gray-500 truncate">
               Live visitor monitoring, quick check-in & check-out, and unified visitor register.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Today's Date Badge */}
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs font-semibold text-gray-700">
-            <Calendar size={13} className="text-gray-500" />
-            <span>{todayDateStr}</span>
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200 text-xs font-bold text-gray-800">
+            <Calendar size={13} className="text-gray-600" />
+            <span className="font-bold">{todayDateStr}</span>
           </div>
 
           {/* Export to Excel */}
@@ -673,10 +685,10 @@ export default function ReceptionistDashboard() {
             type="button"
             onClick={handleExportExcel}
             title="Export filtered records to Excel"
-            className="inline-flex items-center gap-1.5 px-3 h-[36px] bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer shadow-2xs"
+            className="inline-flex items-center justify-center gap-1 px-2 sm:px-3 h-[32px] sm:h-[36px] bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer shadow-2xs"
           >
             <FileSpreadsheet size={14} className="text-emerald-600" />
-            <span className="hidden sm:inline">Export</span>
+            <span className="hidden sm:inline font-semibold">Export</span>
           </button>
 
           {/* Refresh Button */}
@@ -686,9 +698,9 @@ export default function ReceptionistDashboard() {
             disabled={loading}
             title="Refresh records"
             aria-label="Refresh"
-            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[36px] w-[36px] transition active:scale-95 cursor-pointer disabled:opacity-50 shadow-2xs"
+            className="flex items-center justify-center bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 rounded-lg h-[32px] w-[32px] sm:h-[36px] sm:w-[36px] transition active:scale-95 cursor-pointer disabled:opacity-50 shadow-2xs"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin text-indigo-600' : ''} />
+            <RefreshCw size={13} className={loading ? 'animate-spin text-indigo-600' : ''} />
           </button>
 
           {/* + New Visitor Primary Button */}
@@ -696,138 +708,158 @@ export default function ReceptionistDashboard() {
             <button
               type="button"
               onClick={() => setIsNewModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 h-[36px] bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 sm:px-3.5 h-[32px] sm:h-[36px] bg-indigo-600 text-white hover:bg-indigo-700 rounded-lg text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer shrink-0"
             >
-              <UserPlus size={15} />
-              <span>+ New Visitor</span>
+              <UserPlus size={14} />
+              <span className="font-bold">+ New Visitor</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* 2. Filter Toolbar: Period + Purpose / Category / Location */}
-      <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2.5">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-2">
-          <span className="hidden lg:inline text-[11px] font-bold text-gray-500 uppercase tracking-wider mr-1">
-            Period:
-          </span>
-
-          {/* Date Range Mode Segmented Controls (short labels on phones so all 5 fit one row) */}
-          <div className="grid grid-cols-5 lg:inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs w-full lg:w-auto">
+      {/* 2. Compact Filter Toolbar: Period + Purpose / Category / Location */}
+      <div className="bg-white p-2 sm:p-3 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2">
+        {/* Row 1: Date Segmented Controls + Inline Reset Button */}
+        <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+          <div className="grid grid-cols-5 items-center gap-0.5 sm:gap-1 bg-slate-100 p-0.5 sm:p-1 rounded-lg border border-slate-200 text-xs flex-1">
             {[
               { id: 'today', label: 'Today', short: 'Today', match: ['today'] },
               { id: 'yesterday', label: 'Yesterday', short: 'Yest.', match: ['yesterday'] },
               { id: 'single', label: 'Single Date', short: 'Date', match: ['single', 'specific'] },
               { id: 'range', label: 'Date Range', short: 'Range', match: ['range', 'custom'] },
               { id: 'all', label: 'All Dates', short: 'All', match: ['all'] }
-            ].map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handleDateFilterSelect(p.id)}
-                className={`px-2 lg:px-3 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition cursor-pointer ${
-                  p.match.includes(dateFilter)
-                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-                }`}
-              >
-                <span className="sm:hidden">{p.short}</span>
-                <span className="hidden sm:inline">{p.label}</span>
-              </button>
-            ))}
+            ].map((p) => {
+              const isSelected = p.match.includes(dateFilter);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleDateFilterSelect(p.id)}
+                  className={`px-1 sm:px-2.5 py-1.5 rounded-md text-[11px] sm:text-xs font-bold whitespace-nowrap text-center transition cursor-pointer ${
+                    isSelected
+                      ? 'bg-white text-indigo-700 shadow-xs font-black ring-1 ring-black/5'
+                      : 'text-gray-700 hover:text-gray-950 hover:bg-slate-200/70 font-bold'
+                  }`}
+                >
+                  <span className="sm:hidden font-bold">{p.short}</span>
+                  <span className="hidden sm:inline font-bold">{p.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Inline Single Date Picker */}
-          {(dateFilter === 'single' || dateFilter === 'specific') && (
-            <div className="flex items-center gap-1.5 bg-indigo-50/60 px-2.5 py-1 rounded-lg border border-indigo-100">
-              <span className="text-[11px] font-semibold text-indigo-900">Date:</span>
-              <input
-                type="date"
-                value={specificDate}
-                onChange={(e) => handleSpecificDateChange(e.target.value)}
-                className="flex-1 lg:flex-none text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              />
-              {specificDate && (
-                <button
-                  type="button"
-                  onClick={() => handleSpecificDateChange('')}
-                  className="text-gray-400 hover:text-gray-700 p-0.5 cursor-pointer"
-                  title="Clear date"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Inline Date Range Inputs */}
-          {(dateFilter === 'range' || dateFilter === 'custom') && (
-            <div className="grid grid-cols-[auto_1fr] lg:flex items-center gap-1.5 bg-indigo-50/60 px-2.5 py-1.5 lg:py-1 rounded-lg border border-indigo-100">
-              <span className="text-[11px] font-semibold text-indigo-900">From:</span>
-              <input
-                type="date"
-                value={customFrom}
-                onChange={(e) => handleCustomRangeChange('from', e.target.value)}
-                className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              />
-              <span className="text-[11px] font-semibold text-indigo-900">To:</span>
-              <input
-                type="date"
-                value={customTo}
-                onChange={(e) => handleCustomRangeChange('to', e.target.value)}
-                className="text-xs h-[28px] px-2 bg-white border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              />
-            </div>
-          )}
-
-          {/* Reset Filters Action */}
+          {/* Reset Filters Chip Button */}
           {activeFiltersCount > 0 && (
             <button
               type="button"
               onClick={handleResetFilters}
-              className="lg:ml-auto self-start lg:self-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition cursor-pointer"
+              className="inline-flex items-center justify-center gap-1 px-2.5 h-[28px] sm:h-[32px] text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition shrink-0 cursor-pointer shadow-2xs active:scale-95"
               title="Reset all filters"
             >
-              <RotateCcw size={12} />
-              <span>Reset Filters ({activeFiltersCount})</span>
+              <RotateCcw size={11} />
+              <span className="hidden sm:inline font-bold">Reset</span>
+              <span className="w-4 h-4 rounded-full bg-rose-200/90 text-rose-800 text-[10px] flex items-center justify-center font-bold">
+                {activeFiltersCount}
+              </span>
             </button>
           )}
         </div>
 
-        {/* Filter Controls Row (Purpose, Category, Location) */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2.5 border-t border-gray-100">
-          {[
-            { value: purposeFilter, onChange: setPurposeFilter, allLabel: 'All Purposes', options: VISIT_PURPOSE_OPTIONS },
-            { value: categoryFilter, onChange: setCategoryFilter, allLabel: 'All Categories', options: VISITOR_TYPE_OPTIONS },
-            {
-              value: locationFilter,
-              onChange: setLocationFilter,
-              allLabel: 'All Locations',
-              options: [
-                { value: 'Office', label: 'Corporate Office' },
-                { value: 'Construction Site', label: 'Construction Site' }
-              ]
-            }
-          ].map((f) => (
-            <select
-              key={f.allLabel}
-              value={f.value}
-              onChange={(e) => {
-                f.onChange(e.target.value);
-                setCurrentPage(1);
-              }}
-              className={`w-full text-xs h-[34px] px-2.5 border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer shadow-2xs ${
-                f.value !== 'all' ? 'border-indigo-300 text-indigo-800 bg-indigo-50/40' : 'bg-white border-gray-200 text-gray-700'
-              }`}
-            >
-              <option value="all">{f.allLabel}</option>
-              {f.options.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          ))}
+        {/* Inline Date Pickers (Single or Range) */}
+        {(dateFilter === 'single' || dateFilter === 'specific') && (
+          <div className="flex items-center gap-1.5 bg-indigo-50/70 px-2.5 py-1.5 rounded-lg border border-indigo-200 text-xs font-bold">
+            <span className="text-[11px] font-black text-indigo-950 shrink-0">Select Date:</span>
+            <DateInput
+              value={specificDate}
+              onChange={(e) => handleSpecificDateChange(e.target.value)}
+              className="flex-1 sm:flex-none text-xs h-[28px] px-2 bg-white border border-gray-300 rounded-md text-gray-900 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            />
+            {specificDate && (
+              <button
+                type="button"
+                onClick={() => handleSpecificDateChange('')}
+                className="text-gray-400 hover:text-gray-700 p-0.5 cursor-pointer ml-auto"
+                title="Clear date"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {(dateFilter === 'range' || dateFilter === 'custom') && (
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 bg-indigo-50/70 px-2.5 py-1.5 rounded-lg border border-indigo-200 text-xs font-bold">
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-black text-indigo-950 shrink-0">From:</span>
+              <DateInput
+                value={customFrom}
+                onChange={(e) => handleCustomRangeChange('from', e.target.value)}
+                className="w-full sm:w-auto text-xs h-[28px] px-1.5 bg-white border border-gray-300 rounded-md text-gray-900 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-black text-indigo-950 shrink-0">To:</span>
+              <DateInput
+                value={customTo}
+                onChange={(e) => handleCustomRangeChange('to', e.target.value)}
+                className="w-full sm:w-auto text-xs h-[28px] px-1.5 bg-white border border-gray-300 rounded-md text-gray-900 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Row 2: Purpose, Category, Location in 3-column row */}
+        <div className="grid grid-cols-3 gap-1.5 pt-1.5 border-t border-gray-100">
+          <select
+            value={purposeFilter}
+            onChange={(e) => {
+              setPurposeFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className={`w-full text-[11px] sm:text-xs h-[32px] px-1.5 sm:px-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold cursor-pointer truncate shadow-2xs ${
+              purposeFilter !== 'all' ? 'border-indigo-400 text-indigo-800 bg-indigo-50/60 font-black' : 'bg-white border-gray-300 text-gray-800'
+            }`}
+          >
+            <option value="all">All Purposes</option>
+            {VISIT_PURPOSE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={categoryFilter}
+            onChange={(e) => {
+              setCategoryFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className={`w-full text-[11px] sm:text-xs h-[32px] px-1.5 sm:px-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold cursor-pointer truncate shadow-2xs ${
+              categoryFilter !== 'all' ? 'border-indigo-400 text-indigo-800 bg-indigo-50/60 font-black' : 'bg-white border-gray-300 text-gray-800'
+            }`}
+          >
+            <option value="all">All Categories</option>
+            {VISITOR_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={locationFilter}
+            onChange={(e) => {
+              setLocationFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className={`w-full text-[11px] sm:text-xs h-[32px] px-1.5 sm:px-2 border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 font-bold cursor-pointer truncate shadow-2xs ${
+              locationFilter !== 'all' ? 'border-indigo-400 text-indigo-800 bg-indigo-50/60 font-black' : 'bg-white border-gray-300 text-gray-800'
+            }`}
+          >
+            <option value="all">All Locations</option>
+            <option value="Office">Office</option>
+            <option value="Construction Site">Site</option>
+          </select>
         </div>
       </div>
 
@@ -858,360 +890,302 @@ export default function ReceptionistDashboard() {
         </div>
       )}
 
-      {/* 3. KPIs: total visitors + one tile per visit purpose, for the selected period. Every tile filters the records below */}
-      <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Users size={13} className="text-indigo-600" />
-            Visitors by Purpose
-          </h3>
-          <span className="text-[10px] font-semibold text-gray-400 truncate">{kpiPeriodLabel} · Tap to filter</span>
-        </div>
-        <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
-          {[
-            { value: 'all', label: 'Total Visitors', count: kpiCounts.totalVisitors, dot: 'bg-indigo-500' },
-            ...VISIT_PURPOSE_OPTIONS.map((opt) => ({
-              value: opt.value,
-              label: opt.label,
-              count: dateFilteredStats.purposeCounts?.[opt.value] || 0,
-              dot: opt.dot
-            }))
-          ].map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              onClick={() => {
-                setCurrentPage(1);
-                setPurposeFilter(t.value === 'all' || purposeFilter === t.value ? 'all' : t.value);
-              }}
-              className={`text-left p-2.5 rounded-lg border transition cursor-pointer flex flex-col justify-between ${
-                purposeFilter === t.value
-                  ? 'bg-indigo-50 border-indigo-300'
-                  : 'bg-gray-50/70 border-gray-100 hover:bg-gray-100 hover:border-gray-200'
-              }`}
-            >
-              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 flex items-start gap-1.5 leading-tight">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-[3px] ${t.dot}`} />
-                {t.label}
-              </span>
-              <span className="mt-1.5 text-xl sm:text-2xl font-black text-gray-900">{t.count}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 4. Analytics Row: Trends Graph & Numeric Summaries */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
-        
-        {/* Daily Visitor Trends Graph */}
-        <div className="lg:col-span-2 bg-white p-3.5 sm:p-4 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-3">
-          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-100">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                  <TrendingUp size={14} />
-                </span>
-                <h3 className="text-xs sm:text-sm font-bold text-gray-900">
-                  Daily Visitor Trends
-                </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {rangeLabelText}
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                Visitor registration counts per calendar day.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 text-xs">
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50/70 border border-indigo-100">
-                <span className="text-[10px] uppercase font-bold text-indigo-600">Total Visits</span>
-                <span className="font-extrabold text-indigo-950">{totalTrendVisits}</span>
-              </div>
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200">
-                <span className="text-[10px] uppercase font-bold text-gray-500">Daily Avg</span>
-                <span className="font-extrabold text-gray-800">{avgTrendVisits}</span>
-              </div>
-            </div>
+      {/* 3. KPI Section: Visitors by Purpose, Category, and Location (All KPIs at Top) */}
+      <div className="flex flex-col gap-2.5 sm:gap-3">
+        {/* Row 1: Visitors by Purpose KPI Cards */}
+        <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-[11px] font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+              <Users size={14} className="text-indigo-600" />
+              <span>Visitors by Purpose</span>
+            </h4>
+            <span className="text-[10px] sm:text-xs font-semibold text-gray-400 truncate">
+              {kpiPeriodLabel} · Tap to filter
+            </span>
           </div>
 
-          {/* Time Range Pills */}
-          <div className="inline-flex items-center gap-1 bg-slate-100/80 p-1 rounded-lg border border-slate-200/80 text-xs self-start">
+          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2">
             {[
-              { id: '7', label: 'Last 7 Days' },
-              { id: '14', label: 'Last 14 Days' },
-              { id: '30', label: 'Last 30 Days' },
-              { id: 'month', label: 'This Month' }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setTrendRange(tab.id)}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                  trendRange === tab.id
-                    ? 'bg-white text-indigo-700 shadow-2xs font-bold'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Chart Area */}
-          <div className="flex-1 min-h-[200px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={trendChartData}
-                margin={{ top: 16, right: 12, left: -22, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="shortLabel"
-                  interval={trendChartData.length > 20 ? 3 : (trendChartData.length > 10 ? 1 : 0)}
-                  tick={{ fontSize: 11, fill: '#64748b' }}
-                  axisLine={{ stroke: '#e2e8f0' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tick={{ fontSize: 11, fill: '#64748b' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  content={<CustomTrendTooltip />}
-                  cursor={{ fill: 'rgba(99, 102, 241, 0.04)' }}
-                />
-                <Bar
-                  dataKey="visitors"
-                  name="Visitors"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={trendChartData.length > 14 ? 26 : 40}
+              { value: 'all', label: 'TOTAL VISITORS', count: baseVisitors.length, dot: 'bg-indigo-600' },
+              ...VISIT_PURPOSE_OPTIONS.map((opt) => ({
+                value: opt.value,
+                label: opt.label.toUpperCase(),
+                count: purposeTabCounts[opt.value] || 0,
+                dot: opt.dot
+              }))
+            ].map((t) => {
+              const isActive = (t.value === 'all' && purposeFilter === 'all') || purposeFilter === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => {
+                    setCurrentPage(1);
+                    setPurposeFilter(t.value === 'all' || purposeFilter === t.value ? 'all' : t.value);
+                    scrollToRecords();
+                  }}
+                  className={`text-left p-2 sm:p-2.5 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
+                    isActive
+                      ? 'bg-sky-50/90 border-sky-300 ring-2 ring-sky-200/70 shadow-xs'
+                      : 'bg-slate-50/70 border-gray-200/80 hover:bg-slate-100/70 hover:border-gray-300'
+                  }`}
+                  title={`Filter by ${t.label}`}
                 >
-                  {trendChartData.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.isToday ? '#4f46e5' : '#818cf8'}
-                      className="transition-opacity hover:opacity-85"
-                    />
-                  ))}
-                  <LabelList
-                    dataKey="visitors"
-                    position="top"
-                    formatter={(val) => (val > 0 ? val : (trendChartData.length <= 7 ? 0 : ''))}
-                    style={{ fontSize: 11, fill: '#475569', fontWeight: 700 }}
-                  />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                  <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-start gap-1.5 leading-tight">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-[3px] ${t.dot}`} />
+                    <span className="truncate">{t.label}</span>
+                  </span>
+                  <span className="mt-1 sm:mt-1.5 text-lg sm:text-2xl font-black text-gray-900">{t.count}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* Visitor Category & Location Summaries */}
-        <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-3">
+        {/* Row 2: Category and Location KPIs Side-by-Side */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-3">
           
-          {/* Visits by Visitor Category */}
-          <div>
-            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+          {/* Visits by Category (Takes 2 cols on md+) */}
+          <div className="md:col-span-2 bg-white p-3 sm:p-3.5 rounded-xl border border-gray-200 shadow-2xs flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
               <div className="flex items-center gap-1.5">
                 <Users size={14} className="text-indigo-600" />
-                <h4 className="text-xs font-bold text-gray-900">
+                <h4 className="text-[11px] font-bold text-gray-700 uppercase tracking-wider">
                   Visits by Category
                 </h4>
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                {dateFilteredStats.total} total
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-semibold text-gray-400">
+                  Tap to filter
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {dateFilteredStats.total} total
+                </span>
+              </div>
             </div>
 
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {VISITOR_TYPE_OPTIONS.map((opt) => (
-                <div
-                  key={opt.value}
-                  onClick={() => {
-                    setCategoryFilter(categoryFilter === opt.value ? 'all' : opt.value);
-                  }}
-                  className={`flex items-center justify-between px-2.5 py-1 rounded-lg border transition cursor-pointer group ${
-                    categoryFilter === opt.value
-                      ? 'bg-indigo-50 border-indigo-300 font-bold'
-                      : 'bg-gray-50/70 hover:bg-gray-100 border-gray-100'
-                  }`}
-                  title={`Filter by ${opt.label}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${opt.dot}`} />
-                    <span className="text-xs font-medium text-gray-800 group-hover:text-indigo-600 transition">
-                      {opt.label}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {VISITOR_TYPE_OPTIONS.map((opt) => {
+                const isSelected = categoryFilter === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      setCurrentPage(1);
+                      setCategoryFilter(categoryFilter === opt.value ? 'all' : opt.value);
+                      scrollToRecords();
+                    }}
+                    className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition cursor-pointer text-left ${
+                      isSelected
+                        ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-200/60 font-bold shadow-2xs'
+                        : 'bg-slate-50/70 hover:bg-slate-100/70 border-gray-200/80 hover:border-gray-300'
+                    }`}
+                    title={`Filter by ${opt.label}`}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${opt.dot}`} />
+                      <span className="text-[11px] sm:text-xs font-semibold text-gray-800 truncate">
+                        {opt.label}
+                      </span>
+                    </div>
+                    <span className="text-xs sm:text-sm font-black text-gray-900 ml-1 shrink-0">
+                      {dateFilteredStats.typeCounts?.[opt.value] || 0}
                     </span>
-                  </div>
-                  <span className="text-xs font-extrabold text-gray-900 group-hover:text-indigo-600 transition">
-                    {dateFilteredStats.typeCounts?.[opt.value] || 0}
-                  </span>
-                </div>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Visits by Location */}
-          <div className="pt-2 border-t border-gray-100">
-            <div className="flex items-center justify-between pb-1.5">
+          {/* Visits by Location (Takes 1 col on md+) */}
+          <div className="md:col-span-1 bg-white p-3 sm:p-3.5 rounded-xl border border-gray-200 shadow-2xs flex flex-col justify-between gap-2">
+            <div className="flex items-center justify-between pb-1.5 border-b border-gray-100">
               <div className="flex items-center gap-1.5">
                 <Building2 size={14} className="text-indigo-600" />
-                <h4 className="text-xs font-bold text-gray-900">
+                <h4 className="text-[11px] font-bold text-gray-700 uppercase tracking-wider">
                   Visits by Location
                 </h4>
               </div>
+              <span className="text-[10px] font-semibold text-gray-400">
+                Tap to filter
+              </span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div
+            <div className="grid grid-cols-2 gap-2 h-full">
+              <button
+                type="button"
                 onClick={() => {
-                  setLocationFilter('Office');
+                  setCurrentPage(1);
+                  setLocationFilter(locationFilter === 'Office' ? 'all' : 'Office');
+                  scrollToRecords();
                 }}
-                className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between ${
+                className={`p-2.5 rounded-xl border transition cursor-pointer flex flex-col justify-between text-left ${
                   locationFilter === 'Office'
-                    ? 'bg-indigo-50 border-indigo-300'
-                    : 'bg-gray-50/80 hover:bg-gray-100 border-gray-100'
+                    ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-200/60 shadow-2xs'
+                    : 'bg-slate-50/70 hover:bg-slate-100/70 border-gray-200/80 hover:border-gray-300'
                 }`}
                 title="Filter Corporate Office"
               >
-                <span className="text-[10px] font-bold text-indigo-700 flex items-center gap-1">
-                  <Building2 size={11} />
+                <span className="text-[10px] font-bold text-indigo-700 flex items-center gap-1 uppercase tracking-wide">
+                  <Building2 size={12} />
                   Office
                 </span>
-                <span className="text-lg font-black text-gray-900 mt-1">
+                <span className="text-xl sm:text-2xl font-black text-gray-900 mt-1">
                   {dateFilteredStats.locationCounts?.Office || 0}
                 </span>
-              </div>
+              </button>
 
-              <div
+              <button
+                type="button"
                 onClick={() => {
-                  setLocationFilter('Construction Site');
+                  setCurrentPage(1);
+                  setLocationFilter(locationFilter === 'Construction Site' ? 'all' : 'Construction Site');
+                  scrollToRecords();
                 }}
-                className={`p-2 rounded-lg border transition cursor-pointer flex flex-col justify-between ${
+                className={`p-2.5 rounded-xl border transition cursor-pointer flex flex-col justify-between text-left ${
                   locationFilter === 'Construction Site'
-                    ? 'bg-amber-50 border-amber-300'
-                    : 'bg-gray-50/80 hover:bg-gray-100 border-gray-100'
+                    ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200/60 shadow-2xs'
+                    : 'bg-slate-50/70 hover:bg-slate-100/70 border-gray-200/80 hover:border-gray-300'
                 }`}
                 title="Filter Construction Site"
               >
-                <span className="text-[10px] font-bold text-amber-700 flex items-center gap-1">
-                  <MapPin size={11} />
+                <span className="text-[10px] font-bold text-amber-700 flex items-center gap-1 uppercase tracking-wide">
+                  <MapPin size={12} />
                   Sites
                 </span>
-                <span className="text-lg font-black text-gray-900 mt-1">
+                <span className="text-xl sm:text-2xl font-black text-gray-900 mt-1">
                   {dateFilteredStats.locationCounts?.['Construction Site'] || 0}
                 </span>
-              </div>
+              </button>
             </div>
           </div>
 
         </div>
-
       </div>
 
-      {/* 5. Primary Visitor Data Section: Columns View (Normal Dashboard) OR Table View */}
-      <div className="flex flex-col gap-3">
+      {/* 4. Primary Visitor Data Section (Records Table / Cards) */}
+      <div ref={recordsSectionRef} className="flex flex-col gap-2.5">
         
         {/* Section Header with Search Bar and View Mode Switcher */}
-        <div className="flex items-center justify-between flex-wrap gap-3 bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-2xs">
-          <div>
-            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <span>Visitor Records</span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+        <div className="bg-white p-3 sm:p-3.5 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-2.5">
+          {/* Top Row: Visitor Records & Matches on Left, Cards/Table toggle on Right */}
+          <div className="flex items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+              <h2 className="text-xs sm:text-sm font-bold text-gray-900 tracking-tight flex items-center gap-1.5 shrink-0">
+                <span>Visitor Records</span>
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-black bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                 {filteredVisitors.length} matches
               </span>
-            </h2>
-            <p className="text-[11px] text-gray-500">
-              {viewMode === 'columns'
-                ? 'Visitor cards grouped by visit purpose.'
-                : 'Detailed tabular visitor register with full column details.'}
-            </p>
+            </div>
+
+            {/* Toggle between Cards View and Table View */}
+            <div className="inline-flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs shrink-0 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setViewMode('columns')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'columns'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                    : 'text-gray-600 hover:text-gray-900 font-bold'
+                }`}
+              >
+                <LayoutGrid size={12} />
+                <span>Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-bold transition cursor-pointer ${
+                  viewMode === 'table'
+                    ? 'bg-white text-indigo-700 shadow-2xs font-black'
+                    : 'text-gray-600 hover:text-gray-900 font-bold'
+                }`}
+              >
+                <Table size={12} />
+                <span>Table</span>
+              </button>
+            </div>
           </div>
 
-          {/* Search Bar shifted into Visitor Records panel bar */}
-          <div className="relative flex-1 max-w-md min-w-[240px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          {/* Active Filter Chips (Rendered cleanly when any filter is active) */}
+          {(purposeFilter !== 'all' || categoryFilter !== 'all' || locationFilter !== 'all') && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Filtered by:</span>
+              {purposeFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setPurposeFilter('all')}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition cursor-pointer"
+                  title="Clear purpose filter"
+                >
+                  <span>Purpose: {purposeFilter}</span>
+                  <X size={10} />
+                </button>
+              )}
+              {categoryFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setCategoryFilter('all')}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100 transition cursor-pointer"
+                  title="Clear category filter"
+                >
+                  <span>Category: {categoryFilter}</span>
+                  <X size={10} />
+                </button>
+              )}
+              {locationFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setLocationFilter('all')}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200 hover:bg-teal-100 transition cursor-pointer"
+                  title="Clear location filter"
+                >
+                  <span>Location: {locationFilter}</span>
+                  <X size={10} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setPurposeFilter('all');
+                  setCategoryFilter('all');
+                  setLocationFilter('all');
+                }}
+                className="text-[10px] font-bold text-rose-600 hover:text-rose-800 underline ml-0.5 cursor-pointer"
+              >
+                Clear all
+              </button>
+            </div>
+          )}
+
+          {/* Search Bar - Big, spacious, and full-width */}
+          <div className="relative w-full">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search visitor, phone, company, host, project..."
-              className="w-full text-xs h-[34px] pl-8 pr-7 bg-white border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs"
+              className="w-full text-xs sm:text-sm h-[38px] sm:h-[40px] pl-9 pr-9 bg-slate-50/80 border border-gray-200 rounded-xl text-gray-800 font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white shadow-2xs transition"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 flex items-center justify-center cursor-pointer transition"
                 title="Clear search"
               >
-                <X size={13} />
+                <X size={11} />
               </button>
             )}
-          </div>
-
-          {/* Toggle between Cards View and Table View */}
-          <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
-            <button
-              type="button"
-              onClick={() => setViewMode('columns')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
-                viewMode === 'columns'
-                  ? 'bg-white text-indigo-700 shadow-2xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <LayoutGrid size={13} />
-              <span>Cards View</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-bold transition cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-white text-indigo-700 shadow-2xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-slate-200/60'
-              }`}
-            >
-              <Table size={13} />
-              <span>Table View</span>
-            </button>
           </div>
         </div>
 
         {/* View Mode 1: Cards grouped by visit purpose (tabs) in a responsive grid */}
         {viewMode === 'columns' && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-2xs flex flex-col overflow-hidden">
-            {/* Purpose tabs: same state as the purpose KPI tiles and filter.
-                Phones: 2-column grid (no sideways scrolling); wider screens: one wrapping row */}
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch gap-1.5 px-3 py-2.5 border-b border-gray-100">
-              {[
-                { value: 'all', label: 'All Entries', dot: 'bg-indigo-500', count: baseVisitors.length },
-                ...VISIT_PURPOSE_OPTIONS.map((opt) => ({ ...opt, count: purposeTabCounts[opt.value] || 0 }))
-              ].map((tab) => {
-                const isActive = purposeFilter === tab.value;
-                return (
-                  <button
-                    key={tab.value}
-                    type="button"
-                    onClick={() => setPurposeFilter(tab.value)}
-                    className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold text-left border transition cursor-pointer ${
-                      isActive
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-700'
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-white' : tab.dot}`} />
-                    <span className="flex-1 sm:flex-none leading-tight">{tab.label}</span>
-                    <span className={`shrink-0 px-1.5 rounded-full text-[10px] font-extrabold ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'}`}>
-                      {tab.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
 
             {loading ? (
               <div className="py-16 flex flex-col items-center justify-center text-gray-400">
@@ -1333,7 +1307,7 @@ export default function ReceptionistDashboard() {
                       <button
                         type="button"
                         onClick={handleResetFilters}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition cursor-pointer"
                       >
                         <RotateCcw size={13} />
                         <span>Reset All Filters</span>
@@ -1559,6 +1533,112 @@ export default function ReceptionistDashboard() {
 
       </div>
 
+      {/* 5. Daily Visitor Trends (Graph at the bottom) */}
+      <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-gray-200 shadow-2xs flex flex-col gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-gray-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <TrendingUp size={14} />
+              </span>
+              <h4 className="text-xs sm:text-sm font-bold text-gray-900">
+                Daily Visitor Trends
+              </h4>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {rangeLabelText}
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Visitor registration counts per calendar day.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50/70 border border-indigo-100">
+              <span className="text-[10px] uppercase font-bold text-indigo-600">Total Visits</span>
+              <span className="font-extrabold text-indigo-950">{totalTrendVisits}</span>
+            </div>
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200">
+              <span className="text-[10px] uppercase font-bold text-gray-500">Daily Avg</span>
+              <span className="font-extrabold text-gray-800">{avgTrendVisits}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Time Range Pills */}
+        <div className="grid grid-cols-4 gap-1 bg-slate-100/80 p-1 rounded-lg border border-slate-200/80 text-xs w-full sm:w-auto self-start">
+          {[
+            { id: '7', label: 'Last 7 Days', short: '7 Days' },
+            { id: '14', label: 'Last 14 Days', short: '14 Days' },
+            { id: '30', label: 'Last 30 Days', short: '30 Days' },
+            { id: 'month', label: 'This Month', short: 'Month' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setTrendRange(tab.id)}
+              className={`px-1.5 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-bold text-center transition cursor-pointer truncate ${
+                trendRange === tab.id
+                  ? 'bg-white text-indigo-700 shadow-2xs font-black ring-1 ring-black/5'
+                  : 'text-gray-700 hover:text-gray-950 hover:bg-slate-200/60 font-bold'
+              }`}
+            >
+              <span className="sm:hidden">{tab.short}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Chart Area with explicit height for reliable mobile rendering */}
+        <div className="w-full h-[240px] sm:h-[280px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={trendChartData}
+              margin={{ top: 16, right: 12, left: -22, bottom: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis
+                dataKey="shortLabel"
+                interval={trendChartData.length > 20 ? 3 : (trendChartData.length > 10 ? 1 : 0)}
+                tick={{ fontSize: 11, fill: '#64748b' }}
+                axisLine={{ stroke: '#e2e8f0' }}
+                tickLine={false}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fontSize: 11, fill: '#64748b' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                content={<CustomTrendTooltip />}
+                cursor={{ fill: 'rgba(99, 102, 241, 0.04)' }}
+              />
+              <Bar
+                dataKey="visitors"
+                name="Visitors"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={trendChartData.length > 14 ? 26 : 40}
+              >
+                {trendChartData.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.isToday ? '#4f46e5' : '#818cf8'}
+                    className="transition-opacity hover:opacity-85"
+                  />
+                ))}
+                <LabelList
+                  dataKey="visitors"
+                  position="top"
+                  formatter={(val) => (val > 0 ? val : (trendChartData.length <= 7 ? 0 : ''))}
+                  style={{ fontSize: 11, fill: '#475569', fontWeight: 700 }}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
       {/* MODALS */}
       {isNewModalOpen && (
         <NewVisitorModal
@@ -1573,6 +1653,7 @@ export default function ReceptionistDashboard() {
           isOpen={Boolean(detailsVisitor)}
           visitor={detailsVisitor}
           onClose={() => setDetailsVisitor(null)}
+          onVisitorUpdated={handleVisitorUpdated}
         />
       )}
 

@@ -19,6 +19,7 @@ const APP_PAGES = [
   { key: 'customerMaster', label: 'Customer Master' },
   { key: 'nonInterested', label: 'Non-interested' },
   { key: 'dealClosed', label: 'Deal Closed' },
+  { key: 'broker', label: 'Brokers' },
   { key: 'products', label: 'Products' },
   { key: 'misReport', label: 'MIS Report' },
   { key: 'attendance', label: 'Attendance' },

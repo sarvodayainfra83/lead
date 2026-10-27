@@ -77,7 +77,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
       return;
     }
 
-    if ((formData.status === 'Future Plan' || formData.status === 'Did Not Show') && !formData.nextVisitDate) {
+    if (formData.status !== 'Not Interested' && !formData.nextVisitDate) {
       toast.error('Next Visit Date is required');
       return;
     }
@@ -97,8 +97,8 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
         customer_status: formData.customerStatus || 'Warm',
         interestLevel: formData.customerStatus || 'Warm',
         whatHappened: formData.whatHappened.trim(),
-        nextVisitDate: (formData.status === 'Future Plan' || formData.status === 'Did Not Show') ? formData.nextVisitDate : null,
-        nextVisitTime: (formData.status === 'Future Plan' || formData.status === 'Did Not Show') ? (formData.nextVisitTime || null) : null,
+        nextVisitDate: formData.status !== 'Not Interested' ? formData.nextVisitDate : null,
+        nextVisitTime: formData.status !== 'Not Interested' ? (formData.nextVisitTime || null) : null,
         dealOutcome: formData.status === 'Not Interested' ? 'Rejected (Lost)' : null,
         rejectionReason: formData.status === 'Not Interested' ? 'Not Interested' : null,
         salesExecutive: null,
@@ -238,7 +238,7 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
             )}
 
             {/* 3. Next Visit Date & Optional Time */}
-            {(formData.status === 'Future Plan' || formData.status === 'Did Not Show') && (
+            {formData.status && formData.status !== 'Not Interested' && (
               <div className="space-y-1 animate-in fade-in duration-150">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>

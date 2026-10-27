@@ -24,9 +24,8 @@ export const TERMINAL_STATUSES = ['Interested', 'Not Interested', 'Site Visit/Me
 // Site Visit/Meeting moves to Assign Visitor stage instead of Customer Master.
 export const CONVERTED_STATUSES = ['Interested'];
 
-// Statuses that also collect a date — Future Plan Date's next-call-on date, or the scheduled
-// Site Visit/Meeting date.
-export const DATE_STATUSES = ['Future Plan Date', 'Site Visit/Meeting', 'Meeting'];
+// Statuses that also collect a date — all statuses except Not Interested require a next follow-up date.
+export const DATE_STATUSES = ['Interested', 'Future Plan Date', 'Site Visit/Meeting', 'Meeting', ...NO_CONTACT_STATUSES];
 
 // Customer temperature captured per call (call_trackers.customer_status)
 export const CUSTOMER_STATUSES = ['Hot', 'Warm', 'Cold'];

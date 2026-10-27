@@ -22,7 +22,9 @@ import {
   UserX,
   Handshake,
   Contact,
-  CalendarClock
+  CalendarClock,
+  Flame,
+  Briefcase
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { useBadgeCountStore } from '../store/badgeCountStore';
@@ -65,9 +67,10 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
     { path: '/lead', icon: UserPlus, label: 'Lead', pageKey: 'lead', badgeCount: pendingLeadCount },
     { path: '/call-tracker', icon: PhoneCall, label: 'Lead & Followup', pageKey: 'callTracker', badgeCount: callTrackerCount },
     { path: '/site-visit-meeting', icon: MapPin, label: isMeetingOnlyUser ? 'Meeting' : 'Site Visit / Meeting', pageKey: 'siteVisitMeeting', badgeCount: siteVisitMeetingCount },
-    { path: '/customer-master', icon: Users, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount },
+    { path: '/customer-master', icon: Flame, label: 'Hot Customers', pageKey: 'customerMaster', badgeCount: customerCount, hot: true },
     { path: '/non-interested', icon: UserX, label: 'Non-interested', pageKey: 'nonInterested', badgeCount: nonInterestedCount },
     { path: '/deal-closed', icon: Handshake, label: 'Deal Closed', pageKey: 'dealClosed', badgeCount: dealClosedCount },
+    { path: '/broker', icon: Briefcase, label: 'Brokers', pageKey: 'broker' },
     // { path: '/caller-report', icon: BarChart3, label: 'Caller Report', pageKey: 'callerReport' },
     { path: '/mis-report', icon: FileBarChart, label: 'MIS Report', pageKey: 'misReport' },
     { path: '/attendance', icon: Fingerprint, label: 'Attendance', pageKey: 'attendance' },
@@ -194,7 +197,10 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
                   `}
                 >
                   <div className="relative flex items-center justify-center flex-shrink-0">
-                    <item.icon size={20} className="group-hover:scale-110 transition-transform" />
+                    {item.hot && (
+                      <span className="absolute -inset-1.5 rounded-full bg-orange-400/20 animate-pulse pointer-events-none" />
+                    )}
+                    <item.icon size={20} className={`group-hover:scale-110 transition-transform ${item.hot ? 'text-orange-500 drop-shadow-[0_0_4px_rgba(251,146,60,0.5)]' : ''}`} />
                     {collapsed && item.badgeCount !== undefined && item.badgeCount > 0 && (
                       <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold text-white bg-indigo-600 rounded-full shadow-sm border border-white">
                         {item.badgeCount > 99 ? '99+' : item.badgeCount}

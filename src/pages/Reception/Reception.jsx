@@ -13,6 +13,7 @@ import VisitorDetailsModal from './VisitorDetailsModal';
 import EditVisitorModal from './EditVisitorModal';
 import ReceptionReportsModal from './ReceptionReportsModal';
 import VisitBreakdownChips from './VisitBreakdownChips';
+import DateInput from '../../components/DateInput';
 import { visitorApi } from '../../api/visitorApi';
 import { useAuthStore } from '../../store/authStore';
 import { hasFullAccess, isUserAdmin } from '../../utils/authUtils';
@@ -25,8 +26,88 @@ import {
   getVisitorTypeKey,
   DATE_FILTER_OPTIONS,
   formatVisitorDate,
-  formatVisitorTime
+  formatVisitorTime,
+  emptyCounts
 } from './receptionConstants';
+
+// Helper for matching date filter across records & KPIs
+const matchesDateFilter = (checkInAt, filterType, fromDate, toDate) => {
+  if (filterType === 'all') return true;
+  if (!checkInAt) return false;
+  const d = new Date(checkInAt);
+  if (isNaN(d.getTime())) return false;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  // Start of week (Sunday)
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay());
+
+  // Start of month
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  if (filterType === 'today') {
+    return itemDate.getTime() === today.getTime();
+  }
+  if (filterType === 'yesterday') {
+    return itemDate.getTime() === yesterday.getTime();
+  }
+  if (filterType === 'week') {
+    return itemDate.getTime() >= startOfWeek.getTime();
+  }
+  if (filterType === 'month') {
+    return itemDate.getTime() >= startOfMonth.getTime();
+  }
+  if (filterType === 'custom') {
+    if (!fromDate && !toDate) return true;
+    let fromMs = fromDate ? new Date(fromDate + 'T00:00:00').getTime() : null;
+    let toMs = toDate ? new Date(toDate + 'T23:59:59.999').getTime() : null;
+    const time = d.getTime();
+    if (fromMs && !isNaN(fromMs) && time < fromMs) return false;
+    if (toMs && !isNaN(toMs) && time > toMs) return false;
+    return true;
+  }
+  return true;
+};
+
+const getDateFilterLabel = (filter) => {
+  switch (filter) {
+    case 'today':
+      return 'Visitors Today';
+    case 'yesterday':
+      return 'Visitors Yesterday';
+    case 'week':
+      return 'Visitors This Week';
+    case 'month':
+      return 'Visitors This Month';
+    case 'custom':
+      return 'Filtered Visitors';
+    default:
+      return 'Total Visitors';
+  }
+};
+
+const getCategoryBreakdownTitle = (filter) => {
+  switch (filter) {
+    case 'today':
+      return 'Category Today';
+    case 'yesterday':
+      return 'Category Yesterday';
+    case 'week':
+      return 'Category (This Week)';
+    case 'month':
+      return 'Category (This Month)';
+    case 'custom':
+      return 'Category (Filtered)';
+    default:
+      return 'Category Breakdown';
+  }
+};
 
 export default function Reception() {
   const { user } = useAuthStore();
@@ -106,6 +187,38 @@ export default function Reception() {
     return visitorApi.calculateStats(visitors);
   }, [visitors]);
 
+  // Dynamic KPI counts & category breakdown scoped to the active date filter
+  const dateScopedStats = useMemo(() => {
+    const purposeCounts = emptyCounts(VISIT_PURPOSE_OPTIONS);
+    const typeCounts = emptyCounts(VISITOR_TYPE_OPTIONS);
+    let total = 0;
+
+    (visitors || []).forEach(v => {
+      if (!matchesDateFilter(v.checkInAt, dateFilter, customFrom, customTo)) return;
+
+      total++;
+      const pKey = getPurposeKey(v.visitPurpose);
+      if (purposeCounts[pKey] !== undefined) {
+        purposeCounts[pKey]++;
+      } else {
+        purposeCounts.Other = (purposeCounts.Other || 0) + 1;
+      }
+
+      const tKey = getVisitorTypeKey(v.visitorType);
+      if (typeCounts[tKey] !== undefined) {
+        typeCounts[tKey]++;
+      } else {
+        typeCounts.Other = (typeCounts.Other || 0) + 1;
+      }
+    });
+
+    return {
+      total,
+      purposeCounts,
+      typeCounts
+    };
+  }, [visitors, dateFilter, customFrom, customTo]);
+
   // Filtering records
   const filteredVisitors = useMemo(() => {
     let list = visitors || [];
@@ -140,47 +253,7 @@ export default function Reception() {
 
     // Date filter
     if (dateFilter !== 'all') {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      // Start of week (Sunday)
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - today.getDay());
-
-      // Start of month
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-      list = list.filter(v => {
-        if (!v.checkInAt) return false;
-        const d = new Date(v.checkInAt);
-        if (isNaN(d.getTime())) return false;
-        const itemDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-
-        if (dateFilter === 'today') {
-          return itemDate.getTime() === today.getTime();
-        }
-        if (dateFilter === 'yesterday') {
-          return itemDate.getTime() === yesterday.getTime();
-        }
-        if (dateFilter === 'week') {
-          return itemDate.getTime() >= startOfWeek.getTime();
-        }
-        if (dateFilter === 'month') {
-          return itemDate.getTime() >= startOfMonth.getTime();
-        }
-        if (dateFilter === 'custom') {
-          if (!customFrom && !customTo) return true;
-          let fromMs = customFrom ? new Date(customFrom).setHours(0, 0, 0, 0) : null;
-          let toMs = customTo ? new Date(customTo).setHours(23, 59, 59, 999) : null;
-          const time = d.getTime();
-          if (fromMs && time < fromMs) return false;
-          if (toMs && time > toMs) return false;
-          return true;
-        }
-        return true;
-      });
+      list = list.filter(v => matchesDateFilter(v.checkInAt, dateFilter, customFrom, customTo));
     }
 
     return list;
@@ -257,6 +330,12 @@ export default function Reception() {
     await visitorApi.registerVisitor(payload, user);
     loadData();
   };
+
+  const handleVisitorUpdated = useCallback((updated) => {
+    if (!updated?.id) return;
+    setVisitors((prev) => prev.map((v) => (v.id === updated.id ? { ...v, ...updated } : v)));
+    setDetailsVisitor((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+  }, []);
 
   // Table Headers
   const tableHeaders = [
@@ -616,17 +695,17 @@ export default function Reception() {
       {/* Compact Quick-Pill Bar (shown when KPI cards are collapsed on mobile) */}
       {!showKpiCards && (
         <div className="flex flex-wrap items-center gap-1.5 md:hidden text-xs animate-in fade-in duration-150">
-          {[{ value: 'all', label: 'Today', count: stats.totalToday }, ...VISIT_PURPOSE_OPTIONS.map(opt => ({
+          {[{ value: 'all', label: getDateFilterLabel(dateFilter), count: dateScopedStats.total }, ...VISIT_PURPOSE_OPTIONS.map(opt => ({
             value: opt.value,
             label: opt.label,
-            count: stats.todayPurposeCounts?.[opt.value] || 0
+            count: dateScopedStats.purposeCounts?.[opt.value] || 0
           }))].map(p => (
             <button
               key={p.value}
               type="button"
               onClick={() => applyKpiFilter(p.value)}
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shrink-0 font-bold active:scale-95 ${
-                dateFilter === 'today' && purposeFilter === p.value
+                purposeFilter === p.value
                   ? 'bg-indigo-600 text-white border-indigo-600'
                   : 'bg-white text-gray-700 border-gray-200'
               }`}
@@ -643,14 +722,14 @@ export default function Reception() {
         {[
           {
             value: 'all',
-            label: dateFilter === 'today' ? 'Visitors Today' : 'Total Visitors',
-            count: dateFilter === 'today' ? stats.totalToday : visitors.length,
+            label: getDateFilterLabel(dateFilter),
+            count: dateScopedStats.total,
             dot: 'bg-indigo-500'
           },
           ...VISIT_PURPOSE_OPTIONS.map(opt => ({
             value: opt.value,
             label: opt.label,
-            count: dateFilter === 'today' ? (stats.todayPurposeCounts?.[opt.value] || 0) : (stats.purposeCounts?.[opt.value] || 0),
+            count: dateScopedStats.purposeCounts?.[opt.value] || 0,
             dot: opt.dot
           }))
         ].map(t => {
@@ -660,13 +739,13 @@ export default function Reception() {
               key={t.value}
               type="button"
               onClick={() => applyKpiFilter(t.value)}
-              className={`text-left p-2.5 sm:p-3 rounded-xl border transition cursor-pointer shadow-2xs flex flex-col justify-between ${
+              className={`text-left p-2.5 sm:p-3 rounded-xl border transition cursor-pointer shadow-2xs flex flex-col justify-between h-full ${
                 isActive ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-gray-200 hover:border-indigo-200 hover:bg-indigo-50/30'
               }`}
             >
-              <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-500 flex items-start gap-1.5 leading-tight">
+              <span className="min-h-[26px] sm:min-h-[28px] text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-500 flex items-start gap-1.5 leading-tight">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-[3px] ${t.dot}`} />
-                {t.label}
+                <span className="line-clamp-2">{t.label}</span>
               </span>
               <span className="mt-1.5 text-xl sm:text-2xl font-black text-gray-900">{t.count}</span>
             </button>
@@ -677,10 +756,10 @@ export default function Reception() {
       {/* Counts by Visitor Category (click to filter) */}
       <div className={`${showKpiCards ? 'flex' : 'hidden md:flex'} bg-white p-2.5 rounded-xl border border-gray-200 shadow-2xs flex-shrink-0`}>
         <VisitBreakdownChips
-          title={dateFilter === 'today' ? 'Category Today' : 'Category Breakdown'}
+          title={getCategoryBreakdownTitle(dateFilter)}
           icon={User}
           options={VISITOR_TYPE_OPTIONS}
-          counts={dateFilter === 'today' ? stats.todayTypeCounts : stats.typeCounts}
+          counts={dateScopedStats.typeCounts}
           active={categoryFilter}
           onSelect={(val) => { setCategoryFilter(val); setCurrentPage(1); }}
         />
@@ -690,10 +769,10 @@ export default function Reception() {
       <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-gray-200 shadow-2xs flex-shrink-0 flex items-center justify-between gap-2 flex-wrap text-xs">
         
         {/* Left Side: Search + Dropdowns */}
-        <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-          
+        <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 flex-1 min-w-0">
+
           {/* Search Box */}
-          <div className="relative min-w-[180px] sm:min-w-[220px] flex-1 max-w-sm">
+          <div className="relative w-full sm:min-w-[220px] sm:flex-1 sm:max-w-sm">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
               type="text"
@@ -713,91 +792,92 @@ export default function Reception() {
             )}
           </div>
 
-          {/* Date Filter Dropdown */}
-          <select
-            value={dateFilter}
-            onChange={(e) => {
-              setDateFilter(e.target.value);
-              setPurposeFilter('all');
-              setCategoryFilter('all');
-              setLocationFilter('all');
-              setSearchQuery('');
-              setCurrentPage(1);
-            }}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
-          >
-            {DATE_FILTER_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+          {/* Dropdown Filters: equal-width grid on mobile, inline row on larger screens */}
+          <div className="grid grid-cols-3 sm:flex sm:items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+            {/* Date Filter Dropdown */}
+            <select
+              value={dateFilter}
+              onChange={(e) => {
+                setDateFilter(e.target.value);
+                setPurposeFilter('all');
+                setCategoryFilter('all');
+                setLocationFilter('all');
+                setSearchQuery('');
+                setCurrentPage(1);
+              }}
+              className="w-full sm:w-auto min-w-0 truncate border border-gray-200 rounded-lg px-2 sm:px-2.5 py-1.5 text-[11px] sm:text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
+            >
+              {DATE_FILTER_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+
+            {/* Purpose Filter Dropdown */}
+            <select
+              value={purposeFilter}
+              onChange={(e) => setPurposeFilter(e.target.value)}
+              className="w-full sm:w-auto min-w-0 truncate border border-gray-200 rounded-lg px-2 sm:px-2.5 py-1.5 text-[11px] sm:text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
+            >
+              <option value="all">All Purposes</option>
+              {VISIT_PURPOSE_OPTIONS.map(p => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+
+            {/* Visitor Category Filter Dropdown */}
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full sm:w-auto min-w-0 truncate border border-gray-200 rounded-lg px-2 sm:px-2.5 py-1.5 text-[11px] sm:text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
+            >
+              <option value="all">All Categories</option>
+              {VISITOR_TYPE_OPTIONS.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+
+            {/* Location Filter Dropdown */}
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="min-w-0 truncate border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer hidden md:inline-block"
+            >
+              <option value="all">All Locations</option>
+              {VISIT_LOCATION_OPTIONS.map(l => (
+                <option key={l.value} value={l.value}>{l.label}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Custom Date Pickers (when custom is picked) */}
           {dateFilter === 'custom' && (
-            <div className="flex items-center gap-1 animate-in fade-in duration-150">
-              <input
-                type="date"
+            <div className="flex items-center gap-1 w-full sm:w-auto animate-in fade-in duration-150">
+              <DateInput
                 value={customFrom}
                 onChange={(e) => setCustomFrom(e.target.value)}
-                className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white h-[34px]"
+                className="w-full sm:w-auto border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white h-[34px]"
               />
-              <span className="text-gray-400">to</span>
-              <input
-                type="date"
+              <span className="text-gray-400 shrink-0">to</span>
+              <DateInput
                 value={customTo}
                 onChange={(e) => setCustomTo(e.target.value)}
-                className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white h-[34px]"
+                className="w-full sm:w-auto border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white h-[34px]"
               />
             </div>
           )}
 
-          {/* Purpose Filter Dropdown */}
-          <select
-            value={purposeFilter}
-            onChange={(e) => setPurposeFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
-          >
-            <option value="all">All Purposes</option>
-            {VISIT_PURPOSE_OPTIONS.map(p => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
-
-          {/* Visitor Category Filter Dropdown */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
-          >
-            <option value="all">All Categories</option>
-            {VISITOR_TYPE_OPTIONS.map(t => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-
-          {/* Location Filter Dropdown */}
-          <select
-            value={locationFilter}
-            onChange={(e) => setLocationFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white text-gray-700 h-[34px] focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer hidden md:inline-block"
-          >
-            <option value="all">All Locations</option>
-            {VISIT_LOCATION_OPTIONS.map(l => (
-              <option key={l.value} value={l.value}>{l.label}</option>
-            ))}
-          </select>
+          {/* Active filters indicator and Clear button */}
+          {activeFiltersCount > 0 && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="w-full sm:w-auto sm:ml-auto inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition cursor-pointer h-[34px] shrink-0"
+            >
+              <RotateCcw size={12} />
+              <span>Reset Filters ({activeFiltersCount})</span>
+            </button>
+          )}
         </div>
-
-        {/* Right Side: Active filters indicator and Clear button */}
-        {activeFiltersCount > 0 && (
-          <button
-            type="button"
-            onClick={handleClearFilters}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition cursor-pointer h-[34px]"
-          >
-            <RotateCcw size={12} />
-            <span>Reset Filters ({activeFiltersCount})</span>
-          </button>
-        )}
       </div>
 
       {/* Notice Banner when Today has 0 records but past records exist */}
@@ -865,6 +945,7 @@ export default function Reception() {
           isOpen={Boolean(detailsVisitor)}
           onClose={() => setDetailsVisitor(null)}
           visitor={detailsVisitor}
+          onVisitorUpdated={handleVisitorUpdated}
         />
       )}
 

@@ -187,7 +187,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
       if (field === 'status' && NO_CONTACT_STATUSES.includes(value)) {
         // Unanswered call / WhatsApp: try again tomorrow by default (the user can pick another date)
         if (!NO_CONTACT_STATUSES.includes(prev.status) || !prev.nextDate) updated.nextDate = tomorrowInputDate();
-      } else if (field === 'status' && !DATE_STATUSES.includes(value) && value !== 'Meeting') {
+      } else if (field === 'status' && value === 'Not Interested') {
         updated.nextDate = '';
       }
       // Real Estate's Site Visit/Meeting starts on "Site Visit" (the user can switch to Meeting); Meeting = meeting
@@ -383,6 +383,24 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
     // Call Not Received / No WhatsApp Reply only record the attempt — the other details are optional
     if (!isNoContact && !formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!isNoContact && !formData.customerSaid.trim()) { toast.error('What did Customer said is required'); return; }
+    if (formData.status !== 'Not Interested' && !formData.nextDate) {
+      const dateLabel = isNoContact
+        ? 'Next Call Date'
+        : formData.status === 'Future Plan Date'
+        ? 'Future Plan Date'
+        : (isInsurance || isMutualFund)
+        ? 'Meeting Date'
+        : (formData.status === 'Site Visit/Meeting' ? 'Visit/Meeting Date' : 'Next Follow-up Date');
+      toast.error(`${dateLabel} is required`);
+      return;
+    }
+    if (formData.status !== 'Not Interested' && formData.nextDate) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (formData.nextDate < todayStr) {
+        toast.error('Next Date cannot be in the past');
+        return;
+      }
+    }
     if ((isInsurance || isMutualFund) && formData.status === 'Meeting' && !formData.meetingMode) { toast.error('Please choose Online Meeting or Offline Meeting'); return; }
     if (!isRealEstate && (formData.status === 'Site Visit/Meeting' || formData.status === 'Meeting') && !formData.dealStatus) { toast.error('Deal Status is required'); return; }
 
@@ -528,7 +546,7 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
         status: formData.status,
         customerStatus: formData.customerStatus,
         customerSaid: formData.customerSaid,
-        nextDate: (DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting' || isNoContact) ? formData.nextDate : '',
+        nextDate: formData.status !== 'Not Interested' ? formData.nextDate : '',
         timestamp,
         timestampMs: now.getTime()
       };
@@ -860,14 +878,23 @@ export default function FormTracker({ isOpen, onClose, lead, onSaved }) {
 
         {formData.status && (
           <>
-            {/* Date — Future Plan Date's / unanswered call's next-call date, or the Site Visit/Meeting date */}
-            {(DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting' || isNoContact) && (
+            {/* Date — Required for every status except Not Interested */}
+            {formData.status && formData.status !== 'Not Interested' && (
               <div className="space-y-1 col-span-1 animate-in fade-in duration-200">
                 <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                  {isNoContact ? 'Next Call Date' : (formData.status === 'Future Plan Date' ? 'Future Plan Date' : ((isInsurance || isMutualFund) ? 'Meeting Date' : 'Visit/Meeting Date'))}
+                  {isNoContact
+                    ? 'Next Call Date'
+                    : formData.status === 'Future Plan Date'
+                    ? 'Future Plan Date'
+                    : (isInsurance || isMutualFund)
+                    ? 'Meeting Date'
+                    : (formData.status === 'Site Visit/Meeting' ? 'Visit/Meeting Date' : 'Next Follow-up Date')}{' '}
+                  <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
+                  required
+                  min={new Date().toISOString().split('T')[0]}
                   value={formData.nextDate}
                   onChange={(e) => handleChange('nextDate', e.target.value)}
                   className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"

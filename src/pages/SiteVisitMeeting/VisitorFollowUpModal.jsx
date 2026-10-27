@@ -36,8 +36,8 @@ const VISITOR_STATUS_OPTIONS = [
 // Customer couldn't be reached (call not picked up / WhatsApp unanswered): only the retry date is needed
 const NO_CONTACT_STATUSES = ['Call Not Received', 'No WhatsApp Reply'];
 
-// Outcomes that need a next visit / follow-up date
-const NEXT_DATE_STATUSES = ['Future Plan', 'Revisit', 'Did Not Show', 'Under Negotiation', ...NO_CONTACT_STATUSES];
+// Outcomes that need a next visit / follow-up date — all statuses except Not Interested require a next date
+const NEXT_DATE_STATUSES = VISITOR_STATUS_OPTIONS.filter(s => s !== 'Not Interested');
 
 const isOtherValue = (val) => {
   if (!val) return false;
@@ -278,8 +278,13 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     setFormData(prev => {
       const next = { ...prev, [field]: value };
       // Unanswered call / WhatsApp: next follow-up defaults to tomorrow (the user can pick another date)
-      if (field === 'status' && NO_CONTACT_STATUSES.includes(value) && (!NO_CONTACT_STATUSES.includes(prev.status) || !prev.nextVisitDate)) {
-        next.nextVisitDate = tomorrowInputDate();
+      if (field === 'status') {
+        if (value === 'Not Interested' || value?.toLowerCase().includes('not interested')) {
+          next.nextVisitDate = '';
+          next.nextVisitTime = '';
+        } else if (NO_CONTACT_STATUSES.includes(value) && (!NO_CONTACT_STATUSES.includes(prev.status) || !prev.nextVisitDate)) {
+          next.nextVisitDate = tomorrowInputDate();
+        }
       }
       if (field === 'productType' && !isOtherValue(value)) {
         next.customProductType = '';
@@ -459,19 +464,19 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
   const isActivityVisible = !isNotInterested && !isNoContact && !isRevisit;
   const isRealEstateLead = isRealEstate;
   const isDealSectionVisible = formData.status === 'Deal Lock';
-  const needsNextDate = NEXT_DATE_STATUSES.includes(formData.status);
+  const needsNextDate = Boolean(formData.status && !isNotInterested);
   // The next meeting / follow-up must come after this meeting: after today, and after the scheduled meeting
   // date when that is later. Dates compare as YYYY-MM-DD (so 30 Oct < 1 Nov), never as DD/MM text.
   const todayInput = formatInputDate(new Date());
   const scheduledInput = formatInputDate(lead?.meetingDate || lead?.visitDate || '');
   const nextDateAfter = !isNoContact && scheduledInput > todayInput ? scheduledInput : todayInput;
   const minNextDate = (() => {
-    // For Future Plan, allow today onwards
-    if (isFuturePlan) {
-      return todayInput;
+    // For Revisit, date must be after today / scheduled date
+    if (isRevisit) {
+      const [y, m, d] = nextDateAfter.split('-').map(Number);
+      return formatInputDate(new Date(y, m - 1, d + 1));
     }
-    const [y, m, d] = nextDateAfter.split('-').map(Number);
-    return formatInputDate(new Date(y, m - 1, d + 1));
+    return todayInput;
   })();
 
   const handleSubmit = async (e) => {
@@ -499,12 +504,11 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
     }
 
     if (needsNextDate) {
-      if (isFuturePlan) {
-        if (formatInputDate(formData.nextVisitDate) < todayInput) {
-          toast.error(`${isMeetingLead ? 'Followup Date' : 'Next date'} cannot be in the past`);
-          return;
-        }
-      } else {
+      if (formatInputDate(formData.nextVisitDate) < todayInput) {
+        toast.error(`${isMeetingLead ? 'Followup Date' : 'Next date'} cannot be in the past`);
+        return;
+      }
+      if (isRevisit) {
         if (formatInputDate(formData.nextVisitDate) <= nextDateAfter) {
           toast.error(`${isMeetingLead && isRevisit ? 'Meeting Date' : 'Next date'} must be after ${formatDisplayDate(nextDateAfter)}`);
           return;
@@ -970,16 +974,16 @@ export default function VisitorFollowUpModal({ isOpen, onClose, lead, onSaved })
             </div>
           </div>
 
-          {/* Next Visit Schedule (Future Plan / Did Not Show / Under Negotiation) */}
+          {/* Next Visit Schedule */}
           {needsNextDate && (
             <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-200 space-y-2">
               <h4 className="font-bold text-purple-800 text-xs flex items-center gap-1.5">
-                <Clock size={14} /> {isNoContact ? 'Next Call / Follow-up Date' : (isMeetingLead && isFuturePlan ? 'Followup Date & Time' : (isMeetingLead && isRevisit ? 'Remeeting' : `Next ${visitWord} / Follow-up Schedule`))}
+                <Clock size={14} /> {isNoContact ? 'Next Call / Follow-up Date' : (isMeetingLead && isFuturePlan ? 'Followup Date & Time' : (isMeetingLead && isRevisit ? 'Remeeting' : (formData.status === 'Interested' || formData.status === 'Deal Lock' ? 'Next Follow-up Schedule' : `Next ${visitWord} / Follow-up Schedule`)))}
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block font-medium text-gray-700 mb-1 text-[11px] sm:text-xs">
-                    {isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Meeting Date' : 'Next Scheduled Date')} <span className="text-red-500">*</span>
+                    {isMeetingLead && isFuturePlan ? 'Followup Date' : (isMeetingLead && isRevisit ? 'Meeting Date' : (formData.status === 'Interested' || formData.status === 'Deal Lock' ? 'Next Follow-up Date' : 'Next Scheduled Date'))} <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <input

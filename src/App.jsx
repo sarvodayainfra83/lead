@@ -20,6 +20,7 @@ import NonInterested from './pages/NonInterested/NonInterested';
 import DealClosed from './pages/DealClosed/DealClosed';
 import Reception from './pages/Reception/Reception';
 import ReceptionistDashboard from './pages/Reception/ReceptionistDashboard';
+import Broker from './pages/Broker/Broker';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import AccessGuard from './components/AccessGuard';
@@ -78,8 +79,17 @@ function DashboardRoute() {
 
 function App() {
   useEffect(() => {
-    // Demo data in the browser is only for running without a database — with Supabase everything lives in the DB
-    if (!isSupabaseConfigured) initializeStorage();
+    if (isSupabaseConfigured) {
+      // With Supabase all data lives in the DB — purge leftover localStorage keys so the
+      // browser doesn't carry stale/huge blobs that will never be read again.
+      const keep = new Set(['session']);
+      Object.keys(localStorage).forEach(key => {
+        if (!keep.has(key)) localStorage.removeItem(key);
+      });
+    } else {
+      // Demo data in the browser is only for running without a database
+      initializeStorage();
+    }
   }, []);
 
   return (
@@ -105,6 +115,7 @@ function App() {
             <Route path="customer-master" element={<AccessGuard pageKey="customerMaster"><Customermaster /></AccessGuard>} />
             <Route path="non-interested" element={<AccessGuard pageKey="nonInterested"><NonInterested /></AccessGuard>} />
             <Route path="deal-closed" element={<AccessGuard pageKey="dealClosed"><DealClosed /></AccessGuard>} />
+            <Route path="broker" element={<AccessGuard pageKey="broker"><Broker /></AccessGuard>} />
             <Route path="reception-dashboard" element={<AccessGuard pageKey="receptionDashboard"><ReceptionistDashboard /></AccessGuard>} />
             <Route path="reception" element={<AccessGuard pageKey="reception"><Reception /></AccessGuard>} />
             <Route path="products" element={<AccessGuard pageKey="products"><Products /></AccessGuard>} />

@@ -429,7 +429,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         updated.customInvestmentBudget = '';
       }
       if (field === 'status') {
-        if (!DATE_STATUSES.includes(value) && value !== 'Meeting') {
+        if (value === 'Not Interested') {
           updated.nextCallDate = '';
         }
         if (value === 'Site Visit/Meeting') {
@@ -547,6 +547,22 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
     if (!formData.callerAssigned) { toast.error('Caller Assigned to is required'); return; }
 
     if (!formData.status) { toast.error('Status is required'); return; }
+    if (formData.status !== 'Not Interested' && !formData.nextCallDate) {
+      const dateLabel = formData.status === 'Future Plan Date'
+        ? 'Future Plan Date'
+        : (isInsurance || isMutualFund)
+        ? 'Meeting Date'
+        : (formData.status === 'Site Visit/Meeting' ? 'Visit/Meeting Date' : 'Next Follow-up Date');
+      toast.error(`${dateLabel} is required`);
+      return;
+    }
+    if (formData.status !== 'Not Interested' && formData.nextCallDate) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (formData.nextCallDate < todayStr) {
+        toast.error('Next Date cannot be in the past');
+        return;
+      }
+    }
     if (!formData.customerStatus) { toast.error('Customer Status is required'); return; }
     if (!formData.customerSaid.trim()) { toast.error('What did Customer Said is required'); return; }
     if ((isInsurance || isMutualFund) && formData.status === 'Meeting' && !formData.meetingMode) { toast.error('Please choose Online Meeting or Offline Meeting'); return; }
@@ -692,7 +708,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         status: formData.status,
         customerStatus: formData.customerStatus,
         customerSaid: formData.customerSaid,
-        nextDate: (DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') ? formData.nextCallDate : '',
+        nextDate: formData.status !== 'Not Interested' ? formData.nextCallDate : '',
         timestamp,
         timestampMs: now.getTime()
       });
@@ -1178,7 +1194,7 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
         </div>
 
         {/* Status */}
-        <div className={`space-y-1 ${(DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') ? 'col-span-1' : 'col-span-2 sm:col-span-1'}`}>
+        <div className={`space-y-1 ${formData.status && formData.status !== 'Not Interested' ? 'col-span-1' : 'col-span-2 sm:col-span-1'}`}>
           <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">Status *</label>
           <SearchableDropdown
             options={statusOptions}
@@ -1190,13 +1206,15 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
 
         {formData.status && (
           <>
-            {/* Date — Future Plan Date's next-call date, or the Site Visit/Meeting date */}
-            {(DATE_STATUSES.includes(formData.status) || formData.status === 'Meeting') && (
+            {/* Date — Required for every status except Not Interested */}
+            {formData.status !== 'Not Interested' && (
               <div className="space-y-1 col-span-1 animate-in fade-in duration-200">
                 <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                  {formData.status === 'Future Plan Date' ? 'Future Plan Date' : ((isInsurance || isMutualFund) ? 'Meeting Date' : 'Visit/Meeting Date')}
+                  {formData.status === 'Future Plan Date' ? 'Future Plan Date' : ((isInsurance || isMutualFund) ? 'Meeting Date' : (formData.status === 'Site Visit/Meeting' ? 'Visit/Meeting Date' : 'Next Follow-up Date'))} *
                 </label>
                 <DateInput
+                  required
+                  min={new Date().toISOString().split('T')[0]}
                   value={formData.nextCallDate}
                   onChange={(e) => handleChange('nextCallDate', e.target.value)}
                   className="w-full border border-gray-300 rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-[11px] md:text-[13px] h-[30px] md:h-[34px] [color-scheme:light]"

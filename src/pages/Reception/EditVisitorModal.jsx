@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { User, Phone, Building2, Briefcase, MapPin, ClipboardList, X } from 'lucide-react';
+import { User, Phone, Building2, Briefcase, MapPin, ClipboardList, X, ShieldCheck } from 'lucide-react';
 import ModalForm from '../../components/ModalForm';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import {
@@ -10,8 +10,14 @@ import {
 } from './receptionConstants';
 import { authApi } from '../../api/authApi';
 import { masterApi } from '../../api/masterApi';
+import { useAuthStore } from '../../store/authStore';
+import { isUserAdmin, hasFullAccess } from '../../utils/authUtils';
 
 export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
+  const { user } = useAuthStore();
+  const isAdmin = isUserAdmin(user);
+  const canManageAdminRemark = isAdmin || hasFullAccess(user, 'reception') || hasFullAccess(user, 'receptionDashboard');
+
   const [loading, setLoading] = useState(false);
   const [usersList, setUsersList] = useState([]);
   const [projectsList, setProjectsList] = useState([]);
@@ -33,7 +39,8 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
     personToMeetName: '',
     personToMeetId: null,
     department: '',
-    remarks: ''
+    remarks: '',
+    adminRemark: ''
   });
 
   useEffect(() => {
@@ -109,6 +116,7 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
       personToMeetId: visitor.personToMeetId || null,
       department: visitor.department || '',
       remarks: visitor.remarks || '',
+      adminRemark: visitor.adminRemark || '',
       checkInDate: cDate,
       checkInTime: cTime
     });
@@ -310,13 +318,20 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
 
     setLoading(true);
     try {
+      const cleanAdminRemark = formData.adminRemark ? formData.adminRemark.trim() : null;
+      const adminRemarkDate = cleanAdminRemark
+        ? (cleanAdminRemark !== (visitor.adminRemark || '') ? new Date().toISOString() : visitor.adminRemarkDate || new Date().toISOString())
+        : null;
+
       const updates = {
         ...formData,
         visitorName: trimmedName,
         mobileNumber: cleanDigits.slice(-10),
         visitPurpose: finalPurpose,
         personToMeetName: finalPersonToMeetName,
-        checkInAt: checkInAtIso
+        checkInAt: checkInAtIso,
+        adminRemark: cleanAdminRemark,
+        adminRemarkDate: adminRemarkDate
       };
 
       await onSave?.(visitor.id, updates);
@@ -649,6 +664,22 @@ export default function EditVisitorModal({ isOpen, onClose, visitor, onSave }) {
             className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
           />
         </div>
+
+        {canManageAdminRemark && (
+          <div className="sm:col-span-2 p-2.5 bg-violet-50/70 rounded-xl border border-violet-200 space-y-1">
+            <label className="block text-[11px] font-bold text-violet-950 flex items-center gap-1.5">
+              <ShieldCheck size={13} className="text-violet-600" />
+              <span>Admin Remark</span>
+            </label>
+            <textarea
+              rows={2}
+              value={formData.adminRemark || ''}
+              onChange={(e) => handleChange('adminRemark', e.target.value)}
+              placeholder="Enter admin remarks, instructions, or notes for this visitor..."
+              className="w-full border border-violet-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 resize-none bg-white text-gray-800"
+            />
+          </div>
+        )}
       </div>
     </ModalForm>
   );

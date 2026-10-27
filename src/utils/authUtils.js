@@ -534,7 +534,7 @@ export const getPageAccess = (user, pageKey) => {
 
   // Core customer information & lead pages the admin never configured for this user default to
   // view mode, so they can still see their connected leads/customers.
-  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance'];
+  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance', 'broker'];
   if (CUSTOMER_INFO_PAGES.includes(pageKey)) {
     return 'view';
   }
