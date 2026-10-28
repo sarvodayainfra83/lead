@@ -50,6 +50,14 @@ const emptyAccessPages = () => ({
   setting: 'none'
 });
 
+const defaultAdminAccessPages = () => ({
+  ...Object.fromEntries(APP_PAGES.map(p => [p.key, 'full'])),
+  reception: 'none', // By default, Admin only needs Reception Dashboard, Reception page is hidden
+  receptionDashboard: 'full',
+  setting: 'full',
+  master: 'full'
+});
+
 const initialFormData = {
   name: '',
   number: '',
@@ -118,15 +126,24 @@ export default function Setting({ setHeaderAction }) {
   const handleChange = (field, value) => {
     setFormData(prev => {
       const next = { ...prev, [field]: value };
-      if (field === 'role' && value === 'HR') {
-        if (!next.position) next.position = 'HR';
-        next.accessPages = {
-          ...next.accessPages,
-          attendance: 'full',
-          attendanceReport: 'full',
-          leaveRequests: 'full',
-          nonInterested: 'none'
-        };
+      if (field === 'role') {
+        if (value === 'HR') {
+          if (!next.position) next.position = 'HR';
+          next.accessPages = {
+            ...next.accessPages,
+            attendance: 'full',
+            attendanceReport: 'full',
+            leaveRequests: 'full',
+            nonInterested: 'none'
+          };
+        } else if (value === 'ADMIN') {
+          next.accessPages = {
+            ...defaultAdminAccessPages(),
+            ...(prev.accessPages || {}),
+            reception: prev.accessPages?.reception || 'none',
+            receptionDashboard: prev.accessPages?.receptionDashboard || 'full'
+          };
+        }
       }
       return next;
     });
@@ -150,7 +167,8 @@ export default function Setting({ setHeaderAction }) {
 
   const openEdit = (row) => {
     setEditRow(row);
-    const existingMasterSetting = row.accessPages?.master || row.accessPages?.setting || 'none';
+    const existingMasterSetting = row.accessPages?.master || row.accessPages?.setting || (row.role === 'ADMIN' ? 'full' : 'none');
+    const defaultPages = row.role === 'ADMIN' ? defaultAdminAccessPages() : emptyAccessPages();
 
     setFormData({
       name: row.name || '',
@@ -164,7 +182,7 @@ export default function Setting({ setHeaderAction }) {
       leadTypeId: row.leadTypeId || '',
       leadType: row.leadType || '',
       accessPages: {
-        ...emptyAccessPages(),
+        ...defaultPages,
         ...(row.accessPages || {}),
         master: existingMasterSetting,
         setting: existingMasterSetting
@@ -217,7 +235,7 @@ export default function Setting({ setHeaderAction }) {
       const idTaken = existing.some(u => u.id === formData.id && (!editRow || u.id !== editRow.id));
       if (idTaken) { toast.error('This ID is already in use'); return; }
 
-      const accessPagesPayload = (formData.role === 'ADMIN' || formData.role === 'TESTER') ? {} : { ...formData.accessPages };
+      const accessPagesPayload = formData.role === 'TESTER' ? {} : { ...formData.accessPages };
       if (accessPagesPayload.master) {
         accessPagesPayload.setting = accessPagesPayload.master;
       }
@@ -236,6 +254,9 @@ export default function Setting({ setHeaderAction }) {
       };
 
       await settingApi.saveUser(payload);
+      if (user?.id === payload.id) {
+        useAuthStore.getState().updateUser({ accessPages: accessPagesPayload });
+      }
       toast.success(editRow ? 'User updated' : 'User added');
       await load();
       closeForm();
@@ -312,7 +333,15 @@ export default function Setting({ setHeaderAction }) {
   const serialLabel = (row) => `SN-${String(row.serialNo || 0).padStart(3, '0')}`;
 
   const accessSummary = (row) => {
-    if (row.role === 'ADMIN' || row.role === 'TESTER') return [];
+    if (row.role === 'TESTER') return [];
+    if (row.role === 'ADMIN') {
+      const recDash = row.accessPages?.receptionDashboard !== 'none';
+      const rec = row.accessPages?.reception === 'full' || row.accessPages?.reception === 'view';
+      return [
+        { page: 'Rec Dash', level: recDash ? 'Full' : 'No Access', val: recDash ? 'full' : 'none' },
+        { page: 'Reception', level: rec ? (row.accessPages?.reception === 'full' ? 'Full' : 'View') : 'Hidden', val: rec ? (row.accessPages?.reception || 'full') : 'none' }
+      ];
+    }
     return APP_PAGES.map(p => {
       const levelVal = p.key === 'master'
         ? (row.accessPages?.master || row.accessPages?.setting || 'none')
@@ -440,10 +469,21 @@ export default function Setting({ setHeaderAction }) {
       <td className="px-4 py-2.5 text-center text-[13px] text-gray-600 whitespace-nowrap font-mono">{row.password}</td>
       <td className="px-4 py-2.5 min-w-[250px]">
         {row.role === 'ADMIN' ? (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center gap-1">
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase border bg-indigo-50 text-indigo-700 border-indigo-200">
-              <ShieldCheck size={11} /> Full Access (Admin)
+              <ShieldCheck size={11} /> Admin
             </span>
+            <div className="flex flex-wrap gap-1 justify-center">
+              {accessSummary(row).map((item, idx) => (
+                <span key={idx} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium border ${
+                  item.val === 'full' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                  item.val === 'view' ? 'bg-sky-50 text-sky-700 border-sky-200' :
+                  'bg-gray-50 text-gray-500 border-gray-200'
+                }`}>
+                  {item.page}: {item.level}
+                </span>
+              ))}
+            </div>
           </div>
         ) : row.role === 'TESTER' ? (
           <div className="flex justify-center">
@@ -535,6 +575,20 @@ export default function Setting({ setHeaderAction }) {
           <p className="text-gray-800 font-mono truncate">{row.password}</p>
         </div>
       </div>
+
+      {row.role === 'ADMIN' && (
+        <div className="flex flex-wrap gap-1">
+          {accessSummary(row).map((item, idx) => (
+            <span key={idx} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+              item.val === 'full' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+              item.val === 'view' ? 'bg-sky-50 text-sky-700 border-sky-200' :
+              'bg-gray-50 text-gray-500 border-gray-200'
+            }`}>
+              {item.page}: {item.level}
+            </span>
+          ))}
+        </div>
+      )}
 
       {row.role !== 'ADMIN' && row.role !== 'TESTER' && (
         <div className="flex flex-wrap gap-1">
@@ -829,14 +883,37 @@ export default function Setting({ setHeaderAction }) {
             />
           </div>
 
-          {/* Page Access — Admins and Testers always have full access, so this only applies to Users */}
-          {formData.role !== 'ADMIN' && formData.role !== 'TESTER' && (
+          {/* Page Access — Configurable for Users and Admins */}
+          {formData.role !== 'TESTER' && (
             <div className="space-y-1 col-span-2">
-              <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight">Page Access</label>
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <label className="block text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
+                  Page Access {formData.role === 'ADMIN' && '(Admin Permissions & Visibility)'}
+                </label>
+                {formData.role === 'ADMIN' && (
+                  <span className="text-[10px] md:text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">
+                    Reception page is hidden by default for Admin
+                  </span>
+                )}
+              </div>
               <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
                 {APP_PAGES.map(page => (
-                  <div key={page.key} className="flex flex-col sm:flex-row sm:items-center justify-between px-3 py-2 gap-1.5 sm:gap-2">
-                    <span className="text-[11px] md:text-[13px] text-gray-700 font-medium">{page.label}</span>
+                  <div key={page.key} className={`flex flex-col sm:flex-row sm:items-center justify-between px-3 py-2 gap-1.5 sm:gap-2 ${
+                    page.key === 'reception' || page.key === 'receptionDashboard' ? 'bg-indigo-50/20' : ''
+                  }`}>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] md:text-[13px] text-gray-700 font-medium">{page.label}</span>
+                      {page.key === 'reception' && formData.role === 'ADMIN' && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                          Default: No Access (Hidden)
+                        </span>
+                      )}
+                      {page.key === 'receptionDashboard' && formData.role === 'ADMIN' && (
+                        <span className="text-[9px] px-1.5 py-0.2 rounded font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Default: Full Access
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
                       {ACCESS_LEVELS.map(level => (
                         <label key={level.value} className="flex items-center gap-1 text-[10px] md:text-[11px] text-gray-600 cursor-pointer">
@@ -859,7 +936,8 @@ export default function Setting({ setHeaderAction }) {
 
           {formData.role === 'ADMIN' && (
             <div className="col-span-2 flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-[11px] md:text-[13px] text-indigo-700">
-              <ShieldCheck size={14} /> Admins have full access to every page by default.
+              <ShieldCheck size={14} className="flex-shrink-0" />
+              <span>Admins have full access by default. You can customize page access above (e.g. show or hide Reception page in sidebar).</span>
             </div>
           )}
 

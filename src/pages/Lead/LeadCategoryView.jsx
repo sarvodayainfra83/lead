@@ -4,7 +4,7 @@ import {
   Search, X, RotateCcw, Plus, Upload, UserCheck, Phone, MessageSquare,
   Pencil, Trash2, Info, Calendar, Clock, CheckSquare, MapPin,
   Square, ChevronDown, ChevronUp, AlertCircle, Sparkles, Building2, ShieldCheck, TrendingUp,
-  CalendarDays
+  CalendarDays, Filter
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -53,6 +53,7 @@ export default function LeadCategoryView({
   const [requirementFilter, setRequirementFilter] = useState('');
   // All Dates only: 'all' (both stages) | 'Leads / Calling' | 'Site Visit' — same as Lead & Followup
   const [stageFilter, setStageFilter] = useState('all');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const viewMode = 'auto'; // Table on desktop, cards on mobile (same as Call Tracker)
 
   // Helper to format short date DD/MM
@@ -773,10 +774,10 @@ export default function LeadCategoryView({
     return (
       <div
         key={item.id || item.leadNo || index}
-        className={`bg-white rounded-xl border transition-all shadow-xs p-3.5 space-y-3 ${isSelected ? 'border-indigo-400 bg-indigo-50/20 ring-1 ring-indigo-300' : 'border-gray-200 hover:border-gray-300'}`}
+        className={`bg-white rounded-xl border transition-all shadow-xs p-2.5 space-y-2 ${isSelected ? 'border-indigo-400 bg-indigo-50/20 ring-1 ring-indigo-300' : 'border-gray-200 hover:border-gray-300'}`}
       >
         {/* Card Top Row: Checkbox, Lead No, Date, Status */}
-        <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
+        <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-1.5">
           <div className="flex items-center gap-2">
             {canEdit && (
               isDirectSiteVisitLead(item) ? (
@@ -973,17 +974,24 @@ export default function LeadCategoryView({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-1">
-      {/* Header Bar: Mobile = 2 Rows (Row 1: Tabs, Row 2: Controls & Search); Desktop = 2 Rows matching Call Tracker */}
-      <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
-        {/* Row 1: Category Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
-          <PageTabs tabs={tabs} activeKey={activeTab} onChange={(key) => { onTabChange?.(key); setCurrentPage(1); }} />
+      {/* Header Bar: Mobile = 3 compact Rows (Row 1: Tabs, Row 2: Dates & Quick Actions, Row 3: Search & Filter toggle); Desktop = 2 Rows matching Call Tracker */}
+      <div className="flex flex-col gap-1 sm:gap-1.5 w-full flex-shrink-0">
+        {/* Row 1: Category Tabs (Full width, single row on mobile) */}
+        <div className="w-full pb-0.5">
+          <PageTabs
+            tabs={tabs}
+            activeKey={activeTab}
+            onChange={(key) => { onTabChange?.(key); setCurrentPage(1); }}
+            grid={tabs.length >= 2 && tabs.length <= 4}
+            gridCols={tabs.length === 3 ? 3 : 2}
+            wrap={false}
+          />
         </div>
 
-        {/* Row 2: Dates & Action Buttons on Left, Search/Refresh/Reset on Right */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
-          {/* Dates & Add Lead / Bulk Upload Controls */}
-          <div className="flex flex-wrap xl:flex-nowrap items-center gap-1.5 shrink-0 w-full xl:w-auto pb-0.5">
+        {/* Row 2: Dates & Quick Actions on Left, Search/Filter/Reset on Right */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1 sm:gap-1.5 w-full">
+          {/* Dates & Add Lead / Bulk Upload Controls (Single horizontal scroll row on mobile) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full xl:w-auto pb-0.5 shrink-0">
             {/* Dedicated Tab / Button for Today's Lead */}
             <button
               type="button"
@@ -993,7 +1001,7 @@ export default function LeadCategoryView({
                 setCurrentPage(1);
               }}
               title="Show Today's Leads"
-              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold h-[32px] sm:h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
@@ -1009,7 +1017,7 @@ export default function LeadCategoryView({
             </button>
 
             {/* Dropdown for All Dates & other date options */}
-            <div className="flex-1 min-w-[140px] sm:flex-none sm:w-[170px] shrink-0">
+            <div className="w-[135px] sm:w-[170px] shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
                 value={dateFilter === 'today' ? 'all' : dateFilter}
@@ -1031,7 +1039,7 @@ export default function LeadCategoryView({
                   setCurrentPage(1);
                 }}
                 placeholder="All Dates"
-                height="h-[34px]"
+                height="h-[32px] sm:h-[34px]"
                 triggerClassName={
                   dateFilter !== 'today' && !(dateFilter === 'all' && stageFilter !== 'all')
                     ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
@@ -1056,15 +1064,15 @@ export default function LeadCategoryView({
                     setCurrentPage(1);
                   }}
                   title={`All ${key} stage leads till date`}
-                  className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                  className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold h-[32px] sm:h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                     active
                       ? (key === 'Site Visit'
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-300/60 font-bold'
-                        : 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-300/60 font-bold')
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 shadow-xs'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm font-bold'
+                        : 'bg-blue-600 text-white border-blue-600 shadow-sm font-bold')
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 shadow-xs'
                   }`}
                 >
-                  <Icon size={13} className={active ? 'text-white' : 'text-gray-400'} />
+                  <Icon size={12} className={active ? 'text-white' : 'text-gray-400'} />
                   <span>{key}</span>
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
                     active ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
@@ -1077,8 +1085,8 @@ export default function LeadCategoryView({
 
             {/* Custom Date Range Inline Inputs */}
             {dateFilter === 'custom' && (
-              <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
-                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+              <div className="flex items-center gap-1 shrink-0 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[32px] sm:h-[34px] shadow-xs">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
                   <input
                     type="date"
@@ -1091,7 +1099,7 @@ export default function LeadCategoryView({
                     title="From Date"
                   />
                 </div>
-                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
+                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[32px] sm:h-[34px] shadow-xs">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
                   <input
                     type="date"
@@ -1108,37 +1116,37 @@ export default function LeadCategoryView({
             )}
 
             {canEdit && (
-              <div className="flex flex-1 sm:flex-none items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => onAddLead?.(category)}
-                  className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[32px] sm:h-[34px] shrink-0 whitespace-nowrap active:scale-95"
                 >
-                  <Plus size={14} className="shrink-0" />
+                  <Plus size={13} className="shrink-0" />
                   <span>Add Lead</span>
                 </button>
 
                 <button
                   onClick={() => onBulkUpload?.(category)}
-                  className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[32px] sm:h-[34px] shrink-0 whitespace-nowrap active:scale-95"
                 >
-                  <Upload size={14} className="shrink-0" />
+                  <Upload size={13} className="shrink-0" />
                   <span>Bulk Upload</span>
                 </button>
               </div>
             )}
           </div>
 
-          {/* Right Controls: Search + Refresh + Reset */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap sm:overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
+          {/* Right Controls: Search + Filter Toggle Button + Reset */}
+          <div className="flex items-center gap-1.5 sm:gap-2 w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
             {/* Search Input */}
-            <div className="relative min-w-[120px] max-w-full sm:max-w-[220px] flex-1 shrink">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+            <div className="relative flex-1 min-w-[120px] sm:max-w-[220px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                 placeholder={`Search ${category} leads...`}
-                className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-xs transition"
+                className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[32px] sm:h-[34px] shadow-xs transition"
               />
               {searchQuery && (
                 <button
@@ -1146,19 +1154,36 @@ export default function LeadCategoryView({
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
                   title="Clear search"
                 >
-                  <X size={13} />
+                  <X size={12} />
                 </button>
               )}
             </div>
+
+            {/* Mobile Filters Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowMobileFilters(v => !v)}
+              className={`sm:hidden flex items-center justify-center gap-1 px-2.5 rounded-lg border text-xs font-semibold h-[32px] shrink-0 active:scale-95 transition ${
+                showMobileFilters || activeFiltersCount > 0
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              <Filter size={12} />
+              <span>Filters</span>
+              {activeFiltersCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              )}
+            </button>
 
             {/* Clear Filters (visible when any filter or search query is active) */}
             {(activeFiltersCount > 0 || searchQuery) && (
               <button
                 onClick={handleClearFilters}
                 title="Clear all filters & search"
-                className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95"
+                className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[32px] sm:h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95"
               >
-                <RotateCcw size={13} />
+                <RotateCcw size={12} />
                 <span className="hidden md:inline">Reset</span>
               </button>
             )}
@@ -1166,15 +1191,15 @@ export default function LeadCategoryView({
         </div>
       </div>
 
-      {/* Filter Options Bar (Always Visible) */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
+      {/* Desktop Filter Options Bar (Always Visible on Desktop) */}
+      <div className="hidden sm:flex sm:flex-row sm:items-center gap-2 p-1.5 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">
           Filter Options:
         </span>
 
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-auto">
           {/* Caller Status Filter */}
-          <div className="w-full sm:w-[130px] lg:w-[150px]">
+          <div className="w-[130px] lg:w-[150px]">
             <select
               value={callerStatusFilter}
               onChange={(e) => { setCallerStatusFilter(e.target.value); setCurrentPage(1); }}
@@ -1189,7 +1214,7 @@ export default function LeadCategoryView({
 
           {/* Product Type Filter */}
           {distinctProductTypes.length > 0 && (
-            <div className="w-full sm:w-[130px] lg:w-[150px]">
+            <div className="w-[130px] lg:w-[150px]">
               <select
                 value={productTypeFilter}
                 onChange={(e) => { setProductTypeFilter(e.target.value); setCurrentPage(1); }}
@@ -1206,7 +1231,7 @@ export default function LeadCategoryView({
 
           {/* Requirement Filter (Real Estate only) */}
           {category === 'Real Estate' && distinctRequirements.length > 0 && (
-            <div className="w-full sm:w-[130px] lg:w-[150px]">
+            <div className="w-[130px] lg:w-[150px]">
               <select
                 value={requirementFilter}
                 onChange={(e) => { setRequirementFilter(e.target.value); setCurrentPage(1); }}
@@ -1222,7 +1247,7 @@ export default function LeadCategoryView({
           )}
 
           {/* Assigned Caller Filter */}
-          <div className="w-full sm:w-[130px] lg:w-[150px]">
+          <div className="w-[130px] lg:w-[150px]">
             <select
               value={callerFilter}
               onChange={(e) => { setCallerFilter(e.target.value); setCurrentPage(1); }}
@@ -1237,7 +1262,7 @@ export default function LeadCategoryView({
           </div>
 
           {/* Lead Source Filter */}
-          <div className="w-full sm:w-[130px] lg:w-[150px]">
+          <div className="w-[130px] lg:w-[150px]">
             <select
               value={leadSourceFilter}
               onChange={(e) => { setLeadSourceFilter(e.target.value); setCurrentPage(1); }}
@@ -1252,6 +1277,102 @@ export default function LeadCategoryView({
           </div>
         </div>
       </div>
+
+      {/* Mobile Collapsible Filters Panel (Hidden by default on mobile so data takes full height) */}
+      {showMobileFilters && (
+        <div className="sm:hidden flex flex-col gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center justify-between text-[11px] font-bold text-gray-600 border-b border-gray-200 pb-1">
+            <span>Filter Options</span>
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={handleClearFilters}
+                className="text-indigo-600 underline text-[10px]"
+              >
+                Reset all
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {/* Caller Status Filter */}
+            <div>
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Status</span>
+              <select
+                value={callerStatusFilter}
+                onChange={(e) => { setCallerStatusFilter(e.target.value); setCurrentPage(1); }}
+                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[32px]"
+              >
+                <option value="all">All Leads</option>
+                <option value="unassigned">Unassigned</option>
+                <option value="assigned">Assigned</option>
+              </select>
+            </div>
+
+            {/* Product Type Filter */}
+            {distinctProductTypes.length > 0 && (
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Product</span>
+                <select
+                  value={productTypeFilter}
+                  onChange={(e) => { setProductTypeFilter(e.target.value); setCurrentPage(1); }}
+                  className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[32px]"
+                >
+                  <option value="">All Products</option>
+                  {distinctProductTypes.map(p => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Requirement Filter (Real Estate only) */}
+            {category === 'Real Estate' && distinctRequirements.length > 0 && (
+              <div>
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Requirement</span>
+                <select
+                  value={requirementFilter}
+                  onChange={(e) => { setRequirementFilter(e.target.value); setCurrentPage(1); }}
+                  className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[32px]"
+                >
+                  <option value="">All Requirements</option>
+                  {distinctRequirements.map(r => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Assigned Caller Filter */}
+            <div>
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Caller</span>
+              <select
+                value={callerFilter}
+                onChange={(e) => { setCallerFilter(e.target.value); setCurrentPage(1); }}
+                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[32px]"
+              >
+                <option value="">All Callers</option>
+                {callerOptions.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Lead Source Filter */}
+            <div>
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Source</span>
+              <select
+                value={leadSourceFilter}
+                onChange={(e) => { setLeadSourceFilter(e.target.value); setCurrentPage(1); }}
+                className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[32px]"
+              >
+                <option value="">All Sources</option>
+                {LEAD_SOURCES.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Batch Caller Assignment Floating Bar (only when canEdit is true) */}
       {canEdit && selectedIds.size > 0 && (
@@ -1310,7 +1431,7 @@ export default function LeadCategoryView({
             stickyFirstColumn={canEdit}
             disableDragScroll={true}
             viewMode={viewMode}
-            cardsGridClassName="grid grid-cols-1 md:grid-cols-2 gap-2.5 p-2 sm:p-3"
+            cardsGridClassName="grid grid-cols-1 md:grid-cols-2 gap-2 p-1.5 sm:p-3"
             currentPage={currentPage}
             totalPages={totalPages}
             itemsPerPage={itemsPerPage}

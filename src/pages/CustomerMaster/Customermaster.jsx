@@ -307,11 +307,13 @@ export default function Customermaster() {
       {/* Header Bar: Row 1 = Lead Category Tabs; Row 2 = Search & Actions Controls */}
       <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
         {/* Row 1: Lead Category Button Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
+        <div className="w-full pb-0.5">
           <PageTabs
             tabs={visibleTabs.map(t => ({ ...t, count: categoryCounts[t.key] ?? 0 }))}
             activeKey={activeTab}
             onChange={(key) => { setActiveTab(key); setCurrentPage(1); }}
+            grid={visibleTabs.length >= 2 && visibleTabs.length <= 4}
+            gridCols={visibleTabs.length === 3 ? 3 : 2}
           />
         </div>
 

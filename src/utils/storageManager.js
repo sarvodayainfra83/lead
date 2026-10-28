@@ -66,6 +66,7 @@ export const DEFAULT_USER_ACCESS = {
   visitorFollowUp: 'edit',
   customerMaster: 'view',
   products: 'edit',
+  broker: 'none',
   callerReport: 'none',
   misReport: 'view',
   attendance: 'edit',

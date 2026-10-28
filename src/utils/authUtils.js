@@ -469,7 +469,24 @@ export const hasFullAccess = (user, pageKey) => getPageAccess(user, pageKey) ===
  */
 export const getPageAccess = (user, pageKey) => {
   if (!user) return 'none';
-  if (isUserAdmin(user)) return 'full';
+  if (isUserAdmin(user)) {
+    // Reception module visibility for Admin:
+    // By default, Admin only needs Reception Dashboard (Reception page is hidden)
+    // If explicitly configured in Setting -> Page Access, honor that configuration
+    if (pageKey === 'reception') {
+      const level = user.accessPages?.reception;
+      return (level === 'full' || level === 'view') ? level : 'none';
+    }
+    if (pageKey === 'receptionDashboard') {
+      const level = user.accessPages?.receptionDashboard;
+      return level === 'none' ? 'none' : 'full';
+    }
+    if (pageKey === 'broker') {
+      const level = user.accessPages?.broker;
+      return level === 'none' ? 'none' : 'full';
+    }
+    return 'full';
+  }
 
   // Leave Requests is strictly admin-only for now; default 'none' (no access) for all other users
   if (pageKey === 'leaveRequests') {
@@ -514,9 +531,9 @@ export const getPageAccess = (user, pageKey) => {
     return level === 'none' ? 'none' : 'full';
   }
 
-  // Receptionist users always get full access to Reception & Reception Dashboard pages
+  // Receptionist users default to full access for Reception & Reception Dashboard pages unless explicitly set to 'none'
   if (isUserReceptionist(user) && (pageKey === 'reception' || pageKey === 'receptionDashboard')) {
-    return 'full';
+    return level === 'none' ? 'none' : 'full';
   }
 
   // Receptionist users default to full access for Attendance Report unless explicitly set to 'none'
@@ -532,9 +549,14 @@ export const getPageAccess = (user, pageKey) => {
     return 'none';
   }
 
+  // Broker page strictly requires explicit access (full/view) or Admin role
+  if (pageKey === 'broker') {
+    return 'none';
+  }
+
   // Core customer information & lead pages the admin never configured for this user default to
   // view mode, so they can still see their connected leads/customers.
-  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance', 'broker'];
+  const CUSTOMER_INFO_PAGES = ['dashboard', 'lead', 'callTracker', 'siteVisitMeeting', 'customerMaster', 'nonInterested', 'products', 'attendance'];
   if (CUSTOMER_INFO_PAGES.includes(pageKey)) {
     return 'view';
   }

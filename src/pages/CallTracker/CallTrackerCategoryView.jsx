@@ -5,7 +5,7 @@ import {
   Search, X, RotateCcw, Phone, Eye, ChevronDown, ChevronUp,
   Calendar, FileSpreadsheet, Plus, UserCheck, User,
   Mail, Briefcase, FileText, MapPin, Clock, IndianRupee, MessageSquare, Bell, Pencil, Reply,
-  CalendarDays, Upload
+  CalendarDays, Upload, Filter, Layers
 } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import PageTabs from '../../components/PageTabs';
@@ -153,12 +153,47 @@ export default function CallTrackerCategoryView({
   const isAdmin = isUserAdmin(user);
   const isReceptionist = isUserReceptionist(user);
   const isGlobalView = isAdmin || isReceptionist;
+  const isAllCategory = category === 'All';
   // Insurance / Mutual Fund have meetings only — 'Site Visit/Meeting' reads 'Meeting' and the 'Site Visit' stage reads 'Meeting'
   const isMeetingOnly = category === 'Insurance' || category === 'Mutual Fund';
-  const statusText = (status) => (isMeetingOnly && status === 'Site Visit/Meeting' ? 'Meeting' : status);
-  const stageText = (stage) => (isMeetingOnly && stage === 'Site Visit' ? 'Meeting' : stage);
+  const getItemCategory = useCallback((item) => {
+    const rawType = item?.leadType || item?.category || item?.lead_type || '';
+    if (rawType) {
+      const norm = String(rawType).toLowerCase();
+      if (norm.includes('insurance')) return 'Insurance';
+      if (norm.includes('mutual') || norm.includes('fund')) return 'Mutual Fund';
+      if (norm.includes('real') || norm.includes('estate')) return 'Real Estate';
+    }
+    const no = String(item?.leadNo || item?.lead_no || '').trim().toUpperCase();
+    if (no.startsWith('LI')) return 'Insurance';
+    if (no.startsWith('LM')) return 'Mutual Fund';
+    if (no.startsWith('LR')) return 'Real Estate';
+    return 'Real Estate';
+  }, []);
+
+  const itemIsMeeting = useCallback((item) => {
+    if (isMeetingOnly) return true;
+    if (isAllCategory) {
+      const cat = getItemCategory(item);
+      return cat === 'Insurance' || cat === 'Mutual Fund';
+    }
+    return false;
+  }, [isMeetingOnly, isAllCategory, getItemCategory]);
+
+  const statusText = (status, item) => (
+    (item ? itemIsMeeting(item) : isMeetingOnly) && status === 'Site Visit/Meeting'
+      ? 'Meeting'
+      : status
+  );
+  const stageText = (stage, item) => (
+    (item ? itemIsMeeting(item) : isMeetingOnly) && stage === 'Site Visit'
+      ? 'Meeting'
+      : stage
+  );
   // Who takes the site visit (Real Estate) / meeting (Insurance, Mutual Fund)
-  const assignedToLabel = isMeetingOnly ? 'Meeting Assigned To' : 'Site Visit Assigned To';
+  const assignedToLabel = isMeetingOnly
+    ? 'Meeting Assigned To'
+    : (isAllCategory ? 'Site Visit / Meeting Assigned To' : 'Site Visit Assigned To');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
@@ -242,6 +277,9 @@ export default function CallTrackerCategoryView({
     setRemarkOverrides(prev => ({ ...prev, [String(item.id)]: { ...(prev[String(item.id)] || {}), [field]: seenAt } }));
     leadApi.markRemarksSeen(item.id, isAdmin).catch(err => console.warn('Could not mark remark seen:', err));
   };
+
+  // Mobile filter accordion toggle
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Mobile card view: expanded accordion card IDs (hide and drop details)
   const [expandedCardIds, setExpandedCardIds] = useState(new Set());
@@ -396,7 +434,7 @@ export default function CallTrackerCategoryView({
         number: lead.number || lead.customerNumber || '',
         email: lead.email || lead.customerEmail || '',
         location: lead.location || lead.customerAddress || '',
-        leadType: lead.leadType || category,
+        leadType: lead.leadType || getItemCategory(lead),
         status,
         latestStatus: status,
         // Site Visit once the lead is on the Site Visit / Meeting list, otherwise still being called
@@ -450,7 +488,7 @@ export default function CallTrackerCategoryView({
         latestTracker
       };
     });
-  }, [leads, trackers, visitorFollowUps, assignedVisitors, category, remarkOverrides]);
+  }, [leads, trackers, visitorFollowUps, assignedVisitors, category, remarkOverrides, getItemCategory]);
 
   // Arriving from a navbar notification: open that lead's conversation once its data is loaded
   useEffect(() => {
@@ -557,7 +595,7 @@ export default function CallTrackerCategoryView({
           ? `w-7 h-7 inline-flex items-center justify-center rounded-md border cursor-default ${done
             ? 'bg-emerald-600 text-white border-emerald-600'
             : `bg-white border-gray-200 ${callCount > 0 ? 'text-gray-500' : 'text-gray-400'}`}`
-          : `inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-default shrink-0 ${done
+          : `inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold border cursor-default shrink-0 ${done
             ? 'bg-emerald-600 text-white border-emerald-600'
             : 'bg-white text-gray-400 border-gray-200'}`}
       >
@@ -583,12 +621,23 @@ export default function CallTrackerCategoryView({
     [accessibleEnrichedLeads, isGlobalView]
   );
 
-  // Lead counts for the Leads / Calling and Site Visit stage buttons (all dates)
+  // Accessible leads belonging to the currently selected tab (or all if All tab)
+  const currentCategoryAccessibleLeads = useMemo(() => {
+    if (isAllCategory) return accessibleEnrichedLeads;
+    return accessibleEnrichedLeads.filter(item => getItemCategory(item) === category);
+  }, [accessibleEnrichedLeads, isAllCategory, category, getItemCategory]);
+
+  const currentCategoryCallListLeads = useMemo(() => {
+    if (isAllCategory) return callListLeads;
+    return callListLeads.filter(item => getItemCategory(item) === category);
+  }, [callListLeads, isAllCategory, category, getItemCategory]);
+
+  // Lead counts for the Leads / Calling and Site Visit stage buttons (all dates for current category)
   const stageCounts = useMemo(() => {
     const counts = { 'Leads / Calling': 0, 'Site Visit': 0 };
-    accessibleEnrichedLeads.forEach(item => { counts[item.stage] += 1; });
+    currentCategoryAccessibleLeads.forEach(item => { counts[item.stage] = (counts[item.stage] || 0) + 1; });
     return counts;
-  }, [accessibleEnrichedLeads]);
+  }, [currentCategoryAccessibleLeads]);
 
   // Live counts for each date filter
   // Dates the Today / Yesterday / Overdue / Upcoming / Custom filters check. Insurance / Mutual Fund leads that
@@ -598,9 +647,11 @@ export default function CallTrackerCategoryView({
   const getFollowUpTimes = useCallback((item) => {
     const timeOf = (val) => parseTrackerDateStr(val)?.getTime() ?? null;
     const nextMeetTime = timeOf(item.nextMeetingDate || item.nextVisitDate);
-    if (isMeetingOnly && item.meetingLoggedDate) {
+    const meetingMode = itemIsMeeting(item);
+    const itemCat = getItemCategory(item);
+    if (meetingMode && item.meetingLoggedDate) {
       // Mutual Fund still follows up by call after the meeting, so its next call date counts too
-      const nextCallTime = category === 'Mutual Fund' ? timeOf(item.nextCallDate) : null;
+      const nextCallTime = itemCat === 'Mutual Fund' ? timeOf(item.nextCallDate) : null;
       return { nextCallTime, meetTime: timeOf(item.meetingLoggedDate), nextMeetTime };
     }
     return {
@@ -608,14 +659,14 @@ export default function CallTrackerCategoryView({
       meetTime: timeOf(item.meetingDate || item.lastMeetingDate || item.siteVisitDate || item.visitDate),
       nextMeetTime
     };
-  }, [isMeetingOnly, category]);
+  }, [itemIsMeeting, getItemCategory]);
 
   const dateCounts = useMemo(() => {
     const todayTime = today.getTime();
     const yesterdayTime = yesterday.getTime();
 
     // All Dates = every lead till date (calls + site visits), same total as the Dashboard
-    let allCount = accessibleEnrichedLeads.length;
+    let allCount = currentCategoryAccessibleLeads.length;
     let todayCount = 0;
     let todayCalledCount = 0;
     let yesterdayCount = 0;
@@ -634,7 +685,7 @@ export default function CallTrackerCategoryView({
       }
     }
 
-    callListLeads.forEach(item => {
+    currentCategoryCallListLeads.forEach(item => {
       const { nextCallTime, meetTime, nextMeetTime } = getFollowUpTimes(item);
 
       const targetTime = nextCallTime || nextMeetTime || meetTime;
@@ -682,7 +733,7 @@ export default function CallTrackerCategoryView({
       upcoming: upcomingCount,
       custom: customCount
     };
-  }, [accessibleEnrichedLeads, callListLeads, today, yesterday, customFrom, customTo, isCalledToday, getFollowUpTimes]);
+  }, [currentCategoryAccessibleLeads, currentCategoryCallListLeads, today, yesterday, customFrom, customTo, isCalledToday, getFollowUpTimes]);
 
   const customDropdownLabel = useMemo(() => {
     if (customFrom && customTo) {
@@ -703,101 +754,113 @@ export default function CallTrackerCategoryView({
     ];
   }, [dateCounts, customDropdownLabel]);
 
+  // Unified filter tester matching current date, caller, stage, search & status filters
+  const checkLeadMatchesFilters = useCallback((item, checkStatus = true) => {
+    if (stageFilter !== 'all' && item.stage !== stageFilter) return false;
+    if (newRemarksOnly && !(isAdmin ? item.hasNewUserReply : item.hasNewAdminRemark)) return false;
+    if (callerFilter !== 'all') {
+      const matchesCaller = item.callerAssigned === callerFilter;
+      const matchesVisitor = isAdmin && item.assignedVisitor === callerFilter;
+      if (!matchesCaller && !matchesVisitor) return false;
+    }
+    if (dateFilter !== 'all') {
+      const { nextCallTime, meetTime, nextMeetTime } = getFollowUpTimes(item);
+      const targetTime = nextCallTime || nextMeetTime || meetTime;
+      const todayTime = today.getTime();
+      const yesterdayTime = yesterday.getTime();
+
+      if (dateFilter === 'today') {
+        const lastCallObj = parseTrackerDateStr(item.dateOfCallRaw);
+        const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
+        const lastVisitObj = parseTrackerDateStr(item.siteVisitDate || item.visitDate);
+        const lastVisitToday = Boolean(lastVisitObj) && lastVisitObj.getTime() === todayTime;
+        const hasFollowupToday = (item.visitorFollowUps || []).some(v => {
+          const d = parseTrackerDateStr(v.visit_date || v.visitDate || v.timestamp || v.created_at);
+          return Boolean(d) && d.getTime() === todayTime;
+        });
+
+        if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday || lastVisitToday || hasFollowupToday || isCalledToday(item))) return false;
+        if (calledOnly && !isCalledToday(item)) return false;
+      } else if (dateFilter === 'yesterday') {
+        if (!(nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime)) return false;
+      } else if (dateFilter === 'overdue') {
+        if (!targetTime || targetTime >= todayTime || TERMINAL_STATUSES.includes(item.status)) return false;
+      } else if (dateFilter === 'upcoming') {
+        if (!((nextCallTime && nextCallTime > todayTime) || (nextMeetTime && nextMeetTime > todayTime) || (meetTime && meetTime > todayTime))) return false;
+      } else if (dateFilter === 'custom') {
+        let fromMs = null;
+        let toMs = null;
+        if (customFrom) {
+          const fParts = customFrom.split('-').map(Number);
+          if (fParts.length === 3) fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
+        }
+        if (customTo) {
+          const tParts = customTo.split('-').map(Number);
+          if (tParts.length === 3) toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
+        }
+        const inRange = (t) => {
+          if (!t) return false;
+          if (fromMs !== null && t < fromMs) return false;
+          if (toMs !== null && t > toMs) return false;
+          return true;
+        };
+        if (!(inRange(nextCallTime) || inRange(meetTime) || inRange(nextMeetTime))) return false;
+      }
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const matchesSearch = (
+        (item.leadType || '').toLowerCase().includes(q) ||
+        (item.personName || '').toLowerCase().includes(q) ||
+        (item.number || '').toLowerCase().includes(q) ||
+        (item.email || '').toLowerCase().includes(q) ||
+        (item.location || '').toLowerCase().includes(q) ||
+        (item.requirement || '').toLowerCase().includes(q) ||
+        (item.callerAssigned || '').toLowerCase().includes(q) ||
+        (item.status || '').toLowerCase().includes(q) ||
+        (item.stage || '').toLowerCase().includes(q) ||
+        (item.customerStatus || '').toLowerCase().includes(q) ||
+        (item.adminRemark || '').toLowerCase().includes(q) ||
+        (item.userRemark || '').toLowerCase().includes(q) ||
+        (item.customerSaid || '').toLowerCase().includes(q) ||
+        (item.remarks || '').toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return false;
+    }
+
+    if (checkStatus && !matchesStatusFilter(item, statusFilter)) return false;
+
+    return true;
+  }, [stageFilter, newRemarksOnly, isAdmin, callerFilter, dateFilter, getFollowUpTimes, today, yesterday, isCalledToday, calledOnly, customFrom, customTo, searchQuery, statusFilter]);
+
   // Filter leads by everything except status (the status dropdown counts come from this list)
   const leadsBeforeStatus = useMemo(() => {
-    // All Dates → every lead (calling + site visit stage, or one stage via its button); other dates → the pool
-    // For Admin: both stages are on this page, so stageFilter applies to all date filters
     const baseLeads = (dateFilter === 'all' || isAdmin)
-      ? accessibleEnrichedLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter)
-      : callListLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter);
-    return baseLeads.filter(item => {
-
-      // "New remarks" chip: unread admin remarks for users, new user replies for admins
-      if (newRemarksOnly && !(isAdmin ? item.hasNewUserReply : item.hasNewAdminRemark)) return false;
-
-      // Caller / Visitor filter
-      if (callerFilter !== 'all') {
-        const matchesCaller = item.callerAssigned === callerFilter;
-        const matchesVisitor = isAdmin && item.assignedVisitor === callerFilter;
-        if (!matchesCaller && !matchesVisitor) return false;
-      }
-
-      // Date filter (evaluates Next Call Date, Last Meeting Date, and Next Meeting Date)
-      if (dateFilter !== 'all') {
-        const { nextCallTime, meetTime, nextMeetTime } = getFollowUpTimes(item);
-
-        const targetTime = nextCallTime || nextMeetTime || meetTime;
-        const todayTime = today.getTime();
-        const yesterdayTime = yesterday.getTime();
-
-        if (dateFilter === 'today') {
-          // A lead called or visited today also counts as today's follow-up (for all roles including Admin)
-          const lastCallObj = parseTrackerDateStr(item.dateOfCallRaw);
-          const lastCallToday = Boolean(lastCallObj) && lastCallObj.getTime() === todayTime;
-          const lastVisitObj = parseTrackerDateStr(item.siteVisitDate || item.visitDate);
-          const lastVisitToday = Boolean(lastVisitObj) && lastVisitObj.getTime() === todayTime;
-          const hasFollowupToday = (item.visitorFollowUps || []).some(v => {
-            const d = parseTrackerDateStr(v.visit_date || v.visitDate || v.timestamp || v.created_at);
-            return Boolean(d) && d.getTime() === todayTime;
-          });
-
-          if (!(nextCallTime === todayTime || meetTime === todayTime || nextMeetTime === todayTime || lastCallToday || lastVisitToday || hasFollowupToday || isCalledToday(item))) return false;
-          if (calledOnly && !isCalledToday(item)) return false;
-        } else if (dateFilter === 'yesterday') {
-          if (!(nextCallTime === yesterdayTime || meetTime === yesterdayTime || nextMeetTime === yesterdayTime)) return false;
-        } else if (dateFilter === 'overdue') {
-          if (!targetTime || targetTime >= todayTime || TERMINAL_STATUSES.includes(item.status)) return false;
-        } else if (dateFilter === 'upcoming') {
-          if (!((nextCallTime && nextCallTime > todayTime) || (nextMeetTime && nextMeetTime > todayTime) || (meetTime && meetTime > todayTime))) return false;
-        } else if (dateFilter === 'custom') {
-          let fromMs = null;
-          let toMs = null;
-          if (customFrom) {
-            const fParts = customFrom.split('-').map(Number);
-            if (fParts.length === 3) fromMs = new Date(fParts[0], fParts[1] - 1, fParts[2], 0, 0, 0, 0).getTime();
-          }
-          if (customTo) {
-            const tParts = customTo.split('-').map(Number);
-            if (tParts.length === 3) toMs = new Date(tParts[0], tParts[1] - 1, tParts[2], 23, 59, 59, 999).getTime();
-          }
-          const inRange = (t) => {
-            if (!t) return false;
-            if (fromMs !== null && t < fromMs) return false;
-            if (toMs !== null && t > toMs) return false;
-            return true;
-          };
-          if (!(inRange(nextCallTime) || inRange(meetTime) || inRange(nextMeetTime))) return false;
-        }
-      }
-
-      // Individual page search query
-      if (searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
-        return (
-          (item.personName || '').toLowerCase().includes(q) ||
-          (item.number || '').toLowerCase().includes(q) ||
-          (item.email || '').toLowerCase().includes(q) ||
-          (item.location || '').toLowerCase().includes(q) ||
-          (item.requirement || '').toLowerCase().includes(q) ||
-          (item.callerAssigned || '').toLowerCase().includes(q) ||
-          (item.status || '').toLowerCase().includes(q) ||
-          (item.stage || '').toLowerCase().includes(q) ||
-          (item.customerStatus || '').toLowerCase().includes(q) ||
-          (item.adminRemark || '').toLowerCase().includes(q) ||
-          (item.userRemark || '').toLowerCase().includes(q) ||
-          (item.customerSaid || '').toLowerCase().includes(q) ||
-          (item.remarks || '').toLowerCase().includes(q)
-        );
-      }
-
-      return true;
-    });
-  }, [accessibleEnrichedLeads, callListLeads, stageFilter, category, callerFilter, dateFilter, customFrom, customTo, searchQuery, today, yesterday, newRemarksOnly, isAdmin, getFollowUpTimes, calledOnly, isCalledToday]);
+      ? currentCategoryAccessibleLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter)
+      : currentCategoryCallListLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter);
+    return baseLeads.filter(item => checkLeadMatchesFilters(item, false));
+  }, [currentCategoryAccessibleLeads, currentCategoryCallListLeads, dateFilter, isAdmin, stageFilter, checkLeadMatchesFilters]);
 
   const filteredLeads = useMemo(
     () => leadsBeforeStatus.filter(item => matchesStatusFilter(item, statusFilter)),
     [leadsBeforeStatus, statusFilter]
   );
+
+  // Accurate category counts under active filters across all categories (All, Real Estate, Insurance, Mutual Fund)
+  const liveCategoryCounts = useMemo(() => {
+    const pool = (dateFilter === 'all' || isAdmin)
+      ? accessibleEnrichedLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter)
+      : callListLeads.filter(item => stageFilter === 'all' || item.stage === stageFilter);
+    const matching = pool.filter(item => checkLeadMatchesFilters(item, true));
+    const counts = { 'All': 0, 'Real Estate': 0, 'Insurance': 0, 'Mutual Fund': 0 };
+    matching.forEach(item => {
+      const cat = getItemCategory(item);
+      if (counts[cat] !== undefined) counts[cat] += 1;
+      counts['All'] += 1;
+    });
+    return counts;
+  }, [accessibleEnrichedLeads, callListLeads, dateFilter, isAdmin, stageFilter, checkLeadMatchesFilters, getItemCategory]);
 
   // Status dropdown with live counts for the leads the other filters leave in view
   const statusFilterOptions = useMemo(() => STATUS_FILTER_OPTIONS.map(opt => ({
@@ -868,11 +931,12 @@ export default function CallTrackerCategoryView({
   const handleExportExcel = () => {
     const exportData = sortedLeads.map((item, idx) => ({
       'SR No': idx + 1,
+      ...(isAllCategory ? { 'Lead Type': getItemCategory(item) } : {}),
       'Last Date of Call': item.dateOfCall || '-',
       'Next Date of Call': formatDate(item.nextCallDate),
       'Customer Name': item.personName || '-',
-      'Stage': stageText(item.stage),
-      'Status': statusText(item.status) || '-',
+      'Stage': stageText(item.stage, item),
+      'Status': statusText(item.status, item) || '-',
       'Customer Status': item.customerStatus || '-',
       'Site Visit Status': item.siteVisitStatus || '-',
       'Site Visit Follow-ups': item.visitorFollowUpCount || 0,
@@ -885,7 +949,7 @@ export default function CallTrackerCategoryView({
       'Investment Budget': item.investmentBudget || '-',
       'When to Buy Plan': item.whenToBuyPlan || '-',
       'Total Calls': item.followUpCount || 0,
-      ...(isRealEstate ? { 'Total Visits': item.totalVisits || 0 } : {}),
+      ...((isRealEstate || isAllCategory) ? { 'Total Visits': item.totalVisits || 0 } : {}),
       'Customer Address': item.location || '-',
       'Occupation': item.occupation || '-',
       'DOB': formatDate(item.dob),
@@ -897,17 +961,20 @@ export default function CallTrackerCategoryView({
       'Remarks': item.remarks || '-'
     }));
 
+    const sheetName = isAllCategory ? 'All Leads Calls' : `${category} Calls`;
+    const fileName = isAllCategory ? 'CallTracker_All_Leads' : `CallTracker_${category.replace(/\s+/g, '_')}`;
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, `${category} Calls`);
-    XLSX.writeFile(workbook, `CallTracker_${category.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    XLSX.writeFile(workbook, `${fileName}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Table Headers: hide lead no and lead type; show Last Date of Call, Next Date of Call, Customer Name, Status first;
+  // Table Headers: show Lead Type when viewing All; show Last Date of Call, Next Date of Call, Customer Name, Status first;
   // followed by who is handling the lead (Phone, Site Assigned To, Caller Assigned, Team Member), then requirement/profile,
   // with Total Calls / Total Visits after When to Buy Plan, and all remarks at last
   const tableHeaders = [
     "Action",
+    ...(isAllCategory ? ["Lead Type"] : []),
     "Last Date of Call",
     "Next Date of Call",
     "Customer Name",
@@ -923,7 +990,7 @@ export default function CallTrackerCategoryView({
     "Investment Budget",
     "When to Buy Plan",
     "Total Calls",
-    ...(isRealEstate ? ["Total Visits"] : []),
+    ...(isRealEstate || isAllCategory ? ["Total Visits"] : []),
     "Customer Address",
     "Occupation",
     "DOB",
@@ -1008,6 +1075,25 @@ export default function CallTrackerCategoryView({
           </div>
         </td>
 
+        {/* Lead Type (when viewing All categories) */}
+        {isAllCategory && (
+          <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
+            {(() => {
+              const cat = getItemCategory(item);
+              const color = cat === 'Insurance'
+                ? 'bg-sky-50 text-sky-700 border-sky-200'
+                : cat === 'Mutual Fund'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200';
+              return (
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${color}`}>
+                  {cat}
+                </span>
+              );
+            })()}
+          </td>
+        )}
+
         {/* 1. Last Date of Call */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
           {item.dateOfCall ? (
@@ -1090,7 +1176,7 @@ export default function CallTrackerCategoryView({
         {/* Stage: Leads / Calling or Site Visit */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${STAGE_STYLES[item.stage]}`}>
-            {stageText(item.stage)}
+            {stageText(item.stage, item)}
           </span>
         </td>
 
@@ -1098,7 +1184,7 @@ export default function CallTrackerCategoryView({
         <td className="px-3 py-2 text-center whitespace-nowrap">
           {item.status ? (
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase border tracking-wide ${STATUS_STYLES[item.status] || 'bg-gray-50 text-gray-600 border-gray-200'}`}>
-              {statusText(item.status)}
+              {statusText(item.status, item)}
             </span>
           ) : (
             <span className="text-gray-300">-</span>
@@ -1185,8 +1271,8 @@ export default function CallTrackerCategoryView({
           </span>
         </td>
 
-        {/* Total Visits (Real Estate only) */}
-        {isRealEstate && (
+        {/* Total Visits (Real Estate only / All category) */}
+        {(isRealEstate || isAllCategory) && (
           <td className="px-3 py-2 text-center whitespace-nowrap">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${item.totalVisits > 0 ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
               {item.totalVisits} {item.totalVisits === 1 ? 'Visit' : 'Visits'}
@@ -1356,10 +1442,10 @@ export default function CallTrackerCategoryView({
     return (
       <div
         key={leadKey}
-        className={`rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${calledToday ? 'bg-emerald-50/70' : 'bg-white'} ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200' : (calledToday ? 'border-emerald-300' : 'border-gray-200')}`}
+        className={`rounded-xl border transition shadow-2xs p-2.5 space-y-2 ${calledToday ? 'bg-emerald-50/70' : 'bg-white'} ${isExpanded ? 'border-indigo-300 ring-1 ring-indigo-200' : (calledToday ? 'border-emerald-300' : 'border-gray-200')}`}
       >
         {/* Card Header: Name, Lead # on left; Details dropdown on top right */}
-        <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
+        <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-1.5">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
             <h4
               onClick={() => setViewingLead(item)}
@@ -1372,8 +1458,19 @@ export default function CallTrackerCategoryView({
                 #{item.leadNo}
               </span>
             )}
+            {isAllCategory && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border shrink-0 ${
+                getItemCategory(item) === 'Insurance'
+                  ? 'bg-sky-50 text-sky-700 border-sky-200'
+                  : getItemCategory(item) === 'Mutual Fund'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}>
+                {getItemCategory(item)}
+              </span>
+            )}
             <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border shrink-0 ${STAGE_STYLES[item.stage]}`}>
-              {stageText(item.stage)}
+              {stageText(item.stage, item)}
             </span>
             {calledToday && (
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-600 text-white shrink-0">Called today</span>
@@ -1382,173 +1479,160 @@ export default function CallTrackerCategoryView({
           <button
             type="button"
             onClick={() => toggleCardExpand(leadKey)}
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer shrink-0 ${isExpanded
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer shrink-0 ${isExpanded
               ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
               : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
               }`}
           >
             {isExpanded ? (
               <>
-                <ChevronUp size={13} />
+                <ChevronUp size={12} />
                 <span>Hide</span>
               </>
             ) : (
               <>
-                <ChevronDown size={13} />
+                <ChevronDown size={12} />
                 <span>Details</span>
               </>
             )}
           </button>
         </div>
 
-        {/* Primary Row: Phone, Total Calls, Last Call, Next Call */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Phone</span>
+        {/* Compact Key Information Grid */}
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs">
+          {/* Phone */}
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Phone</span>
             {item.number ? (
-              <a href={`tel:${item.number}`} className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-semibold mt-0.5">
-                <Phone size={11} className="text-emerald-500" />
-                <span>{item.number}</span>
+              <a href={`tel:${item.number}`} className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-bold text-xs">
+                <Phone size={10} className="text-emerald-500 shrink-0" />
+                <span className="truncate">{item.number}</span>
               </a>
             ) : (
-              <span className="text-gray-400 mt-0.5">-</span>
+              <span className="text-gray-400 text-xs">-</span>
             )}
           </div>
 
-          <div>
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Calls</span>
-            <span className="font-bold text-gray-700 mt-0.5 inline-block">
+          {/* Next Call Date */}
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-amber-700 uppercase tracking-wider block flex items-center gap-0.5">
+              <Clock size={9} className="text-amber-600 shrink-0" /> Next Call
+            </span>
+            {item.nextCallDate ? (
+              isToday(item.nextCallDate) ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-600 text-white">
+                  {formatDate(item.nextCallDate)}
+                  <span className="text-[8px] uppercase px-0.5 rounded bg-white/20 font-extrabold">Today</span>
+                </span>
+              ) : (
+                <span className={`font-bold text-xs inline-block truncate ${NEXT_DATE_CLASS}`}>
+                  {formatDate(item.nextCallDate)}
+                </span>
+              )
+            ) : (
+              <span className="text-gray-400 text-xs">-</span>
+            )}
+          </div>
+
+          {/* Customer Status */}
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Status</span>
+            {item.customerStatus ? (
+              <span className={`inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-full uppercase border ${CUSTOMER_STATUS_STYLES[item.customerStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                {item.customerStatus}
+              </span>
+            ) : (
+              <span className="text-gray-400 text-xs">-</span>
+            )}
+          </div>
+
+          {/* Caller / Visitor Assigned */}
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">{assignedLabel}</span>
+            {hasAssignedPerson ? (
+              <span className={`inline-flex items-center gap-1 max-w-full px-1.5 py-0.2 rounded text-[10px] font-semibold border ${
+                isVisitorBadge
+                  ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}>
+                <UserCheck size={10} className={`${isVisitorBadge ? 'text-indigo-600' : 'text-amber-600'} shrink-0`} />
+                <span className="truncate">{assignedPerson}</span>
+              </span>
+            ) : (
+              <span className="text-gray-400 italic text-[11px] block">Not assigned</span>
+            )}
+          </div>
+
+          {/* Calls & Visits */}
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Calls &amp; Visits</span>
+            <span className="font-semibold text-gray-700 text-xs truncate block">
               {item.followUpCount} {item.followUpCount === 1 ? 'Call' : 'Calls'}
+              {isRealEstate && (
+                <span className="text-cyan-700 font-bold ml-1">
+                  • {item.totalVisits} {item.totalVisits === 1 ? 'Visit' : 'Visits'}
+                </span>
+              )}
             </span>
           </div>
 
-          {isRealEstate && (
-            <div>
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits</span>
-              <span className="font-bold text-cyan-700 mt-0.5 inline-block">
-                {item.totalVisits} {item.totalVisits === 1 ? 'Visit' : 'Visits'}
-              </span>
-            </div>
-          )}
-
-          {item.dateOfCall && (
-            <div>
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                <Calendar size={10} className="text-gray-400" />
-                Last Call
-              </span>
-              {isToday(item.dateOfCallRaw || item.dateOfCall) ? (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-indigo-600 text-white mt-0.5">
+          {/* Last Call */}
+          <div className="min-w-0">
+            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block flex items-center gap-0.5">
+              <Calendar size={9} className="text-gray-400 shrink-0" /> Last Call
+            </span>
+            {item.dateOfCall ? (
+              isToday(item.dateOfCallRaw || item.dateOfCall) ? (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-600 text-white">
                   {item.dateOfCall}
-                  <span className="text-[8px] uppercase px-1 py-0.2 rounded bg-white/20 font-extrabold">Today</span>
+                  <span className="text-[8px] uppercase px-0.5 rounded bg-white/20 font-extrabold">Today</span>
                 </span>
               ) : (
-                <span className="font-medium text-gray-700 text-xs mt-0.5 inline-block">{item.dateOfCall}</span>
-              )}
-            </div>
-          )}
-
-          {item.nextCallDate && (
-            <div>
-              <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider flex items-center gap-1">
-                <Clock size={10} className="text-amber-600" />
-                Next Call
-              </span>
-              {isToday(item.nextCallDate) ? (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-600 text-white mt-0.5">
-                  {formatDate(item.nextCallDate)}
-                  <span className="text-[8px] uppercase px-1 py-0.2 rounded bg-white/20 font-extrabold">Today</span>
-                </span>
-              ) : (
-                <span className={`font-bold text-xs mt-0.5 inline-block ${NEXT_DATE_CLASS}`}>
-                  {formatDate(item.nextCallDate)}
-                </span>
-              )}
-            </div>
-          )}
+                <span className="font-medium text-gray-700 text-xs truncate inline-block">{item.dateOfCall}</span>
+              )
+            ) : (
+              <span className="text-gray-400 text-xs">-</span>
+            )}
+          </div>
         </div>
 
-        {/* Customer Status & Assigned Caller / Visitor (based on stage for Admin) */}
-        {(item.customerStatus || hasAssignedPerson || (isAdmin && (isSiteVisitStage || item.callerAssigned))) && (
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {item.customerStatus ? (
-              <div className="min-w-0">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Status</span>
-                <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border mt-0.5 ${CUSTOMER_STATUS_STYLES[item.customerStatus] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                  {item.customerStatus}
-                </span>
-              </div>
-            ) : <div />}
-            {hasAssignedPerson ? (
-              <div className="min-w-0">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">{assignedLabel}</span>
-                <span className={`inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded text-[11px] font-semibold mt-0.5 border ${
-                  isVisitorBadge
-                    ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-200'
-                }`}>
-                  <UserCheck size={11} className={`${isVisitorBadge ? 'text-indigo-600' : 'text-amber-600'} shrink-0`} />
-                  <span className="truncate">{assignedPerson}</span>
-                </span>
-              </div>
-            ) : isAdmin && (
-              <div className="min-w-0">
-                <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">{assignedLabel}</span>
-                <span className="text-gray-400 italic text-[11px] mt-0.5 block">Not assigned</span>
-              </div>
-            )}
-          </div>
-        )}
-        {(isAdmin || item.adminRemark) && (
-          <button
-            type="button"
+        {/* Compact Admin Remark Strip (only rendered if remark exists) */}
+        {item.adminRemark && (
+          <div
             onClick={() => openRemark(item)}
-            className={`w-full text-left rounded-lg border p-2 text-xs space-y-1.5 transition ${!isAdmin && item.hasNewAdminRemark
-              ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200 animate-pulse'
-              : 'bg-indigo-50/40 border-indigo-100'
-              }`}
+            className={`w-full text-left rounded-md border p-1.5 text-xs transition cursor-pointer flex items-center justify-between gap-1.5 ${
+              !isAdmin && item.hasNewAdminRemark
+                ? 'bg-amber-50 border-amber-300 ring-1 ring-amber-200'
+                : 'bg-indigo-50/50 border-indigo-100 hover:bg-indigo-100/60'
+            }`}
           >
-            <span className="flex items-center justify-between gap-1">
-              <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-1">
-                {!isAdmin && item.hasNewAdminRemark && <Bell size={11} className="text-amber-600 animate-bounce" />}
-                Admin Remark
-                {!isAdmin && item.hasNewAdminRemark && <span className="px-1 rounded bg-red-500 text-white text-[9px]">NEW</span>}
-              </span>
-              {item.adminRemarkDate && <span className="text-[10px] text-gray-400">{formatIST(item.adminRemarkDate)}</span>}
-            </span>
-            <span className="block text-gray-800 leading-tight whitespace-pre-wrap">
-              {item.adminRemark || (isAdmin ? 'Tap to add a remark for the caller' : '-')}
-            </span>
-            {(item.userRemark || (!isAdmin && item.adminRemark)) && (
-              <span className="block border-t border-indigo-100 pt-1.5">
-                <span className="flex items-center justify-between gap-1">
-                  <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1">
-                    User Remark
-                    {isAdmin && item.hasNewUserReply && <span className="px-1 rounded bg-emerald-600 text-white text-[9px]">REPLY</span>}
-                  </span>
-                  {item.userRemarkDate && <span className="text-[10px] text-gray-400">{formatIST(item.userRemarkDate)}</span>}
-                </span>
-                <span className="block text-gray-800 leading-tight whitespace-pre-wrap">
-                  {item.userRemark || 'Tap to reply to admin'}
-                </span>
-              </span>
+            <div className="flex items-center gap-1 min-w-0">
+              <MessageSquare size={10} className="text-indigo-600 shrink-0" />
+              <span className="text-[9px] font-bold text-indigo-700 shrink-0">Admin:</span>
+              <span className="text-gray-800 text-[11px] truncate leading-tight">{item.adminRemark}</span>
+            </div>
+            {!isAdmin && item.hasNewAdminRemark && (
+              <span className="px-1 rounded bg-red-500 text-white text-[8px] font-bold shrink-0">NEW</span>
             )}
-          </button>
-        )}
-
-        {/* Customer Said snippet (if any) */}
-        {item.customerSaid && (
-          <div className="bg-slate-50 border border-slate-100 rounded p-2 text-xs text-gray-700">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Customer Said</span>
-            <p className="leading-tight">{item.customerSaid}</p>
+            {isAdmin && item.hasNewUserReply && (
+              <span className="px-1 rounded bg-emerald-600 text-white text-[8px] font-bold shrink-0">REPLY</span>
+            )}
           </div>
         )}
 
-        {/* Action & Status Row: Status/badges on bottom-left, Followup & Remark on bottom-right */}
-        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-gray-100">
-          <div className="flex items-center gap-1 min-w-0 flex-wrap">
+        {/* Customer Said snippet (compact 1-line quote if present) */}
+        {item.customerSaid && (
+          <div className="bg-slate-50 border border-slate-100 rounded px-1.5 py-1 text-[11px] text-gray-600 truncate">
+            <span className="font-semibold text-gray-400 mr-1">Customer:</span>
+            <span className="italic leading-tight">"{item.customerSaid}"</span>
+          </div>
+        )}
+
+        {/* Action & Status Row: Status/badges on left, Followup & Remark on right (wraps cleanly on mobile without overlapping) */}
+        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-gray-100">
+          <div className="flex items-center gap-1 flex-wrap min-w-0">
             {item.status && (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[item.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                 {statusText(item.status)}
               </span>
             )}
@@ -1559,24 +1643,24 @@ export default function CallTrackerCategoryView({
                   e.stopPropagation();
                   setViewingLead(item);
                 }}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition shrink-0"
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition shrink-0"
                 title={`Site Visit: ${item.siteVisitStatus || 'Recorded'} (${item.visitorFollowUpCount} visit follow-up${item.visitorFollowUpCount > 1 ? 's' : ''}) - Click to view`}
               >
-                <MapPin size={9} className="text-emerald-600" />
+                <MapPin size={8} className="text-emerald-600" />
                 <span>Visit: {item.siteVisitStatus || `${item.visitorFollowUpCount}`}</span>
               </button>
             )}
           </div>
 
-          <div className="flex items-center ml-auto gap-1.5 shrink-0">
+          <div className="flex items-center ml-auto gap-1 shrink-0">
             {canEdit && showCallMark && renderCallMarkButton(item, false)}
             {canEdit && (
               <button
                 type="button"
                 onClick={() => handleOpenFollowup(item)}
-                className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
+                className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 rounded-lg text-xs font-semibold shadow-2xs active:scale-95 transition cursor-pointer shrink-0"
               >
-                <Phone size={12} />
+                <Phone size={11} />
                 <span>Followup</span>
               </button>
             )}
@@ -1585,17 +1669,17 @@ export default function CallTrackerCategoryView({
                 type="button"
                 onClick={() => openRemark(item)}
                 title={isAdmin ? (item.adminRemark ? 'Update admin remark' : 'Add admin remark') : (item.adminRemark ? 'Read admin remark & reply' : 'No remark from admin yet')}
-                className={`relative inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 whitespace-nowrap border cursor-pointer ${!isAdmin && item.hasNewAdminRemark
+                className={`relative inline-flex items-center gap-1 px-1.5 py-1 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 whitespace-nowrap border cursor-pointer shrink-0 ${!isAdmin && item.hasNewAdminRemark
                   ? 'bg-amber-500 text-white border-amber-500 animate-pulse'
                   : isAdmin && item.hasNewUserReply
                     ? 'bg-emerald-600 text-white border-emerald-600'
                     : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-500 hover:text-white'
                   }`}
               >
-                <MessageSquare size={11} />
-                <span>{isAdmin ? (item.hasNewUserReply ? 'Reply' : 'Remark') : (item.hasNewAdminRemark ? 'New' : 'Reply')}</span>
+                <MessageSquare size={10} />
+                <span>{isAdmin ? (item.hasNewUserReply ? 'Reply' : (item.adminRemark ? 'Remark' : '+ Remark')) : (item.hasNewAdminRemark ? 'New' : 'Reply')}</span>
                 {((!isAdmin && item.hasNewAdminRemark) || (isAdmin && item.hasNewUserReply)) && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 animate-ping" />
                 )}
               </button>
             )}
@@ -1726,161 +1810,179 @@ export default function CallTrackerCategoryView({
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 space-y-1">
-      {/* Header Bar: Row 1 = Lead Category Tabs (Top); Row 2 = Dates & Add Lead; Row 3 = Search & Actions on Mobile / Unified on Desktop */}
-      <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
-        {/* Row 1: Lead Category Button Tabs (Always Top Row) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
-          <PageTabs
-            tabs={tabs.map(t => ({ ...t, count: categoryCounts[t.key] ?? 0 }))}
-            activeKey={activeTab}
-            onChange={(key) => { onTabChange(key); setCurrentPage(1); }}
-          />
-        </div>
+    <div className="flex flex-col h-full min-h-0 space-y-1 sm:space-y-1.5">
+      {/* Row 1: All Lead Types (Always visible in 1 equal-column row on mobile, no scrolling needed) */}
+      <div className="w-full shrink-0">
+        <PageTabs
+          tabs={tabs.map(t => ({ ...t, count: liveCategoryCounts[t.key] ?? categoryCounts[t.key] ?? 0 }))}
+          activeKey={activeTab}
+          onChange={(key) => { onTabChange(key); setCurrentPage(1); }}
+          grid={tabs.length >= 2 && tabs.length <= 4}
+          gridCols={tabs.length === 4 ? 4 : tabs.length === 3 ? 3 : 2}
+          wrap={false}
+        />
+      </div>
 
-        {/* Row 2 on Mobile / Main Controls Bar: Dates & Actions on Left, Search & Filters on Right */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1.5 w-full">
-          {/* Dates & Add Lead Controls */}
-          <div className="flex flex-wrap xl:flex-nowrap items-center gap-1.5 shrink-0 w-full xl:w-auto pb-0.5">
-            {/* Dedicated Tab / Button for Today's Followup */}
-            <button
-              type="button"
-              onClick={() => {
-                setDateFilter('today');
+      {/* Row 2: Date Filters & Quick Actions */}
+      <div className="w-full shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+          {/* Today's Followup Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (activeTab !== 'All' && tabs.some(t => t.key === 'All')) {
+                onTabChange('All');
+              }
+              setDateFilter('today');
+              setStageFilter('all');
+              setCalledOnly(false);
+              setCurrentPage(1);
+            }}
+            title={`Show Today's Followups — ${dateCounts.todayCalled} of ${dateCounts.today} called today`}
+            className={`flex items-center justify-center gap-1 px-2 sm:px-3 py-0.5 rounded-lg text-xs font-semibold h-[28px] sm:h-[32px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              dateFilter === 'today'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-1 ring-amber-300 font-bold'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
+            }`}
+          >
+            <Calendar size={12} className={dateFilter === 'today' ? 'text-white' : 'text-gray-400'} />
+            <span className="text-[11px] sm:text-xs">Today's Followup</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+              dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+            }`}>
+              {dateCounts.todayCalled}/{dateCounts.today}
+            </span>
+          </button>
+
+          {calledOnly && dateFilter === 'today' && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0 h-[28px] sm:h-[32px]">
+              Called ({dateCounts.todayCalled})
+              <button
+                type="button"
+                onClick={() => setCalledOnly(false)}
+                className="hover:text-emerald-950 p-0.5 rounded cursor-pointer ml-0.5"
+                title="Show all today's followups"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          )}
+
+          {/* Dropdown for All Dates & other date options */}
+          <div className="w-[130px] sm:w-[160px] shrink-0">
+            <SearchableDropdown
+              options={allDatesFilterOptions}
+              value={dateFilter === 'today' ? 'all' : dateFilter}
+              onMainClick={() => {
+                setDateFilter('all');
                 setStageFilter('all');
-                setCalledOnly(false);
+                setCustomFrom('');
+                setCustomTo('');
                 setCurrentPage(1);
               }}
-              title={`Show Today's Followups — ${dateCounts.todayCalled} of ${dateCounts.today} called today`}
-              className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
-                dateFilter === 'today'
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
-              }`}
-            >
-              <Calendar size={13} className={dateFilter === 'today' ? 'text-white' : 'text-gray-400'} />
-              <span>Today's Followup</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                dateFilter === 'today' ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
-              }`}>
-                {dateCounts.todayCalled}/{dateCounts.today}
-              </span>
-            </button>
-
-            {calledOnly && dateFilter === 'today' && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
-                Calls Logged Today ({dateCounts.todayCalled})
-                <button
-                  type="button"
-                  onClick={() => setCalledOnly(false)}
-                  className="hover:text-emerald-950 p-0.5 rounded cursor-pointer ml-0.5"
-                  title="Show all today's followups"
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            )}
-
-            {/* Dropdown for All Dates & other date options */}
-            <div className="flex-1 min-w-[140px] sm:flex-none sm:w-[170px] shrink-0">
-              <SearchableDropdown
-                options={allDatesFilterOptions}
-                value={dateFilter === 'today' ? 'all' : dateFilter}
-                onMainClick={() => {
-                  setDateFilter('all');
-                  setStageFilter('all');
-                  setCustomFrom('');
-                  setCustomTo('');
-                  setCurrentPage(1);
-                }}
-                onChange={(val) => {
-                  setDateFilter(val);
-                  setStageFilter('all');
-                  if (val === 'custom' && !customFrom && !customTo) {
-                    const t = getTodayStr();
-                    setCustomFrom(t);
-                    setCustomTo(t);
-                  }
-                  setCurrentPage(1);
-                }}
-                placeholder="All Dates"
-                height="h-[34px]"
-                triggerClassName={
-                  dateFilter !== 'today' && !(dateFilter === 'all' && stageFilter !== 'all')
-                    ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-sky-300/50"
-                    : ""
+              onChange={(val) => {
+                setDateFilter(val);
+                setStageFilter('all');
+                if (val === 'custom' && !customFrom && !customTo) {
+                  const t = getTodayStr();
+                  setCustomFrom(t);
+                  setCustomTo(t);
                 }
-                icon={Clock}
-              />
-            </div>
-
-            {/* Custom Date Range Inline Inputs */}
-            {dateFilter === 'custom' && (
-              <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
-                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
-                  <input
-                    type="date"
-                    value={customFrom}
-                    onChange={(e) => {
-                      setCustomFrom(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
-                    title="From Date"
-                  />
-                </div>
-                <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[34px] shadow-xs">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
-                  <input
-                    type="date"
-                    value={customTo}
-                    onChange={(e) => {
-                      setCustomTo(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
-                    title="To Date"
-                  />
-                </div>
-              </div>
-            )}
-
-            {canEdit && onOpenDirect && (
-              <button
-                onClick={() => onOpenDirect(activeTab || category)}
-                className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
-              >
-                <Plus size={14} className="shrink-0" />
-                <span>Add Lead</span>
-              </button>
-            )}
-
-            {canEdit && onBulkUpload && (
-              <button
-                onClick={() => onBulkUpload(activeTab || category)}
-                className="flex flex-1 sm:flex-none items-center justify-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs md:text-sm font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[34px] shrink-0 whitespace-nowrap active:scale-95"
-              >
-                <Upload size={14} className="shrink-0" />
-                <span>Bulk Upload</span>
-              </button>
-            )}
+                setCurrentPage(1);
+              }}
+              placeholder="All Dates"
+              height="h-[28px] sm:h-[32px]"
+              triggerClassName={
+                dateFilter !== 'today' && !(dateFilter === 'all' && stageFilter !== 'all')
+                  ? "bg-gradient-to-r from-sky-600 to-blue-600 text-white border-blue-600 shadow-sm ring-1 ring-sky-300"
+                  : ""
+              }
+              icon={Clock}
+            />
           </div>
 
-          {/* Search + Status Dropdown (USER) / Filter Button (ADMIN) + Export + Refresh + Reset */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap sm:flex-nowrap sm:overflow-x-auto scrollbar-hide w-full xl:w-auto xl:flex-1 justify-between sm:justify-end pb-0.5">
-          {/* Individual Page Search Input */}
-          <div className="relative min-w-[120px] max-w-full sm:max-w-[200px] flex-1 shrink">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+          {/* Custom Date Range Inline Inputs */}
+          {dateFilter === 'custom' && (
+            <div className="flex items-center gap-1 shrink-0 animate-in fade-in duration-150">
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-1.5 h-[28px] sm:h-[32px] shadow-xs">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => {
+                    setCustomFrom(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="text-[11px] text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="From Date"
+                />
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-1.5 h-[28px] sm:h-[32px] shadow-xs">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => {
+                    setCustomTo(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="text-[11px] text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="To Date"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Quick Action Buttons */}
+          {canEdit && onOpenDirect && (
+            <button
+              onClick={() => onOpenDirect(activeTab || category)}
+              className="flex items-center justify-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-lg text-[11px] sm:text-xs font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[28px] sm:h-[32px] shrink-0 whitespace-nowrap active:scale-95"
+            >
+              <Plus size={12} className="shrink-0" />
+              <span>Add Lead</span>
+            </button>
+          )}
+
+          {canEdit && onBulkUpload && (
+            <button
+              onClick={() => onBulkUpload(activeTab || category)}
+              className="flex items-center justify-center gap-1 px-2 sm:px-2.5 py-0.5 rounded-lg text-[11px] sm:text-xs font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[28px] sm:h-[32px] shrink-0 whitespace-nowrap active:scale-95"
+            >
+              <Upload size={12} className="shrink-0" />
+              <span>Bulk Upload</span>
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              onClick={handleExportExcel}
+              title="Export to Excel"
+              className="flex items-center justify-center gap-1 px-2 py-0.5 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-[11px] sm:text-xs font-semibold h-[28px] sm:h-[32px] transition shrink-0 whitespace-nowrap active:scale-95"
+            >
+              <FileSpreadsheet size={12} />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Row 3: Search & Filter Options (ALWAYS DISPLAYED & ULTRA-COMPACT HEIGHT) */}
+      <div className="w-full shrink-0 space-y-1">
+        {/* Desktop Single-Row Toolbar */}
+        <div className="hidden sm:flex items-center gap-1.5 lg:gap-2 w-full">
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-[120px] max-w-[220px]">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" size={13} />
             <input
               type="text"
-              placeholder={`Search ${category}...`}
+              placeholder={isAllCategory ? 'Search All Leads...' : `Search ${category}...`}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-xs transition"
+              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-indigo-500 h-[30px] shadow-xs transition"
             />
             {searchQuery && (
               <button
@@ -1891,124 +1993,67 @@ export default function CallTrackerCategoryView({
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
                 title="Clear search"
               >
-                <X size={13} />
+                <X size={12} />
               </button>
             )}
           </div>
 
-          {/* Stage buttons (All Dates only): one stage at a time — All Dates shows both stages again */}
-          {dateFilter === 'all' && [
-            { key: 'Leads / Calling', label: 'Leads / Calling', icon: Phone },
-            { key: 'Site Visit', label: isMeetingOnly ? 'Meeting' : 'Site Visit', icon: MapPin }
-          ].map(({ key, label, icon: Icon }) => {
-            const active = stageFilter === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setStageFilter(active ? 'all' : key);
-                  setCurrentPage(1);
-                }}
-                title={`All ${label} stage leads till date`}
-                className={`flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
-                  active
-                    ? (key === 'Site Visit'
-                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-300/60 font-bold'
-                      : 'bg-blue-600 text-white border-blue-600 shadow-sm ring-2 ring-blue-300/60 font-bold')
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 shadow-xs'
-                }`}
-              >
-                <Icon size={13} className={active ? 'text-white' : 'text-gray-400'} />
-                <span>{label}</span>
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                  active ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
-                }`}>
-                  {stageCounts[key]}
-                </span>
-              </button>
-            );
-          })}
+          {/* Desktop Stage buttons (All Dates only) */}
+          {dateFilter === 'all' && (
+            <div className="flex items-center gap-1 shrink-0">
+              {[
+                { key: 'Leads / Calling', label: 'Leads / Calling', icon: Phone },
+                { key: 'Site Visit', label: isMeetingOnly ? 'Meeting' : (isAllCategory ? 'Site Visit / Meeting' : 'Site Visit'), icon: MapPin }
+              ].map(({ key, label, icon: Icon }) => {
+                const active = stageFilter === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setStageFilter(active ? 'all' : key);
+                      setCurrentPage(1);
+                    }}
+                    title={`All ${label} stage leads till date`}
+                    className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold h-[30px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                      active
+                        ? (key === 'Site Visit'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm font-bold'
+                          : 'bg-blue-600 text-white border-blue-600 shadow-sm font-bold')
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 shadow-xs'
+                    }`}
+                  >
+                    <Icon size={12} className={active ? 'text-white' : 'text-gray-400'} />
+                    <span>{label}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                      active ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600 border border-gray-200'
+                    }`}>
+                      {stageCounts[key]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          {/* New remarks chip: unread admin remarks (users) / new user replies (admin) */}
+          {/* New remarks chip */}
           {(newRemarkCount > 0 || newRemarksOnly) && (
             <button
               onClick={() => { setNewRemarksOnly(v => !v); setCurrentPage(1); }}
               title={isAdmin ? 'Leads where the user replied to your remark' : 'Leads with a new remark from admin'}
-              className={`relative flex items-center justify-center gap-1 px-2.5 rounded-lg text-xs font-semibold h-[34px] transition border shrink-0 whitespace-nowrap active:scale-95 ${newRemarksOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
-                }`}
+              className={`relative flex items-center justify-center gap-1 px-2.5 rounded-lg text-xs font-semibold h-[30px] transition border shrink-0 whitespace-nowrap active:scale-95 ${
+                newRemarksOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100'
+              }`}
             >
-              <Bell size={13} className={newRemarksOnly ? '' : 'animate-bounce'} />
+              <Bell size={12} className={newRemarksOnly ? '' : 'animate-bounce'} />
               <span className="hidden sm:inline">{isAdmin ? 'New Replies' : 'New Remarks'}</span>
               <span className={`text-[10px] font-bold px-1.5 rounded-full ${newRemarksOnly ? 'bg-white/25' : 'bg-amber-500 text-white'}`}>{newRemarkCount}</span>
             </button>
           )}
 
-          {/* FOR USER ROLE: All Status Dropdown */}
+          {/* Desktop Status Dropdown (USER role) */}
           {!isAdmin && (
-            <div className="w-[125px] sm:w-[145px] shrink-0">
-              <SearchableDropdown
-                options={statusFilterOptions}
-                value={statusFilter}
-                onChange={(val) => {
-                  setStatusFilter(val);
-                  setCurrentPage(1);
-                }}
-                placeholder="All Status"
-                height="h-[34px]"
-              />
-            </div>
-          )}
-
-          {/* Export to Excel (ADMIN / Tester only) */}
-          {isAdmin && (
-            <button
-              onClick={handleExportExcel}
-              title="Export to Excel"
-              className="flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold h-[34px] transition shrink-0 whitespace-nowrap active:scale-95"
-            >
-              <FileSpreadsheet size={14} />
-              <span className="hidden sm:inline">Export</span>
-            </button>
-          )}
-
-          {/* Clear Filters (visible when any filter or search query is active) */}
-          {(activeFilterCount > 0 || searchQuery) && (
-            <button
-              onClick={handleClearFilters}
-              title="Clear all filters & search"
-              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-2.5 sm:px-3 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95"
-            >
-              <RotateCcw size={13} />
-              <span className="hidden md:inline">Reset</span>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-
-      {/* Filter Bar (always visible for ADMIN) */}
-      {isAdmin && (
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
-          {/* Label + Mobile Clear Filters */}
-          <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-              Filter Options:
-            </span>
-            {activeFilterCount > 0 && (
-              <button
-                onClick={handleClearFilters}
-                className="sm:hidden text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
-
-          {/* Filter Dropdowns Container */}
-          <div className="flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-initial">
-            {/* Status Dropdown */}
-            <div className="flex-1 min-w-0 sm:flex-initial sm:w-[150px] lg:w-[160px]">
+            <div className="w-[135px] lg:w-[150px] shrink-0">
               <SearchableDropdown
                 options={statusFilterOptions}
                 value={statusFilter}
@@ -2020,10 +2065,124 @@ export default function CallTrackerCategoryView({
                 height="h-[30px]"
               />
             </div>
+          )}
 
-            {/* Caller Dropdown (if admin or multiple callers) */}
+          {/* Desktop Status & Caller Dropdowns (ADMIN role) */}
+          {isAdmin && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="w-[140px] lg:w-[155px]">
+                <SearchableDropdown
+                  options={statusFilterOptions}
+                  value={statusFilter}
+                  onChange={(val) => {
+                    setStatusFilter(val);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="All Status"
+                  height="h-[30px]"
+                />
+              </div>
+              {callerOptions.length > 2 && (
+                <div className="w-[140px] lg:w-[155px]">
+                  <SearchableDropdown
+                    options={callerOptions}
+                    value={callerFilter}
+                    onChange={(val) => {
+                      setCallerFilter(val);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="All Callers"
+                    height="h-[30px]"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Desktop Clear / Reset Button */}
+          {(activeFilterCount > 0 || searchQuery) && (
+            <button
+              onClick={handleClearFilters}
+              title="Clear all filters & search"
+              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[30px] px-2.5 text-xs font-semibold transition gap-1 shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ml-auto"
+            >
+              <RotateCcw size={12} />
+              <span>Reset</span>
+            </button>
+          )}
+        </div>
+
+        {/* Mobile Always-Displayed Ultra-Compact Filters */}
+        <div className="sm:hidden flex flex-col gap-1 w-full">
+          {/* Row 1: Search + Remarks & Reset */}
+          <div className="flex items-center gap-1 w-full">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" size={12} />
+              <input
+                type="text"
+                placeholder={isAllCategory ? 'Search All Leads...' : `Search ${category}...`}
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-white border border-gray-300 rounded-lg pl-7 pr-6 text-[11px] focus:outline-none focus:border-indigo-500 h-[28px] shadow-xs transition"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setCurrentPage(1);
+                  }}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+
+            {/* Remarks indicator badge if unread */}
+            {(newRemarkCount > 0 || newRemarksOnly) && (
+              <button
+                onClick={() => { setNewRemarksOnly(v => !v); setCurrentPage(1); }}
+                className={`flex items-center gap-0.5 px-1.5 rounded-lg text-[10px] font-bold h-[28px] transition border shrink-0 ${
+                  newRemarksOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-700 border-amber-300'
+                }`}
+              >
+                <Bell size={11} />
+                <span>{newRemarkCount}</span>
+              </button>
+            )}
+
+            {/* Reset Button (only shown if filter/search is active) */}
+            {(activeFilterCount > 0 || searchQuery) && (
+              <button
+                onClick={handleClearFilters}
+                title="Reset filters"
+                className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[28px] px-2 text-[11px] font-bold transition gap-0.5 shrink-0"
+              >
+                <RotateCcw size={11} />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
+
+          {/* Row 2: Status & Caller Dropdowns (ALWAYS DISPLAYED, ultra-compact 28px height) */}
+          <div className="flex items-center gap-1 w-full">
+            <div className="flex-1 min-w-0">
+              <SearchableDropdown
+                options={statusFilterOptions}
+                value={statusFilter}
+                onChange={(val) => {
+                  setStatusFilter(val);
+                  setCurrentPage(1);
+                }}
+                placeholder="All Status"
+                height="h-[28px]"
+              />
+            </div>
             {callerOptions.length > 2 && (
-              <div className="flex-1 min-w-0 sm:flex-initial sm:w-[150px] lg:w-[160px]">
+              <div className="flex-1 min-w-0">
                 <SearchableDropdown
                   options={callerOptions}
                   value={callerFilter}
@@ -2032,30 +2191,48 @@ export default function CallTrackerCategoryView({
                     setCurrentPage(1);
                   }}
                   placeholder="All Callers"
-                  height="h-[30px]"
+                  height="h-[28px]"
                 />
               </div>
             )}
           </div>
 
-          {/* Desktop Clear Filters Link */}
-          {activeFilterCount > 0 && (
-            <button
-              onClick={handleClearFilters}
-              className="hidden sm:inline-block text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer shrink-0"
-            >
-              Clear filters
-            </button>
+          {/* Row 3 (All Dates only): Stage Buttons */}
+          {dateFilter === 'all' && (
+            <div className="flex items-center gap-1 w-full">
+              {[
+                { key: 'Leads / Calling', label: 'Leads / Calling', icon: Phone },
+                { key: 'Site Visit', label: isMeetingOnly ? 'Meeting' : 'Site Visit', icon: MapPin }
+              ].map(({ key, label, icon: Icon }) => {
+                const active = stageFilter === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setStageFilter(active ? 'all' : key);
+                      setCurrentPage(1);
+                    }}
+                    className={`flex-1 flex items-center justify-center gap-1 py-0.5 rounded text-[10px] font-semibold border h-[26px] ${
+                      active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    <Icon size={10} />
+                    <span>{label} ({stageCounts[key]})</span>
+                  </button>
+                );
+              })}
+            </div>
           )}
         </div>
-      )}
+      </div>
 
-      {/* Main Full-Height Compact Table View */}
+      {/* Main Full-Height Compact Table/Card View */}
       <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg overflow-hidden shadow-2xs flex flex-col">
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-16 space-y-3">
             <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs text-gray-500 font-semibold tracking-wide uppercase">Loading {category} Calls...</p>
+            <p className="text-xs text-gray-500 font-semibold tracking-wide uppercase">Loading {isAllCategory ? 'All' : category} Calls...</p>
           </div>
         ) : sortedLeads.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center py-16 text-center px-4 space-y-3">
@@ -2063,9 +2240,9 @@ export default function CallTrackerCategoryView({
               <Phone size={22} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-gray-800">No {category} Calls Found</h3>
+              <h3 className="text-sm font-bold text-gray-800">No {isAllCategory ? '' : `${category} `}Calls Found</h3>
               <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                No follow-up calls match your current filter criteria or are assigned for this category.
+                No follow-up calls match your current filter criteria{isAllCategory ? '.' : ' or are assigned for this category.'}
               </p>
             </div>
             {(searchQuery || statusFilter !== 'all' || dateFilter !== 'all' || callerFilter !== 'all') && (
@@ -2084,6 +2261,7 @@ export default function CallTrackerCategoryView({
               data={paginatedLeads}
               renderRow={renderRow}
               renderCard={renderCard}
+              cardsGridClassName="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3"
               currentPage={currentPage}
               totalPages={totalPages}
               onPageChange={setCurrentPage}
@@ -2093,7 +2271,6 @@ export default function CallTrackerCategoryView({
               totalResults={sortedLeads.length}
               minWidth="1100px"
               viewMode="auto"
-              cardsGridClassName="grid grid-cols-1 gap-2.5 p-2 sm:p-3"
             />
           </div>
         )}

@@ -31,8 +31,13 @@ import { brokerApi } from '../../api/brokerApi';
 import { masterApi } from '../../api/masterApi';
 import BrokerFormModal from './BrokerFormModal';
 import BrokerDetailsModal from './BrokerDetailsModal';
+import { useAuthStore } from '../../store/authStore';
+import { hasFullAccess, isUserAdmin } from '../../utils/authUtils';
 
 export default function Broker() {
+  const user = useAuthStore(state => state.user);
+  const canEdit = isUserAdmin(user) || hasFullAccess(user, 'broker');
+
   const [brokers, setBrokers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -219,17 +224,19 @@ export default function Broker() {
           </button>
 
           {/* Add Broker Button */}
-          <button
-            type="button"
-            onClick={() => {
-              setBrokerToEdit(null);
-              setShowAddModal(true);
-            }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-indigo-500/25 transition cursor-pointer"
-          >
-            <Plus size={16} />
-            Add New Broker
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setBrokerToEdit(null);
+                setShowAddModal(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-indigo-500/25 transition cursor-pointer"
+            >
+              <Plus size={16} />
+              Add New Broker
+            </button>
+          )}
         </div>
       </div>
 
@@ -477,12 +484,16 @@ export default function Broker() {
                       <button type="button" onClick={() => setBrokerToView(broker)} className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer" title="View">
                         <Eye size={14} />
                       </button>
-                      <button type="button" onClick={() => { setBrokerToEdit(broker); setShowAddModal(true); }} className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer" title="Edit">
-                        <Pencil size={14} />
-                      </button>
-                      <button type="button" onClick={() => setDeleteConfirmId(broker.id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer" title="Delete">
-                        <Trash2 size={14} />
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button type="button" onClick={() => { setBrokerToEdit(broker); setShowAddModal(true); }} className="p-1.5 text-gray-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer" title="Edit">
+                            <Pencil size={14} />
+                          </button>
+                          <button type="button" onClick={() => setDeleteConfirmId(broker.id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer" title="Delete">
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   <p className="text-[11px] text-gray-500 font-medium truncate">{broker.businessName || 'Independent'}</p>
@@ -696,28 +707,32 @@ export default function Broker() {
                           <Eye size={15} />
                         </button>
 
-                        {/* Edit */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBrokerToEdit(broker);
-                            setShowAddModal(true);
-                          }}
-                          className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
-                          title="Edit broker"
-                        >
-                          <Pencil size={15} />
-                        </button>
+                        {canEdit && (
+                          <>
+                            {/* Edit */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBrokerToEdit(broker);
+                                setShowAddModal(true);
+                              }}
+                              className="p-1.5 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
+                              title="Edit broker"
+                            >
+                              <Pencil size={15} />
+                            </button>
 
-                        {/* Delete */}
-                        <button
-                          type="button"
-                          onClick={() => setDeleteConfirmId(broker.id)}
-                          className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                          title="Delete broker"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                            {/* Delete */}
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmId(broker.id)}
+                              className="p-1.5 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                              title="Delete broker"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
 
@@ -901,11 +916,11 @@ export default function Broker() {
         isOpen={Boolean(brokerToView)}
         broker={brokerToView}
         onClose={() => setBrokerToView(null)}
-        onEdit={(b) => {
+        onEdit={canEdit ? (b) => {
           setBrokerToView(null);
           setBrokerToEdit(b);
           setShowAddModal(true);
-        }}
+        } : undefined}
       />
 
       {/* Image Lightbox Modal */}

@@ -871,8 +871,11 @@ export default function Dashboard() {
       return;
     }
     const navState = { ...targetState, fromDashboard: true };
+    const finalTab = targetState.tab !== undefined
+      ? targetState.tab
+      : (targetState.showAllTab ? 'All' : (tabKey && tabKey !== 'All' ? tabKey : undefined));
     navigate(targetPath, {
-      state: tabKey && tabKey !== 'All' ? { tab: tabKey, ...navState } : navState
+      state: finalTab ? { ...navState, tab: finalTab } : navState
     });
   };
 
@@ -896,7 +899,7 @@ export default function Dashboard() {
         pct: Math.round((kpis.interested / total) * 100),
         dotClass: 'bg-teal-500',
         badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
-        onClick: () => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })
+        onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Interested', dateFilter: 'all', showAllTab: true }, 'All')
       },
       {
         label: 'Future Plan',
@@ -904,7 +907,7 @@ export default function Dashboard() {
         pct: Math.round((kpis.futurePlan / total) * 100),
         dotClass: 'bg-amber-500',
         badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
-        onClick: () => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })
+        onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Future Plan Date', dateFilter: 'all', showAllTab: true }, 'All')
       },
       {
         label: isMeetingOnly ? 'Meeting' : 'Site Visit',
@@ -920,7 +923,7 @@ export default function Dashboard() {
         pct: Math.round((kpis.notInterested / total) * 100),
         dotClass: 'bg-rose-500',
         badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
-        onClick: () => go('/call-tracker', { statusFilter: 'Not Interested', dateFilter: 'all' })
+        onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Not Interested', dateFilter: 'all', showAllTab: true }, 'All')
       },
       {
         label: 'Not Called (Pending)',
@@ -928,7 +931,7 @@ export default function Dashboard() {
         pct: Math.round((kpis.notCalled / total) * 100),
         dotClass: 'bg-slate-400',
         badgeClass: 'bg-slate-50 text-slate-600 border-slate-200',
-        onClick: () => go('/call-tracker', { statusFilter: 'Pending', dateFilter: 'all' })
+        onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Pending', dateFilter: 'all', showAllTab: true }, 'All')
       }
     ];
   }, [kpis, isMeetingOnly]);
@@ -937,9 +940,9 @@ export default function Dashboard() {
   const activityViewAll = useMemo(() => {
     switch (activityTab) {
       case 'calling':
-        return { label: 'View all calls', onClick: () => go('/call-tracker', { dateFilter: 'today', calledOnly: true }) };
+        return { label: 'View all calls', onClick: () => go('/call-tracker', { tab: 'All', dateFilter: 'today', showAllTab: true, calledOnly: true }, 'All') };
       case 'leads':
-        return { label: 'View all leads', onClick: () => go('/call-tracker', { dateFilter: 'today', todayLeadsBreakdown }) };
+        return { label: 'View all leads', onClick: () => go('/call-tracker', { tab: 'All', dateFilter: 'today', showAllTab: true, todayLeadsBreakdown }, 'All') };
       case 'hotWarm':
         return { label: 'View Hot & Warm', onClick: () => go('/customer-master', { customerStatus: 'all' }) };
       case 'deals':
@@ -1012,7 +1015,7 @@ export default function Dashboard() {
                 icon={UserPlus}
                 iconBg="bg-sky-50"
                 iconColor="text-sky-600"
-                onClick={() => go('/call-tracker', { dateFilter: 'today', todayLeadsBreakdown })}
+                onClick={() => go('/call-tracker', { tab: 'All', dateFilter: 'today', showAllTab: true, todayLeadsBreakdown }, 'All')}
               />
               <KpiCard
                 title="Today's Calls"
@@ -1020,7 +1023,7 @@ export default function Dashboard() {
                 icon={PhoneCall}
                 iconBg="bg-blue-50"
                 iconColor="text-blue-600"
-                onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })}
+                onClick={() => go('/call-tracker', { tab: 'All', dateFilter: 'today', showAllTab: true, calledOnly: true }, 'All')}
               />
               <KpiCard
                 title="Future Plan"
@@ -1028,7 +1031,7 @@ export default function Dashboard() {
                 icon={Clock}
                 iconBg="bg-amber-50"
                 iconColor="text-amber-600"
-                onClick={() => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })}
+                onClick={() => go('/call-tracker', { tab: 'All', statusFilter: 'Future Plan Date', dateFilter: 'all', showAllTab: true }, 'All')}
               />
               <KpiCard
                 title="Converted"
@@ -1356,7 +1359,7 @@ export default function Dashboard() {
                         hint: 'Awaiting next call',
                         barColor: 'from-amber-400 to-amber-500',
                         textColor: 'text-amber-700',
-                        onClick: () => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })
+                        onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Future Plan Date', dateFilter: 'all', showAllTab: true }, 'All')
                       },
                       {
                         label: isMeetingOnly ? 'Meeting' : 'Site Visit',
@@ -1374,7 +1377,7 @@ export default function Dashboard() {
                         hint: 'Still to be called',
                         barColor: 'from-slate-400 to-indigo-400',
                         textColor: 'text-slate-700',
-                        onClick: () => go('/call-tracker', { statusFilter: 'Pending', dateFilter: 'all' })
+                        onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Pending', dateFilter: 'all', showAllTab: true }, 'All')
                       }
                     ].map(item => {
                       const Icon = item.icon;
@@ -2086,22 +2089,22 @@ export default function Dashboard() {
               <MetricBlock
                 label="Today's Leads"
                 value={kpis.todayLeads}
-                onClick={() => go('/call-tracker', { dateFilter: 'today', todayLeadsBreakdown })}
+                onClick={() => go('/call-tracker', { tab: 'All', dateFilter: 'today', showAllTab: true, todayLeadsBreakdown }, 'All')}
               />
               <MetricBlock
                 label="Today's Calls"
                 value={kpis.todayCalls}
-                onClick={() => go('/call-tracker', { dateFilter: 'today', calledOnly: true })}
+                onClick={() => go('/call-tracker', { tab: 'All', dateFilter: 'today', showAllTab: true, calledOnly: true }, 'All')}
               />
               <MetricBlock
                 label="Future Plan"
                 value={kpis.futurePlan}
-                onClick={() => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' })}
+                onClick={() => go('/call-tracker', { tab: 'All', statusFilter: 'Future Plan Date', dateFilter: 'all', showAllTab: true }, 'All')}
               />
               <MetricBlock
                 label="Interested"
                 value={kpis.interested}
-                onClick={() => go('/call-tracker', { statusFilter: 'Interested', dateFilter: 'all' })}
+                onClick={() => go('/call-tracker', { tab: 'All', statusFilter: 'Interested', dateFilter: 'all', showAllTab: true }, 'All')}
               />
               <MetricBlock
                 label="Deal Closed"
@@ -2370,9 +2373,9 @@ export default function Dashboard() {
                     hint: `${t.todayCalls} calls today · ${t.hot} hot`, onClick: () => go('/lead', { dateFilter: 'all' }, t.key)
                   }))
                   : [
-                    { key: 'fp', label: 'Future Plan', icon: Clock, done: kpis.futurePlan, total: kpis.total, hint: 'Awaiting next call', onClick: () => go('/call-tracker', { statusFilter: 'Future Plan Date', dateFilter: 'all' }) },
+                    { key: 'fp', label: 'Future Plan', icon: Clock, done: kpis.futurePlan, total: kpis.total, hint: 'Awaiting next call', onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Future Plan Date', dateFilter: 'all', showAllTab: true }, 'All') },
                     { key: 'sv', label: isMeetingOnly ? 'Meeting' : 'Site Visit / Meeting', icon: Handshake, done: kpis.siteVisit, total: kpis.total, hint: isMeetingOnly ? 'Meetings scheduled' : 'Visits scheduled', onClick: () => go('/site-visit-meeting', { dateFilter: 'all' }) },
-                    { key: 'nc', label: 'Not Called', icon: PhoneOff, done: kpis.notCalled, total: kpis.total, hint: 'Still to be called', onClick: () => go('/call-tracker', { statusFilter: 'Pending', dateFilter: 'all' }) }
+                    { key: 'nc', label: 'Not Called', icon: PhoneOff, done: kpis.notCalled, total: kpis.total, hint: 'Still to be called', onClick: () => go('/call-tracker', { tab: 'All', statusFilter: 'Pending', dateFilter: 'all', showAllTab: true }, 'All') }
                   ]
                 ).map(item => {
                   const Icon = item.icon;
