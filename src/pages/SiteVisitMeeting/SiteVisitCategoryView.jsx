@@ -1179,14 +1179,14 @@ export default function SiteVisitCategoryView({
     <div className="flex flex-col h-full min-h-0 space-y-1">
       {/* Header Bar: Row 1 = Lead Category Tabs (Top); Row 2 = Dates & Actions Controls Bar */}
       <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
-        {/* Row 1: Lead Category Button Tabs (Always Top Row, fits 1 row on mobile) */}
+        {/* Row 1: Lead Category Button Tabs (2x2 grid on mobile when there are 4 tabs, so each label/count is fully readable; single row from sm up) */}
         <div className="w-full shrink-0">
           <PageTabs
             tabs={tabs}
             activeKey={activeTab}
             onChange={(key) => { onTabChange?.(key); setCurrentPage(1); }}
             grid={tabs.length >= 2 && tabs.length <= 4}
-            gridCols={tabs.length === 4 ? 4 : tabs.length === 3 ? 3 : 2}
+            gridCols={tabs.length === 3 ? 3 : 2}
           />
         </div>
 

@@ -1813,14 +1813,14 @@ export default function CallTrackerCategoryView({
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-1 sm:space-y-1.5">
-      {/* Row 1: All Lead Types (Always visible in 1 equal-column row on mobile, no scrolling needed) */}
+      {/* Row 1: All Lead Types (2x2 grid on mobile when there are 4 tabs, so each label/count is fully readable; single row from sm up) */}
       <div className="w-full shrink-0">
         <PageTabs
           tabs={tabs.map(t => ({ ...t, count: liveCategoryCounts[t.key] ?? categoryCounts[t.key] ?? 0 }))}
           activeKey={activeTab}
           onChange={(key) => { onTabChange(key); setCurrentPage(1); }}
           grid={tabs.length >= 2 && tabs.length <= 4}
-          gridCols={tabs.length === 4 ? 4 : tabs.length === 3 ? 3 : 2}
+          gridCols={tabs.length === 3 ? 3 : 2}
           wrap={false}
         />
       </div>

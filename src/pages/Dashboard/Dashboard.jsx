@@ -963,10 +963,11 @@ export default function Dashboard() {
           {/* HEADER: Business Vertical Tabs (Left) · All Employees / Filter & Refresh (Right) */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <PageTabs
-              wrap
               tabs={visibleTabs.map(t => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
               activeKey={tab}
               onChange={setActiveTab}
+              grid={visibleTabs.length >= 2 && visibleTabs.length <= 4}
+              gridCols={visibleTabs.length === 3 ? 3 : 2}
             />
 
             <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -1911,10 +1912,11 @@ export default function Dashboard() {
         {/* Header: Lead category tabs (left) · My Dashboard badge (right) */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2">
           <PageTabs
-            wrap
             tabs={visibleTabs.map(t => ({ ...t, count: tabCounts[t.key] ?? 0 }))}
             activeKey={tab}
             onChange={setActiveTab}
+            grid={visibleTabs.length >= 2 && visibleTabs.length <= 4}
+            gridCols={visibleTabs.length === 3 ? 3 : 2}
           />
 
           {/* Right group: My Dashboard Badge */}
