@@ -274,47 +274,65 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-5 md:p-6 overflow-y-auto animate-in fade-in duration-150"
+      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5 md:p-6 overflow-y-auto animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col border border-gray-100/80 ring-1 ring-black/5 overflow-hidden max-h-[88dvh] sm:max-h-[85vh] animate-in zoom-in-95 duration-150 my-auto"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col border border-gray-100/80 ring-1 ring-black/5 overflow-hidden max-h-[90dvh] sm:max-h-[85vh] animate-in zoom-in-95 duration-150 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header: Clear, prominent customer identity with avatar */}
-        <div className="px-4 py-3 border-b border-gray-200 bg-slate-50 flex items-center justify-between gap-3 flex-shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <span className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-600 to-indigo-800 text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs">
-              {initials(lead.personName || lead.customerName)}
-            </span>
-            <div className="min-w-0 flex items-center gap-2 flex-wrap">
-              <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate">
-                {lead.personName || lead.customerName || 'Customer Details'}
-              </h2>
-              {lead.leadNo && (
-                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200 shrink-0">
-                  Lead #{lead.leadNo}
-                </span>
-              )}
-              {lead.status && (
-                <span className={`text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[lead.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
-                  {lead.status}
-                </span>
-              )}
-              {latestCustomerStatus && (
-                <span className={`text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase border shrink-0 ${CUSTOMER_STATUS_STYLES[latestCustomerStatus] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
-                  {latestCustomerStatus}
-                </span>
-              )}
-              {(lead.leadType || lead.category) && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 hidden sm:inline-block shrink-0">
-                  {lead.leadType || lead.category}
-                </span>
-              )}
+        <div className="px-3.5 sm:px-5 py-3 border-b border-gray-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-3 flex-shrink-0">
+          {/* Top row on mobile / Left group on desktop */}
+          <div className="flex items-start sm:items-center justify-between sm:justify-start gap-2.5 min-w-0 flex-1">
+            <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+              <span className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-600 to-indigo-800 text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs mt-0.5 sm:mt-0">
+                {initials(lead.personName || lead.customerName)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h2 className="text-sm sm:text-base font-extrabold text-gray-900 truncate max-w-[200px] sm:max-w-none">
+                    {lead.personName || lead.customerName || 'Customer Details'}
+                  </h2>
+                  {lead.leadNo && (
+                    <span className="text-[10px] sm:text-[11px] font-mono font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200 shrink-0">
+                      Lead #{lead.leadNo}
+                    </span>
+                  )}
+                </div>
+                {/* Status Badges */}
+                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                  {lead.status && (
+                    <span className={`text-[9.5px] sm:text-[10.5px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${STATUS_STYLES[lead.status] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                      {lead.status}
+                    </span>
+                  )}
+                  {latestCustomerStatus && (
+                    <span className={`text-[9.5px] sm:text-[10.5px] font-bold px-2 py-0.5 rounded-full uppercase border shrink-0 ${CUSTOMER_STATUS_STYLES[latestCustomerStatus] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                      {latestCustomerStatus}
+                    </span>
+                  )}
+                  {(lead.leadType || lead.category) && (
+                    <span className="text-[9.5px] sm:text-[10.5px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                      {lead.leadType || lead.category}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Mobile close button (top right) */}
+            <button
+              onClick={onClose}
+              className="sm:hidden text-gray-400 hover:text-gray-700 p-1.5 -mr-1 -mt-1 rounded-lg hover:bg-gray-200 transition shrink-0 cursor-pointer"
+              title="Close popup"
+            >
+              <X size={19} />
+            </button>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          {/* Action buttons (Share & Followup) + Desktop Close */}
+          <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto pt-1.5 sm:pt-0 border-t border-gray-200/70 sm:border-t-0">
             {/* Share Products — opens the Products page filtered to this client's lead type */}
             <button
               onClick={() => {
@@ -323,25 +341,25 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
                 navigate('/products', { state: { shareClient } });
               }}
               title={`Share ${lead.leadType || ''} products with ${lead.personName || 'this client'}`}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white rounded-lg text-xs font-semibold shadow-xs transition active:scale-95 cursor-pointer"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white rounded-lg text-xs font-semibold shadow-2xs transition active:scale-95 cursor-pointer"
             >
-              <Share2 size={12} />
-              <span className="hidden sm:inline">Share Products</span>
-              <span className="sm:hidden">Share</span>
+              <Share2 size={13} />
+              <span>Share Products</span>
             </button>
             {onFollowup && (
               <button
                 onClick={() => onFollowup(lead)}
                 title={`Log follow-up for ${lead.personName || 'Customer'}`}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition active:scale-95 cursor-pointer"
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition active:scale-95 cursor-pointer"
               >
-                <Phone size={12} />
+                <Phone size={13} />
                 <span>Followup</span>
               </button>
             )}
+            {/* Desktop close button */}
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 transition cursor-pointer"
+              className="hidden sm:inline-flex text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-200 transition cursor-pointer"
               title="Close popup"
             >
               <X size={18} />
@@ -350,13 +368,13 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
         </div>
 
         {/* Scrollable Compact Body */}
-        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-3.5 bg-white">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3.5 bg-white">
           {/* Key Handling & Lead Source Highlighted Cards (Caller, Team Member, Site Assigned, Source, Ref) */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
             {/* 1. Caller Assigned (HIGHLIGHTED) */}
             <div className="bg-gradient-to-br from-amber-50 to-amber-100/70 border-2 border-amber-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
-              <span className="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider flex items-center gap-1">
-                <UserCheck size={12} className="text-amber-600 shrink-0" />
+              <span className="text-[9.5px] font-extrabold text-amber-800 uppercase tracking-tight flex items-center gap-1">
+                <UserCheck size={11} className="text-amber-600 shrink-0" />
                 <span className="truncate">Caller Assigned</span>
               </span>
               <p className="text-xs sm:text-[13px] font-extrabold text-amber-950 mt-1 truncate" title={lead.callerAssigned || 'Unassigned'}>
@@ -366,8 +384,8 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
 
             {/* 2. Team Member (HIGHLIGHTED) */}
             <div className="bg-gradient-to-br from-violet-50 to-purple-100/70 border-2 border-violet-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
-              <span className="text-[10px] font-extrabold text-violet-800 uppercase tracking-wider flex items-center gap-1">
-                <User size={12} className="text-violet-600 shrink-0" />
+              <span className="text-[9.5px] font-extrabold text-violet-800 uppercase tracking-tight flex items-center gap-1">
+                <User size={11} className="text-violet-600 shrink-0" />
                 <span className="truncate">Team Member</span>
               </span>
               <p className="text-xs sm:text-[13px] font-extrabold text-violet-950 mt-1 truncate" title={lead.leadReceiver || lead.relationshipManager || 'Unassigned'}>
@@ -377,9 +395,11 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
 
             {/* 3. Site Visit / Meeting Assigned To (HIGHLIGHTED) */}
             <div className="bg-gradient-to-br from-indigo-50 to-blue-100/70 border-2 border-indigo-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
-              <span className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wider flex items-center gap-1">
-                <MapPin size={12} className="text-indigo-600 shrink-0" />
-                <span className="truncate">{isRealEstate ? 'Site Assigned To' : 'Meeting Assigned To'}</span>
+              <span className="text-[9.5px] font-extrabold text-indigo-800 uppercase tracking-tight flex items-center gap-1">
+                <MapPin size={11} className="text-indigo-600 shrink-0" />
+                <span className="truncate" title={isRealEstate ? 'Site Visit Executive' : 'Meeting Executive'}>
+                  {isRealEstate ? 'Site Visit Executive' : 'Meeting Executive'}
+                </span>
               </span>
               <p className="text-xs sm:text-[13px] font-extrabold text-indigo-950 mt-1 truncate" title={lead.assignedVisitor || 'Unassigned'}>
                 {lead.assignedVisitor || <span className="text-indigo-600/70 font-normal italic">Unassigned</span>}
@@ -388,8 +408,8 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
 
             {/* 4. Lead Source */}
             <div className="bg-gradient-to-br from-sky-50 to-slate-100 border border-sky-200 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
-              <span className="text-[10px] font-extrabold text-sky-800 uppercase tracking-wider flex items-center gap-1">
-                <FileText size={12} className="text-sky-600 shrink-0" />
+              <span className="text-[9.5px] font-extrabold text-sky-800 uppercase tracking-tight flex items-center gap-1">
+                <FileText size={11} className="text-sky-600 shrink-0" />
                 <span className="truncate">Lead Source</span>
               </span>
               <p className="text-xs sm:text-[13px] font-bold text-gray-800 mt-1 truncate" title={lead.leadSource || '-'}>
@@ -399,8 +419,8 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
 
             {/* 5. Reference Name (HIGHLIGHTED) */}
             <div className="bg-gradient-to-br from-emerald-50 to-teal-100/70 border-2 border-emerald-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between col-span-2 sm:col-span-1">
-              <span className="text-[10px] font-extrabold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
-                <Share2 size={12} className="text-emerald-600 shrink-0" />
+              <span className="text-[9.5px] font-extrabold text-emerald-800 uppercase tracking-tight flex items-center gap-1">
+                <Share2 size={11} className="text-emerald-600 shrink-0" />
                 <span className="truncate">Ref Name</span>
               </span>
               <p className="text-xs sm:text-[13px] font-extrabold text-emerald-950 mt-1 truncate" title={refName || '-'}>
@@ -624,13 +644,13 @@ export default function CallTrackerViewModal({ isOpen, onClose, lead, onFollowup
         </div>
 
         {/* Compact Footer */}
-        <div className="px-3.5 py-2 border-t border-gray-200 bg-slate-50 flex items-center justify-between flex-shrink-0">
-          <span className="text-[11px] text-gray-500 font-medium">
+        <div className="px-3.5 py-2 border-t border-gray-200 bg-slate-50 flex items-center justify-between gap-2 flex-shrink-0">
+          <span className="text-[11px] text-gray-500 font-medium truncate">
             Showing all records for {lead.personName || 'customer'}
           </span>
           <button
             onClick={onClose}
-            className="px-3 py-1 bg-white hover:bg-gray-100 border border-gray-300 rounded text-xs font-semibold text-gray-700 transition active:scale-95"
+            className="px-3 py-1 bg-white hover:bg-gray-100 border border-gray-300 rounded text-xs font-semibold text-gray-700 transition active:scale-95 shrink-0"
           >
             Close
           </button>

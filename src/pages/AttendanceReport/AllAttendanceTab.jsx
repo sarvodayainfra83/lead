@@ -605,112 +605,121 @@ export default function AllAttendanceTab({ tabBar, scope = 'all', showMarkButton
   return (
     <div className="space-y-2 flex flex-col h-full min-h-0">
       {/* Top Filter Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:gap-3 w-full flex-shrink-0">
-        {tabBar && <div className="w-full lg:w-auto lg:flex-shrink-0">{tabBar}</div>}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3 w-full flex-shrink-0">
+        {tabBar && <div className="flex-shrink-0">{tabBar}</div>}
 
-        {/* Datewise Filter Inputs (not needed when only today's records are shown) */}
-        {!isTodayScope && (
-        <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-lg px-2 py-1 shadow-2xs h-[34px] flex-shrink-0">
-          <Calendar size={14} className="text-indigo-600 flex-shrink-0" />
-          <input
-            type="date"
-            value={filters.startDate}
-            onChange={(e) => { setFilters({ ...filters, startDate: e.target.value }); setCurrentPage(1); }}
-            className="text-xs text-gray-700 bg-transparent focus:outline-none cursor-pointer"
-            title="From Date"
-          />
-          <span className="text-gray-400 text-xs font-bold">-</span>
-          <input
-            type="date"
-            value={filters.endDate}
-            onChange={(e) => { setFilters({ ...filters, endDate: e.target.value }); setCurrentPage(1); }}
-            className="text-xs text-gray-700 bg-transparent focus:outline-none cursor-pointer"
-            title="To Date"
-          />
-        </div>
-        )}
+        {/* Row: date range (if applicable) + search */}
+        <div className="flex items-center gap-2 lg:contents">
+          {/* Datewise Filter Inputs (not needed when only today's records are shown) */}
+          {!isTodayScope && (
+          <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-lg px-2 py-1 shadow-2xs h-[34px] flex-shrink-0">
+            <Calendar size={14} className="text-indigo-600 flex-shrink-0" />
+            <input
+              type="date"
+              value={filters.startDate}
+              onChange={(e) => { setFilters({ ...filters, startDate: e.target.value }); setCurrentPage(1); }}
+              className="text-xs text-gray-700 bg-transparent focus:outline-none cursor-pointer w-[86px]"
+              title="From Date"
+            />
+            <span className="text-gray-400 text-xs font-bold">-</span>
+            <input
+              type="date"
+              value={filters.endDate}
+              onChange={(e) => { setFilters({ ...filters, endDate: e.target.value }); setCurrentPage(1); }}
+              className="text-xs text-gray-700 bg-transparent focus:outline-none cursor-pointer w-[86px]"
+              title="To Date"
+            />
+          </div>
+          )}
 
-        <div className="flex-1 min-w-0 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={15} />
-          <input
-            type="text"
-            placeholder="Search employee, location..."
-            value={filters.searchQuery}
-            onChange={(e) => { setFilters({ ...filters, searchQuery: e.target.value }); setCurrentPage(1); }}
-            className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[34px] shadow-2xs transition-colors"
-          />
-        </div>
-
-        <div className="w-full sm:w-40">
-          <SearchableDropdown
-            options={statusOptions}
-            value={filters.status}
-            onChange={(val) => { setFilters({ ...filters, status: val }); setCurrentPage(1); }}
-            placeholder="All Status"
-            height="h-[34px]"
-          />
+          <div className="flex-1 min-w-0 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={15} />
+            <input
+              type="text"
+              placeholder="Search employee, location..."
+              value={filters.searchQuery}
+              onChange={(e) => { setFilters({ ...filters, searchQuery: e.target.value }); setCurrentPage(1); }}
+              className="w-full bg-white border border-gray-300 rounded-lg pl-9 pr-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-xs sm:text-sm h-[34px] shadow-2xs transition-colors"
+            />
+          </div>
         </div>
 
-        {isAdminOrHR && (
-          <div className="w-full sm:w-36">
+        {/* Row: status / role / employee filters */}
+        <div className={`grid gap-2 ${isAdminOrHR ? 'grid-cols-3' : 'grid-cols-2'} lg:contents`}>
+          <div className="lg:w-40">
             <SearchableDropdown
-              options={roleOptions}
-              value={filters.role}
-              onChange={(val) => { setFilters({ ...filters, role: val }); setCurrentPage(1); }}
-              placeholder="All Roles"
+              options={statusOptions}
+              value={filters.status}
+              onChange={(val) => { setFilters({ ...filters, status: val }); setCurrentPage(1); }}
+              placeholder="All Status"
               height="h-[34px]"
             />
           </div>
-        )}
 
-        <div className="w-full sm:w-44">
-          <SearchableDropdown
-            options={employeeOptions}
-            value={filters.employee}
-            onChange={(val) => { setFilters({ ...filters, employee: val }); setCurrentPage(1); }}
-            placeholder="All Employees"
-            height="h-[34px]"
-          />
+          {isAdminOrHR && (
+            <div className="lg:w-36">
+              <SearchableDropdown
+                options={roleOptions}
+                value={filters.role}
+                onChange={(val) => { setFilters({ ...filters, role: val }); setCurrentPage(1); }}
+                placeholder="All Roles"
+                height="h-[34px]"
+              />
+            </div>
+          )}
+
+          <div className="lg:w-44">
+            <SearchableDropdown
+              options={employeeOptions}
+              value={filters.employee}
+              onChange={(val) => { setFilters({ ...filters, employee: val }); setCurrentPage(1); }}
+              placeholder="All Employees"
+              height="h-[34px]"
+            />
+          </div>
         </div>
 
-        <button
-          onClick={handleClearFilters}
-          className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[34px] h-[34px] hover:bg-gray-100 transition-colors shadow-2xs flex-shrink-0"
-          title="Clear Filters"
-        >
-          <RotateCcw size={15} />
-        </button>
-
-        {canExport && (
+        {/* Row: reset + export + mark attendance actions */}
+        <div className="flex items-center gap-2 lg:contents">
           <button
-            onClick={exportToExcel}
-            title="Export attendance to Excel"
-            className="flex items-center justify-center gap-1 px-3 rounded-lg text-xs font-semibold h-[34px] border shrink-0 bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs transition active:scale-95 cursor-pointer"
+            onClick={handleClearFilters}
+            className="flex items-center justify-center bg-gray-50 text-gray-500 border border-gray-200 rounded-lg w-[34px] h-[34px] hover:bg-gray-100 transition-colors shadow-2xs flex-shrink-0"
+            title="Clear Filters"
           >
-            <FileSpreadsheet size={14} className="text-emerald-600" />
-            <span className="hidden sm:inline">Excel</span>
+            <RotateCcw size={15} />
           </button>
-        )}
 
-        {canMark && (
-          <button
-            onClick={() => setShowMarkModal(true)}
-            className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[34px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer text-white ${todayStatus.isLocked
-              ? 'bg-emerald-700 hover:bg-emerald-800'
-              : todayStatus.hasMarkedIn
-                ? 'bg-amber-600 hover:bg-amber-700'
-                : 'bg-slate-900 hover:bg-slate-800'
-              }`}
-          >
-            {todayStatus.isLocked ? (
-              <><CheckCircle2 size={16} /> Completed Today</>
-            ) : todayStatus.hasMarkedIn ? (
-              <><Clock size={16} /> Mark Out</>
-            ) : (
-              <><UserCheck size={16} /> Attendance</>
-            )}
-          </button>
-        )}
+          {canExport && (
+            <button
+              onClick={exportToExcel}
+              title="Export attendance to Excel"
+              className="flex items-center justify-center gap-1 px-3 rounded-lg text-xs font-semibold h-[34px] border shrink-0 bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs transition active:scale-95 cursor-pointer"
+            >
+              <FileSpreadsheet size={14} className="text-emerald-600" />
+              <span className="hidden sm:inline">Excel</span>
+            </button>
+          )}
+
+          {canMark && (
+            <button
+              onClick={() => setShowMarkModal(true)}
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-4 h-[34px] text-xs sm:text-sm font-bold uppercase tracking-wider shadow-sm transition active:scale-95 flex-shrink-0 cursor-pointer text-white ${todayStatus.isLocked
+                ? 'bg-emerald-700 hover:bg-emerald-800'
+                : todayStatus.hasMarkedIn
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-slate-900 hover:bg-slate-800'
+                }`}
+            >
+              {todayStatus.isLocked ? (
+                <><CheckCircle2 size={16} /> Completed Today</>
+              ) : todayStatus.hasMarkedIn ? (
+                <><Clock size={16} /> Mark Out</>
+              ) : (
+                <><UserCheck size={16} /> Attendance</>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Main Table */}

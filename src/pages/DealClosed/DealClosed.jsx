@@ -200,6 +200,7 @@ export default function DealClosed() {
   const navTab = useLocation().state?.tab;
   const [activeTab, setActiveTab] = useState(navTab || 'All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [datePreset, setDatePreset] = useState('all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [viewDeal, setViewDeal] = useState(null);
@@ -273,6 +274,7 @@ export default function DealClosed() {
 
   const handleClearFilters = useCallback(() => {
     setSearchQuery('');
+    setDatePreset('all');
     setFromDate('');
     setToDate('');
     setCurrentPage(1);
@@ -289,8 +291,41 @@ export default function DealClosed() {
 
   // Rows after the search and closed-date filters (tab counts use these)
   const baseFiltered = useMemo(() => {
-    const fromMs = fromDate ? new Date(`${fromDate}T00:00:00`).getTime() : null;
-    const toMs = toDate ? new Date(`${toDate}T23:59:59.999`).getTime() : null;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yestStart = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0).getTime();
+    const yestEnd = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999).getTime();
+
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0).getTime();
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999).getTime();
+
+    let fromMs = null;
+    let toMs = null;
+
+    if (datePreset === 'today') {
+      fromMs = todayStart;
+      toMs = todayEnd;
+    } else if (datePreset === 'yesterday') {
+      fromMs = yestStart;
+      toMs = yestEnd;
+    } else if (datePreset === 'thisMonth') {
+      fromMs = monthStart;
+      toMs = monthEnd;
+    } else if (datePreset === 'lastMonth') {
+      fromMs = lastMonthStart;
+      toMs = lastMonthEnd;
+    } else if (datePreset === 'custom') {
+      if (fromDate) fromMs = new Date(`${fromDate}T00:00:00`).getTime();
+      if (toDate) toMs = new Date(`${toDate}T23:59:59.999`).getTime();
+    }
+
     const q = searchQuery.trim().toLowerCase();
     return deals.filter(d => {
       if (fromMs !== null && d.closedMs < fromMs) return false;
@@ -302,7 +337,7 @@ export default function DealClosed() {
         d.referenceNo, d.assignedVisitor, d.leadSource, d.closingFeedback
       ].some(v => v && String(v).toLowerCase().includes(q));
     });
-  }, [deals, searchQuery, fromDate, toDate]);
+  }, [deals, searchQuery, datePreset, fromDate, toDate]);
 
   const filteredDeals = useMemo(
     () => (activeTab === 'All' ? baseFiltered : baseFiltered.filter(d => d.category === activeTab)),
@@ -324,16 +359,30 @@ export default function DealClosed() {
   }, [user, isAdmin]);
 
   const CAT_ICONS = { 'Real Estate': Building2, Insurance: ShieldCheck, 'Mutual Fund': TrendingUp };
+  const CAT_SHORT_LABELS = { 'Real Estate': 'Real Estate', Insurance: 'Insurance', 'Mutual Fund': 'Mutual Fund' };
+
   const tabs = [
-    ...(availableCats.length > 1 ? [{ key: 'All', label: 'All', icon: LayoutGrid, count: baseFiltered.length }] : []),
-    ...availableCats.map(c => ({ key: c, label: c, icon: CAT_ICONS[c], count: baseFiltered.filter(d => d.category === c).length }))
+    ...(availableCats.length > 1 ? [{
+      key: 'All',
+      label: 'All Leads',
+      shortLabel: 'All Leads',
+      icon: LayoutGrid,
+      count: baseFiltered.length
+    }] : []),
+    ...availableCats.map(c => ({
+      key: c,
+      label: c,
+      shortLabel: CAT_SHORT_LABELS[c] || c,
+      icon: CAT_ICONS[c],
+      count: baseFiltered.filter(d => d.category === c).length
+    }))
   ];
   const currentTab = tabs.some(t => t.key === activeTab) ? activeTab : tabs[0]?.key;
   useEffect(() => {
     if (currentTab && currentTab !== activeTab) setActiveTab(currentTab);
   }, [currentTab, activeTab]);
 
-  const isFilterActive = searchQuery || fromDate || toDate;
+  const isFilterActive = searchQuery || datePreset !== 'all' || fromDate || toDate;
 
   const exportToExcel = () => {
     if (filteredDeals.length === 0) {
@@ -441,61 +490,119 @@ export default function DealClosed() {
 
   return (
     <div className="flex flex-col h-full min-h-0 space-y-2">
-      <div className="flex flex-col xl:flex-row xl:items-center gap-2 w-full flex-shrink-0">
-        <PageTabs tabs={tabs} activeKey={currentTab} onChange={(k) => { setActiveTab(k); setCurrentPage(1); }} fill className="w-full xl:w-auto" />
+      <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
+        {/* Row 1: Lead Category Tabs in 4-column grid */}
+        <div className="w-full shrink-0">
+          <PageTabs
+            tabs={tabs}
+            activeKey={currentTab}
+            onChange={(k) => { setActiveTab(k); setCurrentPage(1); }}
+            grid={true}
+            gridCols={2}
+          />
+        </div>
 
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full xl:flex-1 xl:justify-end">
-          <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-lg px-2 h-[34px] shadow-2xs shrink-0">
-            <Calendar size={14} className="text-indigo-600 shrink-0" />
-            <input
-              type="date"
-              value={fromDate}
-              max={toDate || undefined}
-              onChange={(e) => { setFromDate(e.target.value); setCurrentPage(1); }}
-              className="text-xs text-gray-700 bg-transparent focus:outline-none cursor-pointer"
-              title="Closed From"
-            />
-            <span className="text-gray-400 text-xs font-bold">-</span>
-            <input
-              type="date"
-              value={toDate}
-              min={fromDate || undefined}
-              onChange={(e) => { setToDate(e.target.value); setCurrentPage(1); }}
-              className="text-xs text-gray-700 bg-transparent focus:outline-none cursor-pointer"
-              title="Closed To"
-            />
+        {/* Row 2: Controls bar in 1 single line on mobile */}
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full overflow-x-auto scrollbar-hide flex-nowrap pb-0.5 justify-between sm:justify-end text-xs">
+          {/* Date Filter Dropdown */}
+          <div className="w-[110px] sm:w-[130px] shrink-0">
+            <select
+              value={datePreset}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDatePreset(val);
+                if (val === 'custom' && !fromDate && !toDate) {
+                  const d = new Date();
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth() + 1).padStart(2, '0');
+                  const day = String(d.getDate()).padStart(2, '0');
+                  const t = `${y}-${m}-${day}`;
+                  setFromDate(t);
+                  setToDate(t);
+                }
+                setCurrentPage(1);
+              }}
+              className="w-full bg-white border border-gray-300 rounded-md px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs text-gray-800 focus:outline-none focus:border-indigo-500 h-[30px] shadow-2xs font-medium cursor-pointer"
+            >
+              <option value="all">All Dates</option>
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="thisMonth">This Month</option>
+              <option value="lastMonth">Last Month</option>
+              <option value="custom">Custom Date</option>
+            </select>
           </div>
 
-          <div className="relative flex-1 min-w-[160px] sm:max-w-[280px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
+          {/* Custom Date Range Inline Inputs */}
+          {datePreset === 'custom' && (
+            <div className="flex items-center gap-1 shrink-0 animate-in fade-in duration-150">
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-1.5 h-[30px] shadow-2xs">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+                <input
+                  type="date"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(e) => { setFromDate(e.target.value); setCurrentPage(1); }}
+                  className="text-[11px] text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="From Date (DD/MM/YYYY)"
+                />
+              </div>
+              <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded px-1.5 h-[30px] shadow-2xs">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(e) => { setToDate(e.target.value); setCurrentPage(1); }}
+                  className="text-[11px] text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                  title="To Date (DD/MM/YYYY)"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-[130px] sm:min-w-[180px] sm:max-w-[260px] shrink-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={13} />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              placeholder="Search customer, product, lead no..."
-              className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-3 text-xs focus:outline-none focus:border-indigo-500 h-[34px] shadow-2xs"
+              placeholder="Search deals..."
+              className="w-full bg-white border border-gray-300 rounded-md pl-7 pr-6 text-[11px] sm:text-xs focus:outline-none focus:border-indigo-500 h-[30px] shadow-2xs"
             />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer"
+                title="Clear search"
+              >
+                <X size={12} />
+              </button>
+            )}
           </div>
 
+          {/* Export to Excel (ADMIN / Tester only) */}
           {isAdmin && (
             <button
               onClick={exportToExcel}
               title="Export closed deals to Excel"
-              className="flex items-center justify-center gap-1 px-3 rounded-lg text-xs font-semibold h-[34px] border shrink-0 bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs cursor-pointer"
+              className="flex items-center justify-center gap-1 px-2.5 sm:px-3 rounded-md text-[11px] sm:text-xs font-semibold h-[30px] border shrink-0 bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50 shadow-2xs cursor-pointer active:scale-95 transition"
             >
-              <FileSpreadsheet size={14} className="text-emerald-600" />
+              <FileSpreadsheet size={13} className="text-emerald-600" />
               <span className="hidden sm:inline">Excel</span>
             </button>
           )}
 
+          {/* Reset Filters */}
           {isFilterActive && (
             <button
               onClick={handleClearFilters}
-              title="Clear filters"
-              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-lg h-[34px] px-3 text-xs font-semibold gap-1 shrink-0 cursor-pointer"
+              title="Clear all filters & search"
+              className="flex items-center justify-center bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-md h-[30px] px-2 sm:px-2.5 text-[11px] sm:text-xs font-semibold gap-1 shrink-0 cursor-pointer active:scale-95 transition"
             >
-              <RotateCcw size={13} />
-              <span className="hidden md:inline">Reset</span>
+              <RotateCcw size={12} />
+              <span className="hidden sm:inline">Reset</span>
             </button>
           )}
         </div>

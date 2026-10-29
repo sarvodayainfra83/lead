@@ -192,8 +192,8 @@ export default function CallTrackerCategoryView({
   );
   // Who takes the site visit (Real Estate) / meeting (Insurance, Mutual Fund)
   const assignedToLabel = isMeetingOnly
-    ? 'Meeting Assigned To'
-    : (isAllCategory ? 'Site Visit / Meeting Assigned To' : 'Site Visit Assigned To');
+    ? 'Meeting Executive'
+    : (isAllCategory ? 'Site Visit / Meeting Executive' : 'Site Visit Executive');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [openedFromNotification, setOpenedFromNotification] = useState(null);
@@ -1378,23 +1378,25 @@ export default function CallTrackerCategoryView({
     };
 
     const isSiteVisitStage = item.stage === 'Site Visit' || item.inSiteVisitList;
+    const isMeetingItem = itemIsMeeting ? itemIsMeeting(item) : isMeetingOnly;
+    const visitorExecutiveLabel = isMeetingItem ? 'Meeting Executive' : 'Site Visit Executive';
 
-    // For Admin role: show assigned caller or assigned visitor based on the lead's stage
-    // (Site Visit stage -> show Visitor; Calling stage -> show Caller).
-    // For other roles: standard caller display (or visitor if caller not present).
+    // For Admin role: show assigned caller or assigned executive based on the lead's stage
+    // (Site Visit stage -> show Site Visit Executive; Calling stage -> show Caller).
+    // For other roles: standard caller display (or executive if caller not present).
     let assignedLabel = 'Caller';
     let assignedPerson = '';
 
     if (isAdmin) {
       if (isSiteVisitStage) {
         if (isValid(item.assignedVisitor)) {
-          assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+          assignedLabel = visitorExecutiveLabel;
           assignedPerson = item.assignedVisitor;
         } else if (isValid(item.callerAssigned)) {
           assignedLabel = 'Caller';
           assignedPerson = item.callerAssigned;
         } else {
-          assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+          assignedLabel = visitorExecutiveLabel;
           assignedPerson = '';
         }
       } else {
@@ -1402,7 +1404,7 @@ export default function CallTrackerCategoryView({
           assignedLabel = 'Caller';
           assignedPerson = item.callerAssigned;
         } else if (isValid(item.assignedVisitor)) {
-          assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+          assignedLabel = visitorExecutiveLabel;
           assignedPerson = item.assignedVisitor;
         } else {
           assignedLabel = 'Caller';
@@ -1414,7 +1416,7 @@ export default function CallTrackerCategoryView({
         assignedLabel = 'Caller';
         assignedPerson = item.callerAssigned;
       } else if (isValid(item.assignedVisitor)) {
-        assignedLabel = isMeetingOnly ? 'Meeting' : 'Visitor';
+        assignedLabel = visitorExecutiveLabel;
         assignedPerson = item.assignedVisitor;
       }
     }
@@ -1427,7 +1429,7 @@ export default function CallTrackerCategoryView({
     if (isVisitorBadge) {
       if (isValid(item.callerAssigned)) details.push({ label: 'Caller Assigned', value: item.callerAssigned, icon: UserCheck });
     } else {
-      if (isValid(item.assignedVisitor)) details.push({ label: assignedToLabel, value: item.assignedVisitor, icon: UserCheck });
+      if (isValid(item.assignedVisitor)) details.push({ label: visitorExecutiveLabel, value: item.assignedVisitor, icon: UserCheck });
     }
     if (isValid(item.leadReceiver)) details.push({ label: 'Team Member', value: item.leadReceiver, icon: User });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
@@ -1793,7 +1795,7 @@ export default function CallTrackerCategoryView({
                 </div>
                 {item.latestVisitorFollowUp?.visitorName && (
                   <p className="text-[11px] text-gray-600">
-                    Visitor: <strong className="text-gray-800">{item.latestVisitorFollowUp.visitorName}</strong>
+                    {itemIsMeeting(item) ? 'Meeting Executive' : 'Site Visit Executive'}: <strong className="text-gray-800">{item.latestVisitorFollowUp.visitorName}</strong>
                   </p>
                 )}
                 {item.latestVisitorFollowUp?.whatHappened && (

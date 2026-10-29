@@ -180,7 +180,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
             <div className="bg-gradient-to-br from-indigo-50 to-blue-100/70 border-2 border-indigo-300 rounded-xl p-2.5 shadow-2xs flex flex-col justify-between">
               <span className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wider flex items-center gap-1">
                 <MapPin size={12} className="text-indigo-600 shrink-0" />
-                <span className="truncate">{isMeetingOnly ? 'Meeting Assigned To' : 'Assigned Visitor'}</span>
+                <span className="truncate">{isMeetingOnly ? 'Meeting Executive' : 'Site Visit Executive'}</span>
               </span>
               <p className="text-xs sm:text-[13px] font-extrabold text-indigo-950 mt-1 truncate" title={lead.assignedVisitor || 'Unassigned'}>
                 {lead.assignedVisitor || <span className="text-indigo-600/70 font-normal italic">Unassigned</span>}
@@ -467,7 +467,7 @@ export default function VisitHistoryModal({ isOpen, onClose, lead, onAssignVisit
               <UserCheck size={13} className="text-indigo-600" />
               {isMeetingOnly
                 ? (lead.assignedVisitor ? 'Reassign Meeting' : 'Assign Meeting')
-                : (lead.assignedVisitor ? 'Reassign Visitor' : 'Assign Visitor')}
+                : (lead.assignedVisitor ? 'Reassign Site Visit Executive' : 'Assign Site Visit Executive')}
             </button>
             <button
               onClick={() => { onClose(); onLogFollowUp(lead); }}

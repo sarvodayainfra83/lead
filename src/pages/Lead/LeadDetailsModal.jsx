@@ -181,7 +181,7 @@ export default function LeadDetailsModal({ isOpen, onClose, lead, onEdit, onShar
             {/* Site Visit / Meeting Assigned To - Highlighted */}
             <div className="p-2.5 rounded-xl bg-indigo-50/80 border border-indigo-200/90 shadow-2xs">
               <p className="text-[10px] uppercase font-bold text-indigo-700 tracking-wider flex items-center gap-1">
-                <MapPin size={11} className="text-indigo-600" /> {lead.leadType === 'Real Estate' ? 'Site Visit Assigned' : 'Meeting Assigned'}
+                <MapPin size={11} className="text-indigo-600" /> {lead.leadType === 'Real Estate' ? 'Site Visit Executive' : 'Meeting Executive'}
               </p>
               <p className="font-bold text-xs text-indigo-950 mt-1 truncate" title={lead.assignedVisitor || 'Unassigned'}>
                 {lead.assignedVisitor || <span className="italic font-medium text-indigo-500">Unassigned</span>}

@@ -50,5 +50,11 @@
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "vite": "^8.0.13"
+  },
+  "optionalDependencies": {
+    "@esbuild/linux-x64": "^0.28.2",
+    "@esbuild/win32-x64": "^0.28.2",
+    "@rollup/rollup-linux-x64-gnu": "^4.66.0",
+    "@rollup/rollup-win32-x64-msvc": "^4.66.0"
   }
 }

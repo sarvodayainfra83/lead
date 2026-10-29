@@ -253,6 +253,8 @@ export const nonInterestedApi = {
         // Follow-Up info
         followUps: leadFollowUps,
         followUpCount: leadFollowUps.length || (latestTracker ? 1 : 0),
+        totalCalls: leadTrackers.length || (latestTracker ? 1 : 0),
+        totalVisits: leadFollowUps.length,
         followUpNo: leadFollowUps.length || 1,
         latestFollowUp,
         visitMeet: latestFollowUp?.visitMeet || latestFollowUp?.visit_meet || (leadFollowUps.find(f => f.visitMeet || f.visit_meet)?.visitMeet) || lead.visitMeet || lead.visit_meet || null,

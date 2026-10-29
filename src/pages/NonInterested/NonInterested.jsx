@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Building2, ShieldCheck, TrendingUp } from 'lucide-react';
+import { Building2, ShieldCheck, TrendingUp, Layers } from 'lucide-react';
 import { nonInterestedApi } from '../../api/nonInterestedApi';
 import { masterApi } from '../../api/masterApi';
 import { useAuthStore } from '../../store/authStore';
@@ -26,14 +26,9 @@ export default function NonInterested() {
   const initialTab = useMemo(() => {
     if (navState.tab) return navState.tab;
     const scope = getUserLeadTypeScope(user);
-    if (scope?.categories?.length > 0) return scope.categories[0];
-    if (user?.leadType) {
-      const norm = user.leadType.toLowerCase();
-      if (norm.includes('insurance')) return 'Insurance';
-      if (norm.includes('mutual')) return 'Mutual Fund';
-      if (norm.includes('real') || norm.includes('estate')) return 'Real Estate';
-    }
-    return 'Real Estate';
+    if (scope?.category && !scope?.categories?.length) return scope.category;
+    if (scope?.categories?.length === 1) return scope.categories[0];
+    return 'All';
   }, [user, navState.tab]);
 
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -104,10 +99,21 @@ export default function NonInterested() {
   }, [displayLeads]);
 
   // Tab configurations with live badge counters
-  const tabs = [
+  const allTabs = [
+    {
+      key: 'All',
+      label: 'All Leads',
+      shortLabel: 'All',
+      icon: Layers,
+      count: displayLeads.length,
+      data: displayLeads,
+      accent: 'border-indigo-500 text-indigo-600',
+      activeBg: 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+    },
     {
       key: 'Real Estate',
       label: 'Real Estate',
+      shortLabel: 'Real Estate',
       icon: Building2,
       count: realEstateLeads.length,
       data: realEstateLeads,
@@ -117,6 +123,7 @@ export default function NonInterested() {
     {
       key: 'Insurance',
       label: 'Insurance',
+      shortLabel: 'Insurance',
       icon: ShieldCheck,
       count: insuranceLeads.length,
       data: insuranceLeads,
@@ -126,6 +133,7 @@ export default function NonInterested() {
     {
       key: 'Mutual Fund',
       label: 'Mutual Fund',
+      shortLabel: 'Mutual Fund',
       icon: TrendingUp,
       count: mutualFundLeads.length,
       data: mutualFundLeads,
@@ -136,9 +144,12 @@ export default function NonInterested() {
 
   // Role USER gets tabs of all their assigned lead types
   const scope = getUserLeadTypeScope(user);
-  const visibleTabs = scope?.categories?.length > 0
-    ? tabs.filter(t => scope.categories.includes(t.key))
-    : (scope?.category ? tabs.filter(t => t.key === scope.category) : tabs);
+  const showAllTab = isAdmin || (scope?.categories?.length > 1) || (!scope?.category && !scope?.categories?.length);
+  const categoryTabs = scope?.categories?.length > 0
+    ? allTabs.filter(t => t.key !== 'All' && scope.categories.includes(t.key))
+    : (scope?.category ? allTabs.filter(t => t.key === scope.category) : allTabs.filter(t => t.key !== 'All'));
+
+  const visibleTabs = showAllTab ? allTabs : categoryTabs;
 
   const currentTabObj = visibleTabs.find(t => t.key === activeTab) || visibleTabs[0];
 

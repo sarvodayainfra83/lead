@@ -95,6 +95,9 @@ export default function NonInterestedCategoryView({
   const user = useAuthStore(state => state.user);
   const isAdmin = isUserAdmin(user);
 
+  const isRealEstate = category === 'Real Estate';
+  const isAll = category === 'All';
+
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
   const [customFrom, setCustomFrom] = useState('');
@@ -105,6 +108,36 @@ export default function NonInterestedCategoryView({
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+
+  // Helper to determine the lead category for an item
+  const getItemCategory = useCallback((item) => {
+    const type = (item?.leadType || '').toLowerCase();
+    const no = (item?.leadNo || '').toUpperCase();
+    if (type.includes('real') || type.includes('estate') || no.startsWith('LR')) return 'Real Estate';
+    if (type.includes('insurance') || no.startsWith('LI')) return 'Insurance';
+    if (type.includes('mutual') || type.includes('fund') || no.startsWith('LM')) return 'Mutual Fund';
+    return isRealEstate ? 'Real Estate' : (category === 'Insurance' ? 'Insurance' : (category === 'Mutual Fund' ? 'Mutual Fund' : 'Real Estate'));
+  }, [isRealEstate, category]);
+
+  // Helper for activity date
+  const getActivityDate = useCallback((item) => {
+    const itemCat = getItemCategory(item);
+    if (itemCat === 'Real Estate') {
+      return item.meetingDate || item.visitDate || item.lastCallDate || '';
+    }
+    return item.lastCallDate || item.meetingDate || item.visitDate || '';
+  }, [getItemCategory]);
+
+  const getNextActivityDate = useCallback((item) => {
+    return item.nextMeetingDate || item.nextVisitDate || item.nextCallDate || item.nextDate || '';
+  }, []);
+
+  // Helper for call and visit counts
+  const getCounts = useCallback((item) => {
+    const callCount = item.totalCalls ?? item.trackers?.length ?? item.callHistory?.length ?? (item.callerAssigned || item.caller ? 1 : 0);
+    const visitCount = item.totalVisits ?? item.followUps?.length ?? 0;
+    return { callCount, visitCount };
+  }, []);
 
   // Mobile card view: expanded accordion card IDs
   const [expandedCardIds, setExpandedCardIds] = useState(new Set());
@@ -127,7 +160,7 @@ export default function NonInterestedCategoryView({
       ? cleanPhone.replace('+', '')
       : `91${cleanPhone}`;
     const message = encodeURIComponent(
-      `Hello ${item.customerName || item.personName || 'Customer'}, regarding your inquiry with Sarvodaya Infracon for ${category}.`
+      `Hello ${item.customerName || item.personName || 'Customer'}, regarding your inquiry with Sarvodaya Infracon for ${getItemCategory(item)}.`
     );
     window.open(`https://wa.me/${phoneWithCountry}?text=${message}`, '_blank');
   };
@@ -146,6 +179,8 @@ export default function NonInterestedCategoryView({
         (l.customerNumber && String(l.customerNumber).includes(q)) ||
         (l.number && String(l.number).includes(q)) ||
         (l.assignedVisitor && String(l.assignedVisitor).toLowerCase().includes(q)) ||
+        (l.callerAssigned && String(l.callerAssigned).toLowerCase().includes(q)) ||
+        (l.caller && String(l.caller).toLowerCase().includes(q)) ||
         (l.relationshipManager && String(l.relationshipManager).toLowerCase().includes(q)) ||
         (l.location && String(l.location).toLowerCase().includes(q)) ||
         (l.whatHappened && String(l.whatHappened).toLowerCase().includes(q)) ||
@@ -159,9 +194,14 @@ export default function NonInterestedCategoryView({
       list = list.filter(l => (l.customerStatus || '').toLowerCase() === customerStatusFilter.toLowerCase());
     }
 
-    // Visitor filter
+    // Executive / Caller filter
     if (visitorFilter && visitorFilter !== 'all') {
-      list = list.filter(l => l.assignedVisitor === visitorFilter);
+      const vf = visitorFilter.toLowerCase();
+      list = list.filter(l => {
+        const assigned = (l.assignedVisitor || '').toLowerCase();
+        const caller = ((l.callerAssigned || l.caller || '')).toLowerCase();
+        return assigned === vf || caller === vf;
+      });
     }
 
     // Date filter
@@ -172,8 +212,8 @@ export default function NonInterestedCategoryView({
       yesterday.setDate(yesterday.getDate() - 1);
 
       list = list.filter(item => {
-        const mObj = parseDateObj(item.meetingDate || item.visitDate);
-        const nextObj = parseDateObj(item.nextMeetingDate || item.nextVisitDate || item.nextCallDate || item.nextDate);
+        const mObj = parseDateObj(getActivityDate(item));
+        const nextObj = parseDateObj(getNextActivityDate(item));
 
         const mTime = mObj ? new Date(mObj.getFullYear(), mObj.getMonth(), mObj.getDate()).getTime() : null;
         const nextTime = nextObj ? new Date(nextObj.getFullYear(), nextObj.getMonth(), nextObj.getDate()).getTime() : null;
@@ -218,27 +258,39 @@ export default function NonInterestedCategoryView({
     }
 
     return list;
-  }, [leads, searchQuery, customerStatusFilter, visitorFilter, dateFilter, customFrom, customTo]);
+  }, [leads, searchQuery, customerStatusFilter, visitorFilter, dateFilter, customFrom, customTo, getActivityDate, getNextActivityDate]);
 
-  // Visitor filter options
+  // Executive (Real Estate) / Caller (Insurance & Mutual Fund) filter options
   const visitorOptions = useMemo(() => {
     const seen = new Set();
-    const opts = [{ value: 'all', label: 'All Visitors' }];
-    (visitorsMaster || []).forEach(v => {
-      const name = String(v.personName || v.name || '').trim();
-      if (name && !seen.has(name.toLowerCase())) {
-        seen.add(name.toLowerCase());
-        opts.push({ value: name, label: name });
-      }
-    });
-    leads.forEach(l => {
-      if (l.assignedVisitor && !seen.has(l.assignedVisitor.toLowerCase())) {
-        seen.add(l.assignedVisitor.toLowerCase());
-        opts.push({ value: l.assignedVisitor, label: l.assignedVisitor });
-      }
-    });
+    const defaultLabel = isRealEstate ? 'All Executives' : isAll ? 'All Staff' : 'All Callers';
+    const opts = [{ value: 'all', label: defaultLabel }];
+    if (isRealEstate || isAll) {
+      (visitorsMaster || []).forEach(v => {
+        const name = String(v.personName || v.name || '').trim();
+        if (name && !seen.has(name.toLowerCase())) {
+          seen.add(name.toLowerCase());
+          opts.push({ value: name, label: name });
+        }
+      });
+      leads.forEach(l => {
+        if (l.assignedVisitor && !seen.has(l.assignedVisitor.toLowerCase())) {
+          seen.add(l.assignedVisitor.toLowerCase());
+          opts.push({ value: l.assignedVisitor, label: l.assignedVisitor });
+        }
+      });
+    }
+    if (!isRealEstate || isAll) {
+      leads.forEach(l => {
+        const callerName = String(l.callerAssigned || l.caller || '').trim();
+        if (callerName && !seen.has(callerName.toLowerCase())) {
+          seen.add(callerName.toLowerCase());
+          opts.push({ value: callerName, label: callerName });
+        }
+      });
+    }
     return opts;
-  }, [visitorsMaster, leads]);
+  }, [visitorsMaster, leads, isRealEstate, isAll]);
 
   // Date filter options
   const dateFilterOptions = useMemo(() => {
@@ -287,23 +339,31 @@ export default function NonInterestedCategoryView({
       return;
     }
 
-    const exportData = filteredLeads.map((item, idx) => ({
-      'SR No': idx + 1,
-      'Last Meeting Date': formatDate(item.meetingDate || item.visitDate),
-      'Next Meeting Date': formatDate(item.nextMeetingDate || item.nextVisitDate),
-      'Customer Name': item.customerName || item.personName || '-',
-      'Status': item.status || 'Not Interested',
-      'Site Visited': (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) ? 'Yes' : 'No',
-      'Meeting': item.visitMeet?.meeting ? 'Yes' : 'No',
-      'Customer Status': item.customerStatus || '-',
-      'Latest Feedback / Reason': item.whatHappened || item.visitorRemarks || item.callTrackerRemarks || '-',
-      'Phone Number': item.customerNumber || item.number || '-',
-      'Assigned Visitor': item.assignedVisitor || '-',
-      'Total Calls / Visits': item.followUpCount || 0,
-      'Location': item.location || item.customerAddress || '-',
-      'Relationship Manager': item.relationshipManager || '-',
-      'Remarks': item.leadRemarks || item.remarks || '-'
-    }));
+    const exportData = filteredLeads.map((item, idx) => {
+      const itemCat = getItemCategory(item);
+      const { callCount, visitCount } = getCounts(item);
+      return {
+        'SR No': idx + 1,
+        ...(isAll ? { 'Lead Type': itemCat } : {}),
+        [itemCat === 'Real Estate' ? 'Last Meeting Date' : 'Last Call Date']: formatDate(getActivityDate(item)),
+        [itemCat === 'Real Estate' ? 'Next Meeting Date' : 'Next Followup Date']: formatDate(getNextActivityDate(item)),
+        'Customer Name': item.customerName || item.personName || '-',
+        'Status': item.status || 'Not Interested',
+        ...(itemCat === 'Real Estate' ? {
+          'Site Visited': (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) ? 'Yes' : 'No',
+          'Meeting': item.visitMeet?.meeting ? 'Yes' : 'No',
+        } : {}),
+        'Customer Status': item.customerStatus || '-',
+        'Latest Feedback / Reason': item.whatHappened || item.visitorRemarks || item.callTrackerRemarks || '-',
+        'Phone Number': item.customerNumber || item.number || '-',
+        'Site Visit Executive / Caller': itemCat === 'Real Estate' ? (item.assignedVisitor || '-') : (item.callerAssigned || item.caller || '-'),
+        'Total Calls': callCount,
+        ...(itemCat === 'Real Estate' || isAll ? { 'Total Visits': visitCount } : {}),
+        ...(itemCat === 'Real Estate' || isAll ? { 'Location': item.location || item.customerAddress || '-' } : {}),
+        'Relationship Manager': item.relationshipManager || '-',
+        'Remarks': item.leadRemarks || item.remarks || '-'
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
@@ -311,8 +371,24 @@ export default function NonInterestedCategoryView({
     XLSX.writeFile(workbook, `NonInterested_${category.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Table Headers
-  const tableHeaders = [
+  // Table Headers: Total Calls followed by Total Visits
+  const tableHeaders = isAll ? [
+    "Action",
+    "Lead Type",
+    "Last Activity Date",
+    "Next Activity Date",
+    "Customer Name",
+    "Status",
+    "Customer Status",
+    "Latest Feedback",
+    "Phone Number",
+    "Staff / Executive",
+    "Total Calls",
+    "Total Visits",
+    "Location",
+    "Relationship Manager",
+    "Remarks"
+  ] : isRealEstate ? [
     "Action",
     "Last Meeting Date",
     "Next Meeting Date",
@@ -323,9 +399,23 @@ export default function NonInterestedCategoryView({
     "Customer Status",
     "Latest Feedback",
     "Phone Number",
-    "Assigned Visitor",
+    "Site Visit Executive",
+    "Total Calls",
     "Total Visits",
     "Location",
+    "Relationship Manager",
+    "Remarks"
+  ] : [
+    "Action",
+    "Last Call Date",
+    "Next Followup Date",
+    "Customer Name",
+    "Status",
+    "Customer Status",
+    "Latest Feedback",
+    "Phone Number",
+    "Caller",
+    "Total Calls",
     "Relationship Manager",
     "Remarks"
   ];
@@ -340,8 +430,13 @@ export default function NonInterestedCategoryView({
   // Render Table Row (Desktop)
   const renderRow = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
+    const itemCat = getItemCategory(item);
+    const itemIsRealEstate = itemCat === 'Real Estate';
     const hasSiteVisited = Boolean(item.visitMeet?.['site-visit'] ?? item.visitMeet?.siteVisit ?? item.visitMeet?.site_visit);
     const hasMeeting = Boolean(item.visitMeet?.meeting);
+    const { callCount, visitCount } = getCounts(item);
+    const actDate = getActivityDate(item);
+    const nextDate = getNextActivityDate(item);
 
     return (
       <tr
@@ -370,38 +465,53 @@ export default function NonInterestedCategoryView({
             {/* View history timeline */}
             <button
               onClick={() => onViewHistory(item)}
-              title={`View ${item.followUpCount || 0} record${item.followUpCount === 1 ? '' : 's'} & details`}
+              title={`View records & details`}
               aria-label="View"
               className="relative w-7 h-7 inline-flex items-center justify-center rounded-md bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-600 hover:text-white transition active:scale-95"
             >
               <Eye size={13} />
-              {item.followUpCount > 0 && (
+              {(callCount > 0 || visitCount > 0) && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-bold leading-4 border border-white">
-                  {item.followUpCount}
+                  {callCount + visitCount}
                 </span>
               )}
             </button>
           </div>
         </td>
 
-        {/* 1. Last Meeting Date */}
+        {/* Lead Type column (when viewing All tab) */}
+        {isAll && (
+          <td className="px-2.5 py-2 text-center whitespace-nowrap">
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold border ${
+              itemCat === 'Real Estate'
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : itemCat === 'Insurance'
+                ? 'bg-sky-50 text-sky-800 border-sky-200'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}>
+              {itemCat}
+            </span>
+          </td>
+        )}
+
+        {/* 1. Last Meeting Date (Real Estate) / Last Call Date */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
-          {(item.meetingDate || item.visitDate) ? (
+          {actDate ? (
             <span className="inline-flex items-center gap-1 text-gray-700 font-medium">
               <Calendar size={12} className="text-gray-400" />
-              {formatDate(item.meetingDate || item.visitDate)}
+              {formatDate(actDate)}
             </span>
           ) : (
             <span className="text-gray-400 italic text-xs">-</span>
           )}
         </td>
 
-        {/* 2. Next Meeting Date */}
+        {/* 2. Next Meeting Date / Next Followup Date */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap">
-          {(item.nextMeetingDate || item.nextVisitDate) ? (
+          {nextDate ? (
             <span className={`inline-flex items-center gap-1 font-semibold ${NEXT_DATE_CLASS}`}>
               <Calendar size={12} />
-              {formatDate(item.nextMeetingDate || item.nextVisitDate)}
+              {formatDate(nextDate)}
             </span>
           ) : (
             <span className="text-gray-400 italic text-xs">-</span>
@@ -422,29 +532,33 @@ export default function NonInterestedCategoryView({
           </span>
         </td>
 
-        {/* 5. Site Visited */}
-        <td className="px-3 py-2 text-center whitespace-nowrap">
-          {hasSiteVisited ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-              <Check size={11} className="text-emerald-600 stroke-[2.5]" />
-              Yes
-            </span>
-          ) : (
-            <span className="text-gray-300 text-xs">-</span>
-          )}
-        </td>
+        {/* 5. Site Visited (Real Estate tab only) */}
+        {isRealEstate && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            {hasSiteVisited ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                <Check size={11} className="text-emerald-600 stroke-[2.5]" />
+                Yes
+              </span>
+            ) : (
+              <span className="text-gray-300 text-xs">-</span>
+            )}
+          </td>
+        )}
 
-        {/* 6. Meeting */}
-        <td className="px-3 py-2 text-center whitespace-nowrap">
-          {hasMeeting ? (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-50 text-violet-700 border border-violet-200 shadow-2xs">
-              <Check size={11} className="text-violet-600 stroke-[2.5]" />
-              Yes
-            </span>
-          ) : (
-            <span className="text-gray-300 text-xs">-</span>
-          )}
-        </td>
+        {/* 6. Meeting (Real Estate tab only) */}
+        {isRealEstate && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            {hasMeeting ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-violet-50 text-violet-700 border border-violet-200 shadow-2xs">
+                <Check size={11} className="text-violet-600 stroke-[2.5]" />
+                Yes
+              </span>
+            ) : (
+              <span className="text-gray-300 text-xs">-</span>
+            )}
+          </td>
+        )}
 
         {/* 7. Customer Status */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -485,50 +599,76 @@ export default function NonInterestedCategoryView({
           ) : '-'}
         </td>
 
-        {/* 10. Assigned Visitor */}
+        {/* 10. Site Visit Executive (Real Estate) / Caller */}
         <td className="px-3 py-2 text-center text-xs whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-          {item.assignedVisitor ? (
-            <span
-              onClick={() => onAssignVisitor?.(item)}
-              className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-2 py-0.5 rounded text-xs font-semibold cursor-pointer transition"
-              title="Click to reassign visitor"
-            >
-              <UserCheck size={11} className="text-amber-600" />
-              {item.assignedVisitor}
-            </span>
-          ) : onAssignVisitor ? (
-            <button
-              type="button"
-              onClick={() => onAssignVisitor?.(item)}
-              className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 cursor-pointer"
-              title="Assign visitor"
-            >
-              <UserCheck size={11} />
-              <span>Assign</span>
-            </button>
+          {itemIsRealEstate ? (
+            item.assignedVisitor ? (
+              <span
+                onClick={() => onAssignVisitor?.(item)}
+                className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-2 py-0.5 rounded text-xs font-semibold cursor-pointer transition"
+                title="Click to reassign site visit executive"
+              >
+                <UserCheck size={11} className="text-amber-600" />
+                {item.assignedVisitor}
+              </span>
+            ) : onAssignVisitor ? (
+              <button
+                type="button"
+                onClick={() => onAssignVisitor?.(item)}
+                className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider transition shadow-xs active:scale-95 cursor-pointer"
+                title="Assign site visit executive"
+              >
+                <UserCheck size={11} />
+                <span>Assign</span>
+              </button>
+            ) : (
+              <span className="text-[11px] text-gray-400 italic">Not assigned</span>
+            )
           ) : (
-            <span className="text-[11px] text-gray-400 italic">Not assigned</span>
+            item.callerAssigned || item.caller ? (
+              <span className="inline-flex items-center gap-1 bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded text-xs font-semibold">
+                <Phone size={11} className="text-sky-600" />
+                {item.callerAssigned || item.caller}
+              </span>
+            ) : (
+              <span className="text-[11px] text-gray-400 italic">-</span>
+            )
           )}
         </td>
 
-        {/* 11. Total Visits */}
+        {/* 11. Total Calls (Always displayed first) */}
         <td className="px-3 py-2 text-center whitespace-nowrap">
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            {item.followUpCount || 0} {item.followUpCount === 1 ? 'Visit' : 'Visits'}
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200">
+            {callCount} {callCount === 1 ? 'Call' : 'Calls'}
           </span>
         </td>
 
-        {/* 12. Location */}
-        <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location || item.customerAddress}>
-          {item.location || item.customerAddress || '-'}
-        </td>
+        {/* 12. Total Visits (Follows Total Calls) */}
+        {(isAll || isRealEstate) && (
+          <td className="px-3 py-2 text-center whitespace-nowrap">
+            {itemIsRealEstate || visitCount > 0 ? (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                {visitCount} {visitCount === 1 ? 'Visit' : 'Visits'}
+              </span>
+            ) : (
+              <span className="text-gray-300 text-xs">-</span>
+            )}
+          </td>
+        )}
 
-        {/* 13. Relationship Manager */}
+        {/* Location (Real Estate & All) */}
+        {(isRealEstate || isAll) && (
+          <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap max-w-[160px] truncate" title={item.location || item.customerAddress}>
+            {item.location || item.customerAddress || '-'}
+          </td>
+        )}
+
+        {/* Relationship Manager */}
         <td className="px-3 py-2 text-center text-xs text-gray-600 whitespace-nowrap">
           {item.relationshipManager || '-'}
         </td>
 
-        {/* 14. Remarks */}
+        {/* Remarks */}
         <td className="px-3 py-2 text-center text-xs text-gray-500 whitespace-nowrap max-w-[160px] truncate" title={item.leadRemarks || item.remarks}>
           {item.leadRemarks || item.remarks || '-'}
         </td>
@@ -540,6 +680,11 @@ export default function NonInterestedCategoryView({
   const renderCard = (item, idx) => {
     const leadKey = item.id || item.leadNo || idx;
     const isExpanded = expandedCardIds.has(leadKey);
+    const itemCat = getItemCategory(item);
+    const itemIsRealEstate = itemCat === 'Real Estate';
+    const actDate = getActivityDate(item);
+    const nextDate = getNextActivityDate(item);
+    const { callCount, visitCount } = getCounts(item);
 
     const isValid = (val) => {
       if (val === null || val === undefined) return false;
@@ -549,13 +694,13 @@ export default function NonInterestedCategoryView({
 
     const details = [];
     if (isValid(item.email || item.customerEmail)) details.push({ label: 'Email', value: item.email || item.customerEmail, icon: Mail, isEmail: true });
-    if (isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
+    if (itemIsRealEstate && isValid(item.location || item.customerAddress)) details.push({ label: 'Location', value: item.location || item.customerAddress, icon: MapPin, isLong: true });
     if (isValid(item.leadSource)) details.push({ label: 'Lead Source', value: item.leadSource, icon: FileText });
     if (isValid(item.referencerName || item.referenceName)) details.push({ label: 'Reference Name', value: item.referencerName || item.referenceName, icon: UserCheck });
     if (isValid(item.requirement)) details.push({ label: 'Requirement', value: item.requirement, icon: FileText });
     if (isValid(item.investmentBudget || item.budget)) details.push({ label: 'Budget', value: item.investmentBudget || item.budget, icon: IndianRupee });
-    if (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });
-    if (item.visitMeet?.meeting) details.push({ label: 'Meeting', value: 'Yes', icon: Check });
+    if (itemIsRealEstate && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit)) details.push({ label: 'Site Visited', value: 'Yes', icon: Check });
+    if (itemIsRealEstate && item.visitMeet?.meeting) details.push({ label: 'Meeting', value: 'Yes', icon: Check });
     if (isValid(item.relationshipManager)) details.push({ label: 'Relationship Manager', value: item.relationshipManager, icon: UserCheck });
     if (isValid(item.whenToBuyPlan)) details.push({ label: 'When to Buy', value: item.whenToBuyPlan, icon: Clock });
     if (isValid(item.leadRemarks || item.remarks)) details.push({ label: 'Remarks', value: item.leadRemarks || item.remarks, icon: MessageSquare, isLong: true });
@@ -565,7 +710,7 @@ export default function NonInterestedCategoryView({
         key={leadKey}
         className={`bg-white rounded-xl border transition shadow-2xs p-3 space-y-2.5 ${isExpanded ? 'border-rose-300 ring-1 ring-rose-200 bg-rose-50/10' : 'border-gray-200'}`}
       >
-        {/* Card Header: Name, Lead #, Status */}
+        {/* Card Header: Name, Lead #, Category badge, Status */}
         <div className="flex items-center justify-between gap-1.5 border-b border-gray-100 pb-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
             <h4
@@ -579,17 +724,26 @@ export default function NonInterestedCategoryView({
                 #{item.leadNo}
               </span>
             )}
+            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 border ${
+              itemCat === 'Real Estate'
+                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                : itemCat === 'Insurance'
+                ? 'bg-sky-50 text-sky-800 border-sky-200'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}>
+              {itemCat}
+            </span>
           </div>
           <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
             <span className="inline-flex items-center gap-0.5 text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
               <UserX size={9} className="stroke-[2.5]" /> Not Interested
             </span>
-            {(item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) && (
+            {itemIsRealEstate && (item.visitMeet?.['site-visit'] || item.visitMeet?.siteVisit || item.visitMeet?.site_visit) && (
               <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <Check size={9} className="stroke-[2.5]" /> Site Visited
               </span>
             )}
-            {item.visitMeet?.meeting && (
+            {itemIsRealEstate && item.visitMeet?.meeting && (
               <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.2 rounded bg-violet-50 text-violet-700 border border-violet-200">
                 <Check size={9} className="stroke-[2.5]" /> Meeting
               </span>
@@ -597,7 +751,7 @@ export default function NonInterestedCategoryView({
           </div>
         </div>
 
-        {/* Primary Row: Phone, Total Visits, Last Meeting Date, Next Meeting Date */}
+        {/* Primary Row: Phone, Total Calls, Total Visits, Last Date, Next Followup */}
         <div className="grid grid-cols-2 gap-2 text-xs">
           <div>
             <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Phone</span>
@@ -620,37 +774,48 @@ export default function NonInterestedCategoryView({
             )}
           </div>
 
+          {/* Total Calls (Displayed first) */}
           <div>
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits / Calls</span>
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Calls</span>
             <span className="font-bold text-gray-700 mt-0.5 inline-block">
-              {item.followUpCount || 0} {item.followUpCount === 1 ? 'Visit' : 'Visits'}
+              {callCount} {callCount === 1 ? 'Call' : 'Calls'}
             </span>
           </div>
 
-          {(item.meetingDate || item.visitDate) && (
+          {/* Total Visits (Displayed after Total Calls for Real Estate or when visits > 0) */}
+          {(itemIsRealEstate || visitCount > 0) && (
             <div>
-              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                <Calendar size={10} className="text-gray-400" />
-                Last Meeting Date
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block">Total Visits</span>
+              <span className="font-bold text-gray-700 mt-0.5 inline-block">
+                {visitCount} {visitCount === 1 ? 'Visit' : 'Visits'}
               </span>
-              <span className="font-medium text-gray-700 mt-0.5 inline-block">{formatDate(item.meetingDate || item.visitDate)}</span>
             </div>
           )}
 
-          {(item.nextMeetingDate || item.nextVisitDate) && (
+          {actDate && (
+            <div>
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                <Calendar size={10} className="text-gray-400" />
+                {itemIsRealEstate ? 'Last Meeting Date' : 'Last Call Date'}
+              </span>
+              <span className="font-medium text-gray-700 mt-0.5 inline-block">{formatDate(actDate)}</span>
+            </div>
+          )}
+
+          {nextDate && (
             <div>
               <span className="text-[10px] font-semibold text-amber-700 uppercase tracking-wider flex items-center gap-1">
                 <Clock size={10} className="text-amber-600" />
                 Next Followup
               </span>
               <span className={`font-bold mt-0.5 inline-block ${NEXT_DATE_CLASS}`}>
-                {formatDate(item.nextMeetingDate || item.nextVisitDate)}
+                {formatDate(nextDate)}
               </span>
             </div>
           )}
         </div>
 
-        {/* Customer Status & Visitor */}
+        {/* Customer Status & Site Visit Executive (Real Estate) / Caller */}
         <div className="flex items-center justify-between gap-1.5 text-xs flex-wrap">
           {item.customerStatus && (
             <div className="flex items-center gap-1.5">
@@ -661,31 +826,45 @@ export default function NonInterestedCategoryView({
             </div>
           )}
 
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Visitor:</span>
-            {item.assignedVisitor ? (
-              <span
-                onClick={(e) => { e.stopPropagation(); onAssignVisitor?.(item); }}
-                className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-xs font-semibold cursor-pointer active:scale-95"
-                title="Click to reassign visitor"
-              >
-                <UserCheck size={11} className="text-amber-600" />
-                {item.assignedVisitor}
-              </span>
-            ) : onAssignVisitor ? (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onAssignVisitor?.(item); }}
-                className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-xs font-semibold active:scale-95 cursor-pointer"
-                title="Assign visitor"
-              >
-                <UserCheck size={11} />
-                <span>Assign</span>
-              </button>
-            ) : (
-              <span className="text-[11px] text-gray-400 italic">Not assigned</span>
-            )}
-          </div>
+          {itemIsRealEstate ? (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Site Visit Executive:</span>
+              {item.assignedVisitor ? (
+                <span
+                  onClick={(e) => { e.stopPropagation(); onAssignVisitor?.(item); }}
+                  className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-xs font-semibold cursor-pointer active:scale-95"
+                  title="Click to reassign site visit executive"
+                >
+                  <UserCheck size={11} className="text-amber-600" />
+                  {item.assignedVisitor}
+                </span>
+              ) : onAssignVisitor ? (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onAssignVisitor?.(item); }}
+                  className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-xs font-semibold active:scale-95 cursor-pointer"
+                  title="Assign site visit executive"
+                >
+                  <UserCheck size={11} />
+                  <span>Assign</span>
+                </button>
+              ) : (
+                <span className="text-[11px] text-gray-400 italic">Not assigned</span>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Caller:</span>
+              {item.callerAssigned || item.caller ? (
+                <span className="inline-flex items-center gap-1 bg-sky-50 text-sky-800 border border-sky-200 px-2 py-0.5 rounded text-xs font-semibold">
+                  <Phone size={10} className="text-sky-600" />
+                  {item.callerAssigned || item.caller}
+                </span>
+              ) : (
+                <span className="text-[11px] text-gray-400 italic">Unassigned</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Latest Feedback snippet */}
@@ -785,12 +964,14 @@ export default function NonInterestedCategoryView({
     <div className="flex flex-col h-full min-h-0 space-y-1">
       {/* Header Bar: Row 1 = Lead Category Tabs; Row 2 = Search & Actions Controls */}
       <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
-        {/* Row 1: Lead Category Button Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
+        {/* Row 1: Lead Category Button Tabs in 2 lines on mobile, 4 columns on desktop */}
+        <div className="w-full shrink-0">
           <PageTabs
             tabs={tabs}
             activeKey={activeTab}
             onChange={(key) => { onTabChange?.(key); setCurrentPage(1); }}
+            grid={true}
+            gridCols={2}
           />
         </div>
 
@@ -803,7 +984,7 @@ export default function NonInterestedCategoryView({
               type="text"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              placeholder={`Search ${category} non-interested...`}
+              placeholder={`Search ${category === 'All' ? 'all' : category} non-interested...`}
               className="w-full bg-white border border-gray-300 rounded-lg pl-8 pr-7 text-xs focus:outline-none focus:border-rose-500 h-[34px] shadow-xs transition"
             />
             {searchQuery && (
@@ -843,20 +1024,20 @@ export default function NonInterestedCategoryView({
         </div>
       </div>
 
-      {/* Filter Bar (Always visible) */}
-      <div className="p-2 sm:p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-2 sm:gap-2.5 flex-wrap text-xs">
-        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">
+      {/* Filter Bar (Always in 1 line on mobile) */}
+      <div className="p-1.5 sm:p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide flex-nowrap text-xs w-full">
+        <span className="hidden sm:inline text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">
           Filter By:
         </span>
 
         {/* Customer Status Filter */}
-        <div className="w-[130px] sm:w-[150px]">
+        <div className="flex-1 min-w-[90px] max-w-[130px] sm:min-w-[130px] sm:max-w-[150px] shrink-0">
           <select
             value={customerStatusFilter}
             onChange={(e) => { setCustomerStatusFilter(e.target.value); setCurrentPage(1); }}
-            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
+            className="w-full bg-white border border-gray-300 rounded-md px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[28px] sm:h-[30px]"
           >
-            <option value="all">All Customer Status</option>
+            <option value="all">All Status</option>
             <option value="Cold">Cold</option>
             <option value="Warm">Warm</option>
             <option value="Hot">Hot</option>
@@ -864,7 +1045,7 @@ export default function NonInterestedCategoryView({
         </div>
 
         {/* Date Filter */}
-        <div className="w-[130px] sm:w-[150px]">
+        <div className="flex-1 min-w-[95px] max-w-[140px] sm:min-w-[130px] sm:max-w-[150px] shrink-0">
           <select
             value={dateFilter}
             onChange={(e) => {
@@ -877,7 +1058,7 @@ export default function NonInterestedCategoryView({
               }
               setCurrentPage(1);
             }}
-            className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
+            className="w-full bg-white border border-gray-300 rounded-md px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[28px] sm:h-[30px]"
           >
             {dateFilterOptions.map(d => (
               <option key={d.value} value={d.value}>{d.label}</option>
@@ -887,9 +1068,9 @@ export default function NonInterestedCategoryView({
 
         {/* Custom Date Range Inline Inputs */}
         {dateFilter === 'custom' && (
-          <div className="flex items-center gap-1.5 shrink-0 animate-in fade-in duration-150">
-            <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-rose-500 rounded px-2 h-[30px] shadow-xs">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
+          <div className="flex items-center gap-1 shrink-0 animate-in fade-in duration-150">
+            <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-rose-500 rounded px-1.5 h-[28px] sm:h-[30px] shadow-xs">
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
               <input
                 type="date"
                 value={customFrom}
@@ -897,12 +1078,12 @@ export default function NonInterestedCategoryView({
                   setCustomFrom(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                className="text-[11px] text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
                 title="From Date"
               />
             </div>
-            <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-rose-500 rounded px-2 h-[30px] shadow-xs">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
+            <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-rose-500 rounded px-1.5 h-[28px] sm:h-[30px] shadow-xs">
+              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide shrink-0">To</span>
               <input
                 type="date"
                 value={customTo}
@@ -910,7 +1091,7 @@ export default function NonInterestedCategoryView({
                   setCustomTo(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="text-xs text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
+                className="text-[11px] text-gray-700 bg-transparent focus:outline-none font-medium cursor-pointer"
                 title="To Date"
               />
             </div>
@@ -919,11 +1100,11 @@ export default function NonInterestedCategoryView({
 
         {/* Visitor Filter */}
         {visitorOptions.length > 0 && (
-          <div className="w-[140px] sm:w-[170px]">
+          <div className="flex-1 min-w-[105px] max-w-[160px] sm:min-w-[140px] sm:max-w-[170px] shrink-0">
             <select
               value={visitorFilter}
               onChange={(e) => { setVisitorFilter(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[30px]"
+              className="w-full bg-white border border-gray-300 rounded-md px-1.5 sm:px-2 py-1 text-[11px] sm:text-xs text-gray-800 focus:outline-none focus:border-rose-500 h-[28px] sm:h-[30px]"
             >
               {visitorOptions.map(v => (
                 <option key={v.value} value={v.value}>{v.label}</option>
@@ -936,9 +1117,9 @@ export default function NonInterestedCategoryView({
         {activeFiltersCount > 0 && (
           <button
             onClick={handleClearFilters}
-            className="text-xs text-rose-600 hover:text-rose-800 font-bold underline ml-auto cursor-pointer"
+            className="text-[11px] sm:text-xs text-rose-600 hover:text-rose-800 font-bold underline shrink-0 ml-auto cursor-pointer whitespace-nowrap px-1"
           >
-            Clear filters
+            Clear
           </button>
         )}
       </div>

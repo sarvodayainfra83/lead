@@ -354,58 +354,43 @@ export default function Customermaster() {
         </div>
       </div>
 
-      {/* Filter Bar (Always visible) */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg animate-in fade-in slide-in-from-top-1 duration-150">
-        <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
-          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-            Filter Options:
-          </span>
-          {activeFilterCount > 0 && (
-            <button
-              onClick={() => {
-                setFilters(prev => ({ ...prev, leadSource: '', callerAssigned: '', customerStatus: '' }));
-                setCurrentPage(1);
-              }}
-              className="sm:hidden text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline cursor-pointer"
-            >
-              Clear filters
-            </button>
-          )}
+      {/* Filter Bar (Always in 1 line, even on mobile) */}
+      <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 bg-slate-50 border border-slate-200 rounded-lg overflow-x-auto scrollbar-hide flex-nowrap animate-in fade-in slide-in-from-top-1 duration-150">
+        <span className="hidden sm:inline text-[10px] font-bold text-gray-500 uppercase tracking-wider shrink-0">
+          Filter Options:
+        </span>
+
+        <div className="flex-1 min-w-[90px] max-w-[130px] sm:min-w-[130px] sm:max-w-[150px] shrink-0">
+          <SearchableDropdown
+            options={[
+              ...CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v })),
+              { value: 'all', label: 'Hot & Warm' }
+            ]}
+            value={filters.customerStatus}
+            onChange={(val) => updateFilter('customerStatus', val || DEFAULT_CUSTOMER_STATUS)}
+            placeholder="Hot"
+            height="h-[28px] sm:h-[30px]"
+          />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 sm:flex items-center gap-2 w-full sm:w-auto flex-1 sm:flex-initial">
-          <div className="w-full sm:w-[140px] lg:w-[150px]">
-            <SearchableDropdown
-              options={[
-                ...CUSTOMER_MASTER_STATUSES.map(v => ({ value: v, label: v })),
-                { value: 'all', label: 'Hot & Warm' }
-              ]}
-              value={filters.customerStatus}
-              onChange={(val) => updateFilter('customerStatus', val || DEFAULT_CUSTOMER_STATUS)}
-              placeholder="Hot"
-              height="h-[30px]"
-            />
-          </div>
+        <div className="flex-1 min-w-[95px] max-w-[140px] sm:min-w-[130px] sm:max-w-[150px] shrink-0">
+          <SearchableDropdown
+            options={LEAD_SOURCES.map(v => ({ value: v, label: v }))}
+            value={filters.leadSource}
+            onChange={(val) => updateFilter('leadSource', val)}
+            placeholder="All Lead Source"
+            height="h-[28px] sm:h-[30px]"
+          />
+        </div>
 
-          <div className="w-full sm:w-[140px] lg:w-[150px]">
-            <SearchableDropdown
-              options={LEAD_SOURCES.map(v => ({ value: v, label: v }))}
-              value={filters.leadSource}
-              onChange={(val) => updateFilter('leadSource', val)}
-              placeholder="All Lead Source"
-              height="h-[30px]"
-            />
-          </div>
-
-          <div className="w-full sm:w-[140px] lg:w-[150px]">
-            <SearchableDropdown
-              options={callerOptions}
-              value={filters.callerAssigned}
-              onChange={(val) => updateFilter('callerAssigned', val)}
-              placeholder="All Assigned Caller"
-              height="h-[30px]"
-            />
-          </div>
+        <div className="flex-1 min-w-[105px] max-w-[160px] sm:min-w-[140px] sm:max-w-[170px] shrink-0">
+          <SearchableDropdown
+            options={callerOptions}
+            value={filters.callerAssigned}
+            onChange={(val) => updateFilter('callerAssigned', val)}
+            placeholder="All Assigned Caller"
+            height="h-[28px] sm:h-[30px]"
+          />
         </div>
 
         {activeFilterCount > 0 && (
@@ -414,7 +399,7 @@ export default function Customermaster() {
               setFilters(prev => ({ ...prev, leadSource: '', callerAssigned: '', customerStatus: '' }));
               setCurrentPage(1);
             }}
-            className="hidden sm:inline-block text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline ml-auto cursor-pointer shrink-0"
+            className="text-[11px] sm:text-xs text-indigo-600 hover:text-indigo-800 font-bold underline shrink-0 ml-auto cursor-pointer whitespace-nowrap px-1"
           >
             Clear filters
           </button>

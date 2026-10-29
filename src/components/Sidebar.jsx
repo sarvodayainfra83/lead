@@ -145,6 +145,16 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
           ${collapsed ? 'w-16' : 'w-64 sm:w-72 lg:w-56 2xl:w-60'}
         `}
       >
+        {/* Mobile Floating Close Button - only displayed when sidebar is open */}
+        {isOpen && (
+          <button
+            onClick={onClose}
+            className="lg:hidden absolute top-3.5 -right-4 w-8 h-8 rounded-full bg-white text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:scale-95 shadow-lg border border-gray-200 flex items-center justify-center transition-all z-[60] focus:outline-none"
+            aria-label="Close menu"
+          >
+            <X size={18} />
+          </button>
+        )}
         <div className="flex flex-col h-full relative">
 
           {/* Logo Section - Spreads across complete rectangle formed by sidebar and aligns with h-16 header line */}
@@ -164,14 +174,6 @@ const Sidebar = ({ isOpen, onClose, collapsed, onToggleCollapse }) => {
                   alt="Tikariha Advisors"
                   className="w-full h-full object-cover"
                 />
-                {/* Mobile close button */}
-                <button
-                  onClick={onClose}
-                  className="lg:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-white/80 hover:text-white hover:bg-black/30 rounded-lg flex-shrink-0"
-                  aria-label="Close menu"
-                >
-                  <X size={20} />
-                </button>
               </div>
             )}
           </div>

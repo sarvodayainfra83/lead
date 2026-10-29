@@ -154,7 +154,7 @@ export default function SiteVisitCategoryView({
   // Insurance / Mutual Fund have meetings only: no Site Visited / Meeting / Total Visits / Location columns, and
   // the assigned person is who takes the meeting
   const showVisitCols = category === 'Real Estate';
-  const assignedLabel = showVisitCols ? 'Assigned Visitor' : 'Meeting Assigned To';
+  const assignedLabel = showVisitCols ? 'Site Visit Executive' : 'Meeting Executive';
   const getMeetingType = (item) => {
     const logs = item.followUps || [];
     for (let i = logs.length - 1; i >= 0; i--) {
@@ -1055,12 +1055,12 @@ export default function SiteVisitCategoryView({
           )}
 
           <div className="flex items-center gap-1">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{showVisitCols ? 'Visitor:' : 'Assigned To:'}</span>
+            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{showVisitCols ? 'Site Visit Executive:' : 'Meeting Executive:'}</span>
             {item.assignedVisitor ? (
               <span
                 onClick={(e) => { e.stopPropagation(); onAssignVisitor?.(item); }}
                 className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded text-xs font-semibold cursor-pointer active:scale-95"
-                title="Click to reassign visitor"
+                title={showVisitCols ? "Click to reassign site visit executive" : "Click to reassign meeting executive"}
               >
                 <UserCheck size={11} className="text-amber-600" />
                 {item.assignedVisitor}
@@ -1070,7 +1070,7 @@ export default function SiteVisitCategoryView({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); onAssignVisitor?.(item); }}
                 className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded text-xs font-semibold active:scale-95 cursor-pointer"
-                title="Assign visitor"
+                title={showVisitCols ? "Assign site visit executive" : "Assign meeting executive"}
               >
                 <UserCheck size={11} />
                 <span>Assign</span>
@@ -1179,12 +1179,14 @@ export default function SiteVisitCategoryView({
     <div className="flex flex-col h-full min-h-0 space-y-1">
       {/* Header Bar: Row 1 = Lead Category Tabs (Top); Row 2 = Dates & Actions Controls Bar */}
       <div className="flex flex-col gap-1.5 w-full flex-shrink-0">
-        {/* Row 1: Lead Category Button Tabs (Always Top Row) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full pb-0.5">
+        {/* Row 1: Lead Category Button Tabs (Always Top Row, fits 1 row on mobile) */}
+        <div className="w-full shrink-0">
           <PageTabs
             tabs={tabs}
             activeKey={activeTab}
             onChange={(key) => { onTabChange?.(key); setCurrentPage(1); }}
+            grid={tabs.length >= 2 && tabs.length <= 4}
+            gridCols={tabs.length === 4 ? 4 : tabs.length === 3 ? 3 : 2}
           />
         </div>
 

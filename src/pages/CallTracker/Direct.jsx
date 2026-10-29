@@ -1303,13 +1303,13 @@ export default function Direct({ isOpen, onClose, onSaved, defaultLeadType }) {
                   {/* Assigned Visitor Dropdown (defaults to loggedIn user; Insurance / Mutual Fund: who takes the meeting) */}
                   <div className="space-y-1">
                     <label className="block text-[10.5px] sm:text-[11px] md:text-[13px] text-gray-700 uppercase tracking-tight font-semibold">
-                      {isInsurance || isMutualFund ? 'Meeting Assigned To' : 'Assigned Visitor'} *
+                      {isInsurance || isMutualFund ? 'Meeting Executive' : 'Site Visit Executive'} *
                     </label>
                     <SearchableDropdown
                       options={visitorOptions}
                       value={formData.assignedVisitor || user?.name || ''}
                       onChange={(val) => handleChange('assignedVisitor', val)}
-                      placeholder={isInsurance || isMutualFund ? 'Select meeting person' : 'Select assigned visitor'}
+                      placeholder={isInsurance || isMutualFund ? 'Select meeting executive' : 'Select site visit executive'}
                       height="h-[30px] md:h-[34px]"
                     />
                   </div>

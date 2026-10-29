@@ -990,8 +990,8 @@ export default function LeadCategoryView({
 
         {/* Row 2: Dates & Quick Actions on Left, Search/Filter/Reset on Right */}
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-1 sm:gap-1.5 w-full">
-          {/* Dates & Add Lead / Bulk Upload Controls (Single horizontal scroll row on mobile) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-nowrap w-full xl:w-auto pb-0.5 shrink-0">
+          {/* Dates & Add Lead / Bulk Upload Controls (2-col grid on mobile/tablet so every control stays visible across clean rows; single scroll row from xl up) */}
+          <div className="grid grid-cols-2 xl:flex gap-1.5 w-full xl:w-auto xl:items-center xl:flex-nowrap xl:overflow-x-auto xl:scrollbar-hide pb-0.5 shrink-0">
             {/* Dedicated Tab / Button for Today's Lead */}
             <button
               type="button"
@@ -1001,7 +1001,7 @@ export default function LeadCategoryView({
                 setCurrentPage(1);
               }}
               title="Show Today's Leads"
-              className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold h-[32px] sm:h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold h-[32px] sm:h-[34px] transition-all border w-full xl:w-auto xl:shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                 dateFilter === 'today'
                   ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-white border-amber-600 shadow-sm ring-2 ring-amber-300/60 font-bold'
                   : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-gray-900 font-semibold shadow-xs'
@@ -1017,7 +1017,7 @@ export default function LeadCategoryView({
             </button>
 
             {/* Dropdown for All Dates & other date options */}
-            <div className="w-[135px] sm:w-[170px] shrink-0">
+            <div className="w-full xl:w-[170px] xl:shrink-0">
               <SearchableDropdown
                 options={allDatesFilterOptions}
                 value={dateFilter === 'today' ? 'all' : dateFilter}
@@ -1064,7 +1064,7 @@ export default function LeadCategoryView({
                     setCurrentPage(1);
                   }}
                   title={`All ${key} stage leads till date`}
-                  className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold h-[32px] sm:h-[34px] transition-all border shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
+                  className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold h-[32px] sm:h-[34px] transition-all border w-full xl:w-auto xl:shrink-0 whitespace-nowrap active:scale-95 cursor-pointer ${
                     active
                       ? (key === 'Site Visit'
                         ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm font-bold'
@@ -1085,7 +1085,7 @@ export default function LeadCategoryView({
 
             {/* Custom Date Range Inline Inputs */}
             {dateFilter === 'custom' && (
-              <div className="flex items-center gap-1 shrink-0 animate-in fade-in duration-150">
+              <div className="col-span-2 xl:col-span-1 flex items-center gap-1 xl:shrink-0 animate-in fade-in duration-150">
                 <div className="flex items-center gap-1 bg-white border border-gray-300 focus-within:border-indigo-500 rounded-lg px-2 h-[32px] sm:h-[34px] shadow-xs">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide shrink-0">From</span>
                   <input
@@ -1116,10 +1116,10 @@ export default function LeadCategoryView({
             )}
 
             {canEdit && (
-              <div className="flex items-center gap-1 shrink-0">
+              <>
                 <button
                   onClick={() => onAddLead?.(category)}
-                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[32px] sm:h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 h-[32px] sm:h-[34px] w-full xl:w-auto xl:shrink-0 whitespace-nowrap active:scale-95"
                 >
                   <Plus size={13} className="shrink-0" />
                   <span>Add Lead</span>
@@ -1127,12 +1127,12 @@ export default function LeadCategoryView({
 
                 <button
                   onClick={() => onBulkUpload?.(category)}
-                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[32px] sm:h-[34px] shrink-0 whitespace-nowrap active:scale-95"
+                  className="flex items-center justify-center gap-1 px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold uppercase tracking-wide transition-colors border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 h-[32px] sm:h-[34px] w-full xl:w-auto xl:shrink-0 whitespace-nowrap active:scale-95"
                 >
                   <Upload size={13} className="shrink-0" />
                   <span>Bulk Upload</span>
                 </button>
-              </div>
+              </>
             )}
           </div>
 
